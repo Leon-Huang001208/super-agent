@@ -15,11 +15,11 @@ Harness任务personal-automation-v1，session sa-7c6b1f04-d3ec-4b85-bbb3-53de8ac
 
 Compose项目super-agent-paperclip-eval：paperclip/gateway/db，入口 http://127.0.0.1:8097。
 资产在 /Volumes/SuperAgentDockerData/paperclip-v2026.1023.0，APFS底层镜像 /Volumes/My PSSD/SuperAgent/paperclip-data.sparsebundle。
-Docker.raw仍在原系统盘。系统盘最后约3.5GiB低于新业务任务5GiB门槛，不清理未知资源、不改Docker全局内存。
+Docker.raw仍在原系统盘。系统盘最后约3.4GiB低于新业务任务5GiB门槛，不清理未知资源、不改Docker全局内存。
 
 管理员已注册，个人OpenAI订阅已连接。公司85f89b59-f73a-450d-8676-4afcab409fb0已暂停，定时调度关闭；暂停时无queued/running heartbeat。不要要求重复注册、重连或复制宿主认证。新手向导已完成，Chief与入门事项LEO-1已创建。Chief也paused，配置CLI、gpt-6.1-sol/xhigh、bypass=false、只读、heartbeat=false；正式业务能力仍待验收。
 
-gateway仍绑定活动worktree的docker/gateway.mjs；合回后若变更启动位置，核实并重建其bind后才可移除worktree。
+gateway已重建并确认绑定用户工作区的docker/gateway.mjs，服务健康。保全worktree和两份旧原型仍保留，不删除。
 
 ## 修复与证据
 

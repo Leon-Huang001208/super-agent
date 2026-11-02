@@ -19,6 +19,8 @@ Compose项目为super-agent-paperclip-eval。PostgreSQL只连internal控制网�
 
 认证为authenticated/private，精确允许本机8097来源。Tailscale8443和宿主自启动未配置；现有443入口保持原位。定时调度关闭、公司暂停。
 
+preflight的statfs仅记录容器可见文件系统，不能证明宿主系统盘空间达标；本次容器值与宿主df明显不同。宿主磁盘门槛尚未接入业务准入程序，当前由公司/Agent暂停及默认拒绝执行阻止业务开工。后续启用前须实现并验收该门槛。
+
 Codex与Claude默认只允许认证/版本操作。订阅hello可使用独立的单次许可，详见subscription-hello.md；这不等于业务任务权限。
 
 ## 后续验收顺序
