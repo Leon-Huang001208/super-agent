@@ -26,7 +26,7 @@ gateway已重建并确认绑定用户工作区的docker/gateway.mjs，服务健�
 依赖锁Darwin可选元数据、ESM import-only loader、internal网络端口、Invalid origin、保护入口stdin EPIPE已修复。
 hello默认拒绝业务执行，按公司/grant/模型/有效期的一次性许可运行固定只读请求。消费许可fsync文件及目录；取消/超时/EPIPE终止整个CLI进程组。
 官方local-ai-credentials.js省略auth_mode；接受tokens三件套并拒绝APIkey。启动前失败与已启动未知结果区分归因。
-40项Docker回归通过，独立JS评审最新修复无P1；这不是业务验收。
+40项Docker回归在用户工作区复跑通过，独立JS评审最新修复无P1/P2；这不是业务验收。新checkout没有宿主logs目录时，tools必须将外置日志直接绑定/logs并设置SUPER_AGENT_LOG_ROOT，不能在只读/workspace下嵌套创建挂载点；该故障已复现、修复并复跑验证。
 
 应用元数据在state/logs/hello-probes.jsonl、hello-permits.jsonl、evaluation-company-pause.json。维护回执在logs/。
 native companyService暂停成功后诊断脚本因closeRegisteredClients参数错误退出1；暂停和回执已落盘，不应重复执行当成未成功。

@@ -11,7 +11,7 @@
 
 ## 本次验证
 
-40项无网络Docker回归通过，覆盖许可并发/重放、过期、订阅绑定、模型固定、进程树终止、EPIPE、来源和依赖完整性。独立JavaScript评审对修复未再发现P1。
+40项无网络Docker回归在主项目目录复跑通过，覆盖许可并发/重放、过期、订阅绑定、模型固定、进程树终止、EPIPE、来源和依赖完整性。独立JavaScript评审的发现已处理；最后的日志挂载修复复核无P1/P2。
 
 原hello被自建EVALUATION_AUTH_ONLY保护拦截。现有严格单次hello入口，始终只读、禁用shell/search/plugin，失败不恢复许可。官方OAuth格式省略auth_mode的兼容问题已修复。
 

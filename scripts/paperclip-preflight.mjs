@@ -33,7 +33,7 @@ export function evaluateHost(candidate, facts) {
   return {readyForDependencyReview:problems.length===0,problems};
 }
 function safeCli(name,args){const r=spawnSync(name,args,{encoding:'utf8',timeout:8000,maxBuffer:64*1024});return{exitCode:r.status,errorCode:r.error?.code,stdout:r.stdout??'',stderr:r.stderr??''};}
-export function writeReceipt(receipt,tag='paperclip-preflight',directory=path.join(root,'logs')){
+export function writeReceipt(receipt,tag='paperclip-preflight',directory=process.env.SUPER_AGENT_LOG_ROOT||path.join(root,'logs')){
   if(!/^paperclip-[a-z-]+$/.test(tag))throw new Error('INVALID_RECEIPT_TAG');
   fs.mkdirSync(directory,{recursive:true,mode:0o700});if(fs.lstatSync(directory).isSymbolicLink())throw new Error('UNSAFE_RECEIPT_DIRECTORY');
   const id=new Date().toISOString().replace(/[:.]/g,'-')+'-'+crypto.randomUUID();

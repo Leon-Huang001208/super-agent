@@ -184,6 +184,8 @@ services:
     security_opt: [no-new-privileges:true]
     tmpfs: ["/tmp:size=64m,mode=1777"]
     working_dir: /workspace
+    environment:
+      SUPER_AGENT_LOG_ROOT: /logs
     volumes:
       - type: bind
         source: .
@@ -192,7 +194,7 @@ services:
         bind: {create_host_path: false}
       - type: bind
         source: ${SUPER_AGENT_DATA_ROOT}/logs
-        target: /workspace/logs
+        target: /logs
         bind: {create_host_path: false}
     command: [node, --test, tests/paperclip-preflight.test.mjs]
 networks:
