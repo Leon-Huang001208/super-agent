@@ -1,0 +1,32 @@
+{
+  "name": "personal-super-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=25.9.0" },
+  "scripts": {
+    "start": "node src/main.ts",
+    "dev": "node --watch src/main.ts",
+    "ui:dev": "vite --config ui/vite.config.ts",
+    "build": "tsc --noEmit && vite build --config ui/vite.config.ts",
+    "test": "node --test tests/*.test.ts",
+    "check": "npm test && npm run build",
+    "doctor": "node src/cli.ts doctor",
+    "setup": "node src/cli.ts setup",
+    "install:preview": "node src/cli.ts install-preview"
+  },
+  "dependencies": {
+    "@fastify/static": "10.1.8",
+    "@larksuiteoapi/node-sdk": "1.76.0",
+    "fastify": "5.12.7",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}
