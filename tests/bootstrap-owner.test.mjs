@@ -1,0 +1,2 @@
+import test from'node:test';import assert from'node:assert/strict';import{extractInvite}from'../docker/bootstrap-owner.mjs';
+test('bootstrap extracts only the local fixed-origin invite for private delivery',()=>{const token='a'.repeat(48);const url='http://127.0.0.1:8097/invite/pcp_bootstrap_'+token;assert.equal(extractInvite('Invite URL: \u001b[36m'+url+'\u001b[0m'),url);assert.equal(extractInvite('https://external.invalid/invite/pcp_bootstrap_'+token),null);assert.equal(extractInvite('http://127.0.0.1:8097/invite/not-an-invite'),null);});

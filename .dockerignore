@@ -1,0 +1,7 @@
+.git
+node_modules
+logs
+.env
+.env.*
+.DS_Store
+evaluation/reference

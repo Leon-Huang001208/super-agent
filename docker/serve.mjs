@@ -1,0 +1,3 @@
+import{loadServer}from'./server-entry.mjs';
+try{const m=await loadServer();if(typeof m.startServer!=='function')throw new Error('PAPERCLIP_SERVER_ENTRY_UNSUPPORTED');await m.startServer();}
+catch(e){let message=String(e?.message??'startup failed');const secrets=[process.env.BETTER_AUTH_SECRET,process.env.DATABASE_URL];try{secrets.push(new URL(process.env.DATABASE_URL).password);}catch{}for(const value of secrets)if(value)message=message.split(value).join('[redacted]');console.error(JSON.stringify({stage:'serve',errorCode:'PAPERCLIP_START_FAILED',errorType:e?.name??'unknown',code:typeof e?.code==='string'?e.code:undefined,message:message.slice(0,500)}));process.exitCode=1;}

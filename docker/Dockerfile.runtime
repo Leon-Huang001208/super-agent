@@ -1,0 +1,11 @@
+FROM node@sha256:a52166d89cfcc66ea62d10535ca712d161cece5d77ff4cfa758866b6b75ccb3f
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git openssh-client python3 tini \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/paperclip
+COPY docker/entrypoint.sh docker/bootstrap.mjs docker/serve.mjs docker/server-entry.mjs docker/complete-lock.mjs docker/verify-install.mjs docker/codex-hello-gate.mjs docker/package.install.json docker/package-lock.install.json /opt/super-agent/
+COPY docker/bin /opt/super-agent/bin
+RUN chmod 0555 /opt/super-agent/entrypoint.sh /opt/super-agent/bin/codex /opt/super-agent/bin/claude
+ENV HOME=/paperclip/home NPM_CONFIG_CACHE=/paperclip/npm-cache NODE_ENV=production
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/super-agent/entrypoint.sh"]
+CMD ["serve"]

@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in
+  setup-token|auth|--version|-v|--help|-h|help)
+    exec /opt/paperclip/node_modules/.bin/claude "$@"
+    ;;
+  *)
+    # Consume offered stdin without retaining it before returning the refusal.
+    if [ ! -t 0 ]; then cat >/dev/null; fi
+    printf '%s\n' '{"errorCode":"EVALUATION_AUTH_ONLY","provider":"claude","modelRequest":false}' >&2
+    exit 78
+    ;;
+esac

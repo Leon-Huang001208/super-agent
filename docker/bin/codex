@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in
+  login|--version|-V|--help|-h|help)
+    exec /opt/paperclip/node_modules/.bin/codex "$@"
+    ;;
+  *)
+    sa_bin_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    exec node "$sa_bin_dir/../codex-hello-gate.mjs" "$@"
+    ;;
+esac

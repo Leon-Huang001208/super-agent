@@ -1,0 +1,202 @@
+name: super-agent-paperclip-eval
+x-runtime: &runtime
+  image: super-agent-paperclip-runtime:2026.1023.0-arm64
+  platform: linux/arm64
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.runtime
+  labels:
+    io.super-agent.task: personal-automation-v1
+    io.super-agent.lifecycle: evaluation
+  read_only: true
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 512
+  mem_limit: 1536m
+  cpus: 2.0
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+services:
+  bootstrap:
+    <<: *runtime
+    command: [bootstrap]
+    network_mode: none
+    volumes:
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT:?set dedicated APFS data directory}/state
+        target: /paperclip
+        bind: {create_host_path: false}
+  prepare:
+    <<: *runtime
+    command: [prepare]
+    networks: [installer]
+    depends_on:
+      bootstrap: {condition: service_completed_successfully}
+    environment:
+      HTTP_PROXY: http://host.docker.internal:29758
+      HTTPS_PROXY: http://host.docker.internal:29758
+      NO_PROXY: localhost,127.0.0.1,db,paperclip
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+    volumes:
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT}/dependencies-codex-0.159.0
+        target: /opt/paperclip
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT}/state/installer-home
+        target: /paperclip/home
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT}/state/npm-cache
+        target: /paperclip/npm-cache
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT}/state/logs
+        target: /paperclip/logs
+        bind: {create_host_path: false}
+  db:
+    image: postgres@sha256:a717692f944862397bd102c6abee9b3f7927adbf7ee5f3a93e50b65aea0c5396
+    platform: linux/arm64
+    networks: [control]
+    labels:
+      io.super-agent.task: personal-automation-v1
+      io.super-agent.lifecycle: evaluation
+    depends_on:
+      bootstrap: {condition: service_completed_successfully}
+    environment:
+      POSTGRES_USER: paperclip
+      POSTGRES_DB: paperclip
+      POSTGRES_PASSWORD_FILE: /run/paperclip-secrets/postgres-password
+    volumes:
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT}/postgres
+        target: /var/lib/postgresql/data
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT}/state/secrets
+        target: /run/paperclip-secrets
+        read_only: true
+        bind: {create_host_path: false}
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U paperclip -d paperclip"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  paperclip:
+    <<: *runtime
+    command: [serve]
+    networks: [control, installer]
+    depends_on:
+      prepare: {condition: service_completed_successfully}
+      db: {condition: service_healthy}
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3100"
+      PAPERCLIP_HOME: /paperclip
+      PAPERCLIP_INSTANCE_ID: default
+      SERVE_UI: "true"
+      HEARTBEAT_SCHEDULER_ENABLED: "false"
+      PAPERCLIP_BUILD_VERSION: "2026.1023.0"
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_PUBLIC_URL: http://127.0.0.1:8097
+      PAPERCLIP_AUTH_BASE_URL_MODE: explicit
+      PAPERCLIP_AUTH_PUBLIC_BASE_URL: http://127.0.0.1:8097
+      BETTER_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:8097,http://localhost:8097
+      PAPERCLIP_ALLOWED_HOSTNAMES: localhost,127.0.0.1,mac-mini-1.tail947973.ts.net
+      NODE_OPTIONS: --max-old-space-size=1024
+      NODE_USE_ENV_PROXY: "1"
+      HTTP_PROXY: http://host.docker.internal:29758
+      HTTPS_PROXY: http://host.docker.internal:29758
+      NO_PROXY: localhost,127.0.0.1,db,paperclip,gateway
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+    volumes:
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT}/dependencies-codex-0.159.0
+        target: /opt/paperclip
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT}/state
+        target: /paperclip
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT}/workspaces
+        target: /workspaces
+        bind: {create_host_path: false}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3100/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    stop_grace_period: 90s
+  gateway:
+    image: node@sha256:a52166d89cfcc66ea62d10535ca712d161cece5d77ff4cfa758866b6b75ccb3f
+    platform: linux/arm64
+    labels:
+      io.super-agent.task: personal-automation-v1
+      io.super-agent.lifecycle: evaluation
+    depends_on:
+      paperclip: {condition: service_healthy}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 96
+    mem_limit: 128m
+    cpus: 0.5
+    networks: [control, ui]
+    volumes:
+      - type: bind
+        source: ./docker/gateway.mjs
+        target: /gateway.mjs
+        read_only: true
+        bind: {create_host_path: false}
+    command: [node, /gateway.mjs]
+    ports:
+      - 127.0.0.1:8097:3100
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3100/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  tools:
+    image: node@sha256:a52166d89cfcc66ea62d10535ca712d161cece5d77ff4cfa758866b6b75ccb3f
+    platform: linux/arm64
+    profiles: [tools]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    working_dir: /workspace
+    volumes:
+      - type: bind
+        source: .
+        target: /workspace
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SUPER_AGENT_DATA_ROOT}/logs
+        target: /workspace/logs
+        bind: {create_host_path: false}
+    command: [node, --test, tests/paperclip-preflight.test.mjs]
+networks:
+  installer: {}
+  ui: {}
+  control:
+    internal: true
