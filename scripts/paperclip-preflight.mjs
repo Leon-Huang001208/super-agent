@@ -53,7 +53,7 @@ export function main(args=process.argv.slice(2)) {
   const packagePath='/opt/paperclip/node_modules/paperclipai/package.json';let installedVersion=null;
   if(fs.existsSync(packagePath))installedVersion=JSON.parse(fs.readFileSync(packagePath,'utf8')).version;
   const receipt={kind:'container-preflight-only',at:new Date().toISOString(),candidate:{package:candidate.package,version:candidate.version,releaseGitSha:candidate.releaseGitSha,npmIntegrity:candidate.npmIntegrity,distribution:candidate.distribution},runtime:facts,...readiness,codex:{version:cli.exitCode===0?cli.stdout.trim():null,authentication:'NOT_RUN'},dependencies:{installedVersion,location:'docker-external-volume'},modelCalls:0,acceptance:'NOT_RUN',cases:Object.fromEntries(candidate.requiredCases.map(x=>[x,'NOT_RUN']))};
-  if(args.includes('--install-preview'))receipt.installPreview={command:['docker','compose','up','-d','paperclip'],dockerProject:candidate.dockerProject,dataRoot:candidate.dataRoot,purpose:'所有产品依赖在专用Docker容器/外置APFS卷中安装和运行',hostPackageInstallation:false,credentialCopy:false,modelCalls:false};
+  if(args.includes('--install-preview'))receipt.installPreview={command:['docker','compose','up','-d','gateway'],dockerProject:candidate.dockerProject,dataRoot:candidate.dataRoot,purpose:'所有产品依赖在专用Docker容器/外置APFS卷中安装和运行',hostPackageInstallation:false,credentialCopy:false,modelCalls:false};
   const saved=writeReceipt(receipt,args.includes('--install-preview')?'paperclip-install-preview':'paperclip-preflight');
   console.log(JSON.stringify({...receipt,receiptSha256:saved.sha256,log:saved.file}));
   if(!readiness.readyForDependencyReview)process.exitCode=1;

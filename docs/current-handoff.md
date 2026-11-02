@@ -7,7 +7,7 @@
 ## 位置
 
 用户工作区 /Users/leon/Documents/ChatGPT/Super Agent。
-活动worktree /Users/leon/.codex/worktrees/sa-paperclip-7c6b1f04，分支codex/paperclip-evaluation，需提交合回。
+保全worktree /Users/leon/.codex/worktrees/sa-paperclip-7c6b1f04，分支codex/paperclip-evaluation；其源码提交与用户工作区同步保留。运行管理优先从用户工作区执行scripts/sa。
 旧核心codex/sa-v1-core/3367aa3（19测试）与旧UI codex/sa-v1-ui/811508b（代理报告12测试）保留。
 Harness任务personal-automation-v1，session sa-7c6b1f04-d3ec-4b85-bbb3-53de8acd2fc8；整体目标未完成。
 
