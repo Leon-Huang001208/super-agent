@@ -26,6 +26,8 @@ inspect 显示 Compose 来源为 `/Users/leon/.codex/worktrees/sa-unified-integr
 
 候选和预检已固定 low 并回归拒绝旧 xhigh，未修改运行 Agent、未调用模型。完整本地输出及审计日志在本任务外置 `logs/sa-governance-20261104/`；远端 CI 与 PR 状态以实际 GitHub 回执为准。
 
+私有仓库 draft PR #1 已建立。首次 CI run 41686793101 失败：既有镜像是 ARM64，AMD64 runner 无法执行；runner 上 gh 不支持 slurp 与 jq 同时使用。按真实错误将 runner 改为原生 ARM64，分页响应交由 Node 归并，保留原失败记录；最终 CI 以修复后精确 head 的回执为准。
+
 ## 本轮交付与阻塞
 
 - 源码：文档、治理检查与 CI 在本任务隔离分支实现；最终验证和 PR 以本轮回执为准。

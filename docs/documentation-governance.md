@@ -14,7 +14,7 @@ Docker 内运行 `node scripts/check-docs.mjs`，只检查结构和所有 Markdo
 
 检查标准 Markdown 内联链接和 reference 链接，包含本地文件及标题锚点；忽略 fenced code 中的示例链接。链接不允许逃出仓库或通过符号链接读取外部文件。HTTP(S)、mailto 和其他显式 URI 不联网检查；因此远端链接可达性不在 PASS 的证据范围。
 
-CI 的 `governance` 与 `offline-regression` 分别验证文档和完整离线回归，固定 Node 镜像、不安装包、不挂载个人卷或凭据。工作流本身也属于独立评审范围。
+CI 的 `governance` 与 `offline-regression` 分别验证文档和完整离线回归，使用原生 Linux ARM64 runner 以匹配既有 ARM64 Node 镜像，不安装包、不挂载个人卷或凭据。工作流本身也属于独立评审范围。评审 API 的分页响应由 gh 原样收取、Node 归并并仅保留身份/状态/提交元数据，避免不同 gh 版本的 slurp/jq 组合不兼容。
 
 CI 从目标分支读取原治理清单，通过 `--baseline-manifest` 同时检查既有映射，候选不能靠新增 nonCode 或删除规则免除原映射。首次建设时目标分支没有清单，须独立评审建立初始基线。检查脚本、工作流和清单本身仍属于必须审查的可信代码，不能宣称此机制可抵抗恶意改写整个 CI；分支保护缺失时不合并。
 

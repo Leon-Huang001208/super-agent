@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   governance:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -36,10 +36,9 @@ jobs:
           set -eu
           mkdir -p logs
           if [ -n "$PR_NUMBER" ]; then
-            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --paginate --slurp \
-              --jq '[.[][] | {id, user: {login: .user.login}, state, commit_id, submitted_at}]' > logs/reviews.json
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --paginate --slurp > logs/review-pages.json
           else
-            printf '[]\n' > logs/reviews.json
+            printf '[]\n' > logs/review-pages.json
           fi
           node --input-type=module <<'JS'
           import fs from 'node:fs';
@@ -51,7 +50,8 @@ jobs:
           if (!/^[a-f0-9]{40}$/.test(base)) throw new Error('INVALID_BASE_SHA');
           const names = execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', base, head], {encoding: 'utf8'}).split('\0').filter(Boolean);
           fs.writeFileSync('logs/changed-files.json', JSON.stringify(names));
-          fs.writeFileSync('logs/review-context.json', JSON.stringify({headSha: head, author: process.env.PR_AUTHOR, reviews: JSON.parse(fs.readFileSync('logs/reviews.json', 'utf8'))}));
+          const reviews = JSON.parse(fs.readFileSync('logs/review-pages.json', 'utf8')).flat().map(({id, user, state, commit_id, submitted_at}) => ({id, user: {login: user.login}, state, commit_id, submitted_at}));
+          fs.writeFileSync('logs/review-context.json', JSON.stringify({headSha: head, author: process.env.PR_AUTHOR, reviews}));
           const baseFiles = execFileSync('git', ['ls-tree', '--name-only', base, 'docs/documentation-governance.json'], {encoding: 'utf8'}).trim();
           if (baseFiles) fs.writeFileSync('logs/baseline-manifest.json', execFileSync('git', ['show', base + ':docs/documentation-governance.json']));
           JS
@@ -68,7 +68,7 @@ jobs:
             node@sha256:a52166d89cfcc66ea62d10535ca712d161cece5d77ff4cfa758866b6b75ccb3f \
             node scripts/check-docs.mjs --changes /logs/changed-files.json --review-context /logs/review-context.json "$@"
   offline-regression:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
