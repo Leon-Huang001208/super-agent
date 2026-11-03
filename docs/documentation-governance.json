@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "required": ["AGENTS.md", "README.md", "docs/README.md", "docs/product.md", "docs/architecture.md", "docs/development-map.md", "docs/agent-workflow.md", "docs/documentation-governance.md", "docs/operations.md", "docs/acceptance-runbook.md", "docs/decisions/0001-paperclip-and-delivery.md"],
+  "entrypoints": {
+    "README.md": ["AGENTS.md", "docs/README.md", "docs/architecture.md", "docs/development-map.md", "docs/agent-workflow.md"],
+    "AGENTS.md": ["docs/README.md", "docs/architecture.md", "docs/development-map.md", "docs/agent-workflow.md"],
+    "docs/README.md": ["AGENTS.md", "docs/product.md", "docs/architecture.md", "docs/development-map.md", "docs/agent-workflow.md", "docs/documentation-governance.md", "docs/operations.md", "docs/acceptance-runbook.md", "docs/decisions/0001-paperclip-and-delivery.md"]
+  },
+  "rules": [
+    {"prefix": "docs/documentation-governance.json", "docs": ["docs/documentation-governance.md"]},
+    {"prefix": "docker/", "docs": ["docs/architecture.md", "docs/operations.md", "docs/development-map.md"]},
+    {"prefix": "compose", "docs": ["docs/architecture.md", "docs/operations.md"]},
+    {"prefix": "evaluation/", "docs": ["docs/acceptance-runbook.md", "docs/development-map.md"]},
+    {"prefix": "scripts/sa", "docs": ["docs/operations.md", "docs/development-map.md"]},
+    {"prefix": "scripts/check-docs.mjs", "docs": ["docs/documentation-governance.md"]},
+    {"prefix": "scripts/", "docs": ["docs/development-map.md", "docs/operations.md"]},
+    {"prefix": "tests/", "docs": ["docs/development-map.md", "docs/documentation-governance.md", "docs/acceptance-runbook.md"]},
+    {"prefix": ".github/", "docs": ["docs/agent-workflow.md", "docs/documentation-governance.md"]},
+    {"prefix": "package.json", "docs": ["docs/development-map.md"]},
+    {"prefix": "tsconfig.json", "docs": ["docs/development-map.md"]}
+  ],
+  "snapshots": ["docs/delivery-status.md", "docs/current-handoff.md", "docs/paperclip-evaluation.md", "docs/subscription-hello.md", "docs/auth-origin-fix.md", "docs/governance-status-20261104.md"],
+  "historicalPrefixes": ["docs/archive/"],
+  "nonCode": [".gitignore", ".dockerignore"]
+}

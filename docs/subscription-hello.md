@@ -1,5 +1,7 @@
 # 订阅 hello 与保护入口
 
+> 这是 2026-11-02 hello 基线的实现与验证记录，仅证明当时的连接请求。现行业务验收见 [验收手册](acceptance-runbook.md)，运行状态另行核对。
+
 本候选使用gpt-6.1-sol订阅时要求Codex CLI至少0.159.0；初装0.154.0被后端拒绝，现已在Docker内固定0.159.0并真实hello通过。主机Codex未改动。正常业务Agent另行固定CLI引擎，不能用ACP环境元数据冒充其实际执行成功。
 
 EVALUATION_AUTH_ONLY来自本项目保护脚本，不是OpenAI认证错误。登录/配额检查不等于模型推理成功。该Paperclip版本若ACP只完成环境检查，会再调用CLI真实hello。
