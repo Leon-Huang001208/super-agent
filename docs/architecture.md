@@ -1,38 +1,48 @@
-# 架构与接口
+# Paperclip 集成架构
 
-## 组件
+## 组件与数据流
 
-`sources → intake → store / scheduler → executor / project adapter → outbox → channels`
+```mermaid
+flowchart LR
+  F[本人飞书会话] --> B[输入与决策适配]
+  G[GitHub 事件] --> B
+  B --> P[Paperclip 任务与运行历史]
+  P --> A[受控执行与项目适配]
+  A --> C[Docker Codex 独立开发与评审]
+  C --> W[隔离 worktree]
+  W --> V[目标项目验证与 Git 安全入口]
+  V --> R[PR 与 CI]
+  R --> P
+  P --> N[唯一结果通知出口]
+  N --> F
+```
 
-- `src/core/`：SQLite 事务、任务和事件关联、决策、配额、执行租约、恢复及通知去重。
-- `src/executors/`：Codex JSON-RPC stdio、Claude print JSON 协议；模型与会话配置固定。
-- `src/projects/`：RWB Git 安全入口、验证策略及 GitHub 受控写入。
-- `src/sources/`：GitHub polling、飞书长连接；所有外部文本都是数据。
-- `src/http/`：认证、CSRF、请求校验与 API；`ui/`：React 面板。
+这是目标组件边界，不能据图认定已部署或通过验收。Paperclip 拥有任务和运行历史，适配层仅保存外部事件、执行许可、租约和结果的幂等关联，不建立竞争调度引擎。
 
-配置是版本化 JSON；SQLite 保存任务采用的不可变配置快照。秘密通过本机私有文件引用，API 仅返回是否已配置。
+## 本仓库实现、运行候选与目标
 
-## 网页 API（全部 JSON，除 session/login/setup 外均需会话）
+| 能力 | 本仓库基线 | 实际运行观察 / 目标 |
+|---|---|---|
+| 固定 Paperclip、PostgreSQL、网关、Docker 与专用卷 | 已有启动、完整性与来源保护代码 | 实际运行候选从独立集成目录启动，必须另核对 |
+| 订阅认证与单次 hello | 有只读许可、固定模型、无 API 回退和进程收口 | 旧 hello 证据仅覆盖该请求，不证明业务能力 |
+| 飞书、GitHub 与 RWB 执行桥 | 当前主线尚未包含 | 其他集成候选存在实现与运行资产，本轮不覆盖其脏工作区 |
+| 宿主磁盘、日限、租约、恢复、Skills 与独立评审 | 当前候选有要求，缺完整业务入口 | 必须核对集成实现和同候选验收，不重复实现第二套控制器 |
+| 文档、规则与 CI | 本轮新增 | 独立于真实模型和运行升级留证 |
+| 两条 low 档位闭环 | NOT_RUN | 见验收手册及日期状态 |
 
-- `GET /api/session` → `{ authenticated, setupRequired, csrfToken? }`
-- `POST /api/auth/setup` → `{ bootstrapToken, password }`
-- `POST /api/auth/login` → `{ password }`；`POST /api/auth/logout`
-- `GET /api/overview` → `{ counts, quota, disk, integrations, intakeEnabled }`
-- `GET /api/tasks` → `{ tasks: TaskView[] }`
-- `GET /api/tasks/:id` → `{ task, attempts, events, artifacts, decisions }`
-- `POST /api/tasks` ← `{ projectId, title, description, executor? }` → `{ task }`
-- `POST /api/tasks/:id/actions` ← `{ action: pause|resume|cancel, version, comment? }`
-- `GET /api/decisions` → `{ decisions }`
-- `POST /api/decisions/:id/resolve` ← `{ choice, taskVersion }`
-- `GET /api/config` → `{ revision, settings, projects, rules, credentialsConfigured }`
-- `PUT /api/config` ← 同上，忽略 credentialsConfigured；revision 必须匹配。
-- `POST /api/integrations/feishu` ← `{ appId, appSecret?, ownerOpenId? }`，不回显秘密。
+## 数据、权限与生命周期
 
-写请求带 `X-CSRF-Token`；Origin 必须在本机或已配置的私有地址列表内。错误形状为 `{ error: { code, message } }`。
+- PostgreSQL 保存 Paperclip 元数据；外置 APFS 保存数据库、认证、workspace、日志和候选依赖。本仓库只保存代码、规则和脱敏证据摘要。
+- 网关面向固定后端，私有认证及精确 Origin 约束；基线是 loopback 8097。Tailscale 或实际其他入口必须单独核实，不能从目标配置推断已启用。
+- Codex 通过容器内既有个人订阅，验收固定 `gpt-6.1-sol` / `low`。开发与评审独立会话，限定 workspace，不复制宿主认证或启用 bypass。
+- 本项目自身可在全部交付门满足后自动合并；RWB 通过自己的安全入口交付 PR，适配层不能扩大权限。
 
-TaskView：`id, projectId, title, status, stage, version, createdAt, updatedAt, executor, prUrl?, summary?, errorCode?`。
-Decision：`id, taskId, taskVersion, title, detail, choices: string[], status, createdAt`。
+## 失败传播与恢复
 
-状态：queued、running、paused、waiting_user、waiting_checks、pr_ready、failed、cancelled。
+外部输入不授予权限。许可、候选或任务版本不匹配、宿主证据过期、日限耗尽、写者未知、评审或 CI 缺证据均拒绝后续动作。错误必须有稳定代码与脱敏日志。
 
-面板每 5 秒刷新可见数据；交互失败显示错误码，不把失败写成成功。
+调用已启动而结果未知时保留原 attempt 和租约，核对 Native run、journal、PR 和通知回执后再决定下一步；不能自动恢复许可、重跑模型或重复发布。CI 等待释放执行资源与重新取得写入许可必须有真实证据。
+
+运行升级需要新派发关闭、任务及进程排空、候选身份和恢复证据。源码、运行、业务、回收四层状态分别记录。见 [运维](operations.md)、[验收](acceptance-runbook.md) 和 [当日观察](governance-status-20261104.md)。
+
+旧接口与自建 SQLite 方案保存在 [历史架构](archive/self-built-architecture.md)，不属于当前公开 API。
