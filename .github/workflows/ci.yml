@@ -1,0 +1,85 @@
+name: Super Agent checks
+
+on:
+  pull_request:
+  pull_request_review:
+    types: [submitted, dismissed]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: super-agent-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Collect actual changes and independent review context
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p logs
+          if [ -n "$PR_NUMBER" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --paginate --slurp > logs/review-pages.json
+          else
+            printf '[]\n' > logs/review-pages.json
+          fi
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          let base = process.env.BASE_SHA;
+          const head = process.env.HEAD_SHA;
+          if (!/^[a-f0-9]{40}$/.test(head)) throw new Error('INVALID_HEAD_SHA');
+          if (!base || /^0+$/.test(base)) base = execFileSync('git', ['hash-object', '-t', 'tree', '--stdin'], {input: '', encoding: 'utf8'}).trim();
+          if (!/^[a-f0-9]{40}$/.test(base)) throw new Error('INVALID_BASE_SHA');
+          const names = execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', base, head], {encoding: 'utf8'}).split('\0').filter(Boolean);
+          fs.writeFileSync('logs/changed-files.json', JSON.stringify(names));
+          const reviews = JSON.parse(fs.readFileSync('logs/review-pages.json', 'utf8')).flat().map(({id, user, state, commit_id, submitted_at}) => ({id, user: {login: user.login}, state, commit_id, submitted_at}));
+          fs.writeFileSync('logs/review-context.json', JSON.stringify({headSha: head, author: process.env.PR_AUTHOR, reviews}));
+          const baseFiles = execFileSync('git', ['ls-tree', '--name-only', base, 'docs/documentation-governance.json'], {encoding: 'utf8'}).trim();
+          if (baseFiles) fs.writeFileSync('logs/baseline-manifest.json', execFileSync('git', ['show', base + ':docs/documentation-governance.json']));
+          JS
+      - name: Check documentation and change mapping in offline Docker
+        run: |
+          set -eu
+          set --
+          if [ -f logs/baseline-manifest.json ]; then
+            set -- --baseline-manifest /logs/baseline-manifest.json
+          fi
+          docker run --rm --network none --read-only --tmpfs /tmp:rw,size=64m \
+            -v "$PWD:/workspace:ro" -v "$PWD/logs:/logs" -w /workspace \
+            -e SUPER_AGENT_LOG_ROOT=/logs \
+            node@sha256:a52166d89cfcc66ea62d10535ca712d161cece5d77ff4cfa758866b6b75ccb3f \
+            node scripts/check-docs.mjs --changes /logs/changed-files.json --review-context /logs/review-context.json "$@"
+  offline-regression:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Run complete offline Docker regression
+        run: |
+          mkdir -p logs
+          docker run --rm --network none --read-only --tmpfs /tmp:rw,size=64m \
+            -v "$PWD:/workspace:ro" -v "$PWD/logs:/logs" -w /workspace \
+            -e SUPER_AGENT_LOG_ROOT=/logs \
+            node@sha256:a52166d89cfcc66ea62d10535ca712d161cece5d77ff4cfa758866b6b75ccb3f \
+            node --test tests/*.test.mjs

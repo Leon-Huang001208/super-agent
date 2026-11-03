@@ -1,5 +1,7 @@
 # Paperclip Docker 验证方案 · 2026-11-02
 
+> 原候选验证记录，包含旧 xhigh 目标。本轮候选已要求 low，现行验收见 [验收手册](acceptance-runbook.md)，实际运行身份见 [日期状态](governance-status-20261104.md)。不要从此文件直接启动或覆盖新运行候选。
+
 用户已选择：先验证Paperclip，通过后唯一调度；所有产品依赖在Docker中；新数据在外置SSD，现有Docker数据不迁移。
 
 ## 固定资产

@@ -21,7 +21,7 @@
   "port": 8097,
   "tailscaleHttpsPort": 8443,
   "limits": { "newTasksPerShanghaiDay": 10, "concurrentWriters": 1, "maxFixRounds": 2, "minFreeBytes": 5368709120, "installReserveBytes": 1073741824 },
-  "adapterRequirements": { "provider": "codex", "dangerouslyBypassApprovalsAndSandbox": false, "model": "gpt-6.1-sol", "reasoningEffort": "xhigh", "apiFallback": false, "fastMode": false, "maximumAction": "pull_request" },
+  "adapterRequirements": { "provider": "codex", "dangerouslyBypassApprovalsAndSandbox": false, "model": "gpt-6.1-sol", "reasoningEffort": "low", "apiFallback": false, "fastMode": false, "maximumAction": "pull_request" },
   "requiredCases": ["same-candidate", "host-runtime", "read-only-task", "worktree-code-task", "skills-loaded", "private-read-denied", "network-denied", "daily-task-limit", "duplicate-event", "followup-same-task", "writer-exclusion", "restart-reconciliation", "ci-wait-releases-worker", "decision-version-and-replay", "lost-external-result", "required-ci-checks", "feishu-loop", "rwb-documentation-pr"],
   "acceptance": "NOT_RUN"
 }
