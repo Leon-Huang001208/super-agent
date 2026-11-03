@@ -25,9 +25,13 @@ node "$HOME/.agents/leon-engineering/runtime/iteration-delivery.mjs" --start \
 
 ## PR、CI 与自动合并
 
-本项目覆盖框架的直接推送默认：首次基线之后必须 PR。源分支为 `codex/`，目标从远端默认分支解析。必需检查为 `governance`、`offline-regression`，还需独立评审及讨论解决。
+本项目覆盖框架的直接推送默认：首次基线之后必须 PR。源分支为 `codex/`，目标从远端默认分支解析。必需状态为 `governance`、`offline-regression`、`independent-review`，还需讨论解决。独立代理必须读取精确 head 的代码和证据，发现全部处理后，发布该 head 的 independent-review 提交状态并关联真实评审回执；开发会话不得自签此状态。修订使旧 head 的状态失效。
 
-发布前必须实查分支保护。当前 GitHub 私有仓库保护返回套餐限制，**不得运行会直推的 `publish` 或自动合并**。可推送任务分支、建立 PR、运行 CI，交付状态保留阻断。保护恢复后再核对控制器是否支持 PR 路由；若没有该能力，保持阻断，不修改框架或伪造 receipt 来绕过。
+发布前必须实查分支保护。用户已于 2026-11-04 将仓库改为 public，随后真实启用严格 CI、管理员约束、PR 入口和讨论解决，关闭强推与删除。先前私有套餐 403 是历史阻塞，不再作为当前阻塞。
+
+受管控制器的 GitHub PR fallback 通过 `scripts/existing-pr-runner.mjs` 复用已有 PR，避免为同任务创建第二份。先将原 PR 源分支快进到已验证的 prepared integration commit，等待该 head 的 CI 和独立评审状态。适配器每次核对实际 PR、仓库、基线与精确 head，只接受受管 create/auto-merge 操作，合并加 `--match-head-commit`。受管控制器仍负责真实分支保护拒绝、PR 发布、远端 CI 与回执；不改写框架，不直接修改 receipt。管理调用器必须记录脱敏执行结果与错误。
+
+独立评审状态由项目管理身份上传独立代理的真实评审结果，它不是另一 GitHub 账号的 APPROVED review。原生批准数为 0，服务器通过必需 independent-review 状态强制要求该结果；不能将作者自己的 COMMENT 冒充独立批准。后续引入第二位 GitHub 评审人时再提高批准数。
 
 CI 成功不等于业务验收。合并后验证远端默认分支包含候选，按原始实测证据记录 Harness；完整交付必须通过 `harness-enforce.mjs --require-delivery`，PR-only 受阻状态不能登记 completed/passed。
 
