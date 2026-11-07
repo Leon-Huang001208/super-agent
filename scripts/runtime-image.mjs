@@ -66,14 +66,17 @@ export const dockerDriver = {
     if (parts.length !== 4 || !ID.test(parts[0]) || (ids && parts[0] !== ids[0])) fail('IMAGE_REFERENCE_CHANGED');
     return {id:parts[0],os:parts[1],architecture:parts[2],key:parts[3]};
   },
-  build({context,iidFile,reference,key}) {
-    dockerCall(['build','--pull=false','--platform',PLATFORM,'--label',LABEL+'='+key,
-      '--iidfile',iidFile,'--tag',reference,'--file',path.join(context,'docker/Dockerfile.runtime'),context], {building:true});
-    const s=fs.lstatSync(iidFile);
-    if (!s.isFile() || s.nlink!==1 || s.size>128) fail('BUILD_IMAGE_ID_UNVERIFIED');
-    const iid=fs.readFileSync(iidFile,'utf8').trim();
-    if (!ID.test(iid)) fail('BUILD_IMAGE_ID_UNVERIFIED');
-    const built=dockerDriver.inspect(iid);
+  build({context,metadataFile,reference,key}) {
+    dockerCall(['build','--load','--pull=false','--platform',PLATFORM,'--label',LABEL+'='+key,
+      '--metadata-file',metadataFile,'--tag',reference,'--file',path.join(context,'docker/Dockerfile.runtime'),context], {building:true});
+    const s=fs.lstatSync(metadataFile);
+    if (!s.isFile() || s.nlink!==1 || s.size>64*1024) fail('BUILD_IMAGE_ID_UNVERIFIED');
+    const metadata=JSON.parse(fs.readFileSync(metadataFile,'utf8'));
+    // Buildx's IID can be the config digest. A containerd image store
+    // addresses the exported manifest/index, not that config object.
+    const digest=metadata['containerimage.digest'];
+    if (typeof digest!=='string' || !ID.test(digest)) fail('BUILD_IMAGE_ID_UNVERIFIED');
+    const built=dockerDriver.inspect(digest);
     if (!imageMatches(built,key)) fail('BUILD_IMAGE_ID_UNVERIFIED');
     return built.id;
   },
@@ -168,7 +171,7 @@ export function runImageAction({root,state,action,driver=dockerDriver,capacity,l
     // A client error or loss of the post-build observation cannot certify that
     // the daemon stopped. Keep the lock until the exact result is recorded.
     preserve=true;
-    const builtId=driver.build({context,iidFile:path.join(staging,'iid'),reference,key});
+    const builtId=driver.build({context,metadataFile:path.join(staging,'build-metadata.json'),reference,key});
     const image=driver.inspect(reference);
     if (!imageMatches(image,key) || image.id!==builtId) fail('BUILT_IMAGE_UNVERIFIED');
     fs.writeFileSync(filename,JSON.stringify({schemaVersion:1,key,reference,platform:PLATFORM,imageId:image.id})+'\n',{flag:'wx',mode:0o600});
