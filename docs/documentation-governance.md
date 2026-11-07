@@ -8,6 +8,8 @@
 
 ## 检查入口
 
+镜像构建或 Compose 消费规则改动须同步运维、开发地图或架构对应说明；离线复用夹具通过不允许把实际构建、迁移或旧镜像退休写成已完成。
+
 Docker 内运行 `node scripts/check-docs.mjs`，只检查结构和所有 Markdown 文件链接；`npm run check:docs` 同义。`npm run check` 执行静态文档检查及回归，不执行模型或业务预检。
 
 变更映射必须提供 `--changes <JSON文件>`，格式为仓库相对路径数组，含删除及重命名的旧、新路径。CI 从 PR base 到 head 的实际 Git diff 获取；不使用可由 PR 作者填写的路径清单。日志输出到 `SUPER_AGENT_LOG_ROOT` 或 `logs/`，检查失败非零退出，成功日志也保留检查范围。
