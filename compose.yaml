@@ -1,10 +1,8 @@
 name: super-agent-paperclip-eval
 x-runtime: &runtime
-  image: super-agent-paperclip-runtime:2026.1023.0-arm64
+  image: "${SUPER_AGENT_RUNTIME_IMAGE:?select the runtime image with scripts/sa}"
   platform: linux/arm64
-  build:
-    context: .
-    dockerfile: docker/Dockerfile.runtime
+  pull_policy: never
   labels:
     io.super-agent.task: personal-automation-v1
     io.super-agent.lifecycle: evaluation
@@ -61,6 +59,7 @@ services:
   db:
     image: postgres@sha256:a717692f944862397bd102c6abee9b3f7927adbf7ee5f3a93e50b65aea0c5396
     platform: linux/arm64
+    pull_policy: never
     networks: [control]
     labels:
       io.super-agent.task: personal-automation-v1
@@ -145,6 +144,7 @@ services:
   gateway:
     image: node@sha256:a52166d89cfcc66ea62d10535ca712d161cece5d77ff4cfa758866b6b75ccb3f
     platform: linux/arm64
+    pull_policy: never
     labels:
       io.super-agent.task: personal-automation-v1
       io.super-agent.lifecycle: evaluation
@@ -177,6 +177,7 @@ services:
   tools:
     image: node@sha256:a52166d89cfcc66ea62d10535ca712d161cece5d77ff4cfa758866b6b75ccb3f
     platform: linux/arm64
+    pull_policy: never
     profiles: [tools]
     network_mode: none
     read_only: true
