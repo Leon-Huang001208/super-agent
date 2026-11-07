@@ -17,23 +17,26 @@ export SUPER_AGENT_DATA_ROOT=$sa_data_root
 sa_log=$sa_data_root/logs/driver.jsonl
 printf '{"at":"%s","action":"%s","status":"started"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$sa_action" >>"$sa_log"
 trap 'sa_exit=$?; printf "{\"action\":\"%s\",\"exitCode\":%s}\n" "$sa_action" "$sa_exit" >>"$sa_log"' EXIT
+sa_compose() {
+  docker compose --file "$sa_root/compose.yaml" --project-name super-agent-paperclip-eval --env-file /dev/null "$@"
+}
 case "$sa_action" in
   image-build) node scripts/runtime-image.mjs build ;;
   image-audit) node scripts/runtime-image.mjs audit ;;
   up)
     SUPER_AGENT_RUNTIME_IMAGE=$(node scripts/runtime-image.mjs resolve)
     export SUPER_AGENT_RUNTIME_IMAGE
-    docker compose config --quiet
-    docker compose up --no-build --pull never -d gateway
+    sa_compose config --quiet
+    sa_compose up --no-build --pull never -d gateway
     ;;
-  status) SUPER_AGENT_RUNTIME_IMAGE=super-agent-paperclip-runtime:2026.1023.0-arm64 docker compose ps --all ;;
-  stop) SUPER_AGENT_RUNTIME_IMAGE=super-agent-paperclip-runtime:2026.1023.0-arm64 docker compose stop gateway paperclip db prepare bootstrap ;;
-  test) SUPER_AGENT_RUNTIME_IMAGE=super-agent-paperclip-runtime:2026.1023.0-arm64 docker compose --profile tools run --rm --no-deps tools npm test ;;
-  preflight) SUPER_AGENT_RUNTIME_IMAGE=super-agent-paperclip-runtime:2026.1023.0-arm64 docker compose --profile tools run --rm --no-deps tools npm run preflight ;;
+  status) SUPER_AGENT_RUNTIME_IMAGE=super-agent-paperclip-runtime:2026.1023.0-arm64 sa_compose ps --all ;;
+  stop) SUPER_AGENT_RUNTIME_IMAGE=super-agent-paperclip-runtime:2026.1023.0-arm64 sa_compose stop gateway paperclip db prepare bootstrap ;;
+  test) SUPER_AGENT_RUNTIME_IMAGE=super-agent-paperclip-runtime:2026.1023.0-arm64 sa_compose --profile tools run --rm --no-deps tools npm test ;;
+  preflight) SUPER_AGENT_RUNTIME_IMAGE=super-agent-paperclip-runtime:2026.1023.0-arm64 sa_compose --profile tools run --rm --no-deps tools npm run preflight ;;
   logs)
     export SUPER_AGENT_RUNTIME_IMAGE=super-agent-paperclip-runtime:2026.1023.0-arm64
     sa_log_file=$(mktemp "$sa_data_root/logs/container-logs.XXXXXX")
-    docker compose logs --no-color --tail 300 gateway paperclip db | docker compose --profile tools run --rm --no-deps -T tools node scripts/redact-logs.mjs >"$sa_log_file"
+    sa_compose logs --no-color --tail 300 gateway paperclip db | sa_compose --profile tools run --rm --no-deps -T tools node scripts/redact-logs.mjs >"$sa_log_file"
     printf '{"status":"saved-redacted","log":"%s"}\n' "$sa_log_file"
     ;;
 esac

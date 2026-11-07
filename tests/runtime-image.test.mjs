@@ -26,6 +26,7 @@ function fixture(t) {
       assert.equal(fs.readFileSync(path.join(context, 'docker/Dockerfile.runtime'), 'utf8'), `FROM ${base}\n`);
       assert.equal(fs.existsSync(path.join(context, 'task.json')), false);
       images.set(reference, {id, os: 'linux', architecture: 'arm64', key});
+      return id;
     },
     references: () => new Map(),
   };
@@ -83,11 +84,28 @@ test('low disk blocks new builds but permits reuse', t => {
   assert.equal(f.run('build',()=>false).decision, 'reused');
 });
 
-test('uncertain build preserves lock and staging, so a retry cannot duplicate it', t => {
+test('ordinary build failure also preserves lock and staging until outcome is known', t => {
   const f = fixture(t);
-  f.driver.build=()=>{throw new Error('BUILD_OUTCOME_UNKNOWN');};
-  assert.throws(() => f.run('build'), /BUILD_OUTCOME_UNKNOWN/);
+  f.driver.build=()=>{throw new Error('IMAGE_BUILD_FAILED');};
+  assert.throws(() => f.run('build'), /IMAGE_BUILD_FAILED/);
   assert.equal(fs.existsSync(path.join(f.state,'build.lock')),true);
   assert.equal(fs.readdirSync(f.state).filter(n=>n.startsWith('context-')).length,1);
   assert.throws(() => f.run('build'), /IMAGE_BUILD_IN_PROGRESS/);
+});
+
+test('unverified post-build result blocks another attempt', t => {
+  const f = fixture(t);
+  f.driver.build=()=>{};
+  assert.throws(() => f.run('build'), /BUILT_IMAGE_UNVERIFIED/);
+  assert.throws(() => f.run('build'), /IMAGE_BUILD_IN_PROGRESS/);
+});
+
+test('same fingerprint label cannot substitute a different build result', t => {
+  const f=fixture(t);
+  f.driver.build=({reference,key})=>{
+    f.images.set(reference,{id:'sha256:'+'c'.repeat(64),os:'linux',architecture:'arm64',key});
+    return id;
+  };
+  assert.throws(()=>f.run('build'),/BUILT_IMAGE_UNVERIFIED/);
+  assert.throws(()=>f.run('build'),/IMAGE_BUILD_IN_PROGRESS/);
 });

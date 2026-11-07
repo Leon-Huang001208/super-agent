@@ -57,7 +57,7 @@ function dockerCall(args, {building=false}={}) {
 export const dockerDriver = {
   inspect(ref) {
     // Empty success is absence. A daemon/inspect error is not a cache miss.
-    const ids = ref.includes('@sha256:') ? null :
+    const ids = ref.includes('@sha256:') || ID.test(ref) ? null :
       dockerCall(['image','ls','--no-trunc','--filter','reference='+ref,'--format','{{.ID}}']).split('\n').filter(Boolean);
     if (ids && !ids.length) return null;
     if (ids && (new Set(ids).size !== 1 || !ID.test(ids[0]))) fail('IMAGE_REFERENCE_AMBIGUOUS');
@@ -66,9 +66,16 @@ export const dockerDriver = {
     if (parts.length !== 4 || !ID.test(parts[0]) || (ids && parts[0] !== ids[0])) fail('IMAGE_REFERENCE_CHANGED');
     return {id:parts[0],os:parts[1],architecture:parts[2],key:parts[3]};
   },
-  build({context,reference,key}) {
+  build({context,iidFile,reference,key}) {
     dockerCall(['build','--pull=false','--platform',PLATFORM,'--label',LABEL+'='+key,
-      '--tag',reference,'--file',path.join(context,'docker/Dockerfile.runtime'),context], {building:true});
+      '--iidfile',iidFile,'--tag',reference,'--file',path.join(context,'docker/Dockerfile.runtime'),context], {building:true});
+    const s=fs.lstatSync(iidFile);
+    if (!s.isFile() || s.nlink!==1 || s.size>128) fail('BUILD_IMAGE_ID_UNVERIFIED');
+    const iid=fs.readFileSync(iidFile,'utf8').trim();
+    if (!ID.test(iid)) fail('BUILD_IMAGE_ID_UNVERIFIED');
+    const built=dockerDriver.inspect(iid);
+    if (!imageMatches(built,key)) fail('BUILD_IMAGE_ID_UNVERIFIED');
+    return built.id;
   },
   references() {
     const ids = dockerCall(['container','ls','-aq','--no-trunc']).split('\n').filter(Boolean);
@@ -149,23 +156,25 @@ export function runImageAction({root,state,action,driver=dockerDriver,capacity,l
     const cachedBase=driver.inspect(base);
     if (!cachedBase || cachedBase.os!=='linux' || cachedBase.architecture!=='arm64') fail('PINNED_BASE_NOT_LOCAL');
     staging=fs.mkdtempSync(path.join(state,'context-'));stagingIdentity=fs.lstatSync(staging);
+    const context=path.join(staging,'inputs');
     for(const f of input.files){
-      const target=path.join(staging,f.name);
+      const target=path.join(context,f.name);
       fs.mkdirSync(path.dirname(target),{recursive:true});
       fs.chmodSync(path.dirname(target),0o755);
       fs.writeFileSync(target,f.bytes,{flag:'wx',mode:f.mode});
       fs.chmodSync(target,f.mode);
       fs.utimesSync(target,0,0);
     }
-    driver.build({context:staging,reference,key});
+    // A client error or loss of the post-build observation cannot certify that
+    // the daemon stopped. Keep the lock until the exact result is recorded.
+    preserve=true;
+    const builtId=driver.build({context,iidFile:path.join(staging,'iid'),reference,key});
     const image=driver.inspect(reference);
-    if (!imageMatches(image,key)) fail('BUILT_IMAGE_UNVERIFIED');
+    if (!imageMatches(image,key) || image.id!==builtId) fail('BUILT_IMAGE_UNVERIFIED');
     fs.writeFileSync(filename,JSON.stringify({schemaVersion:1,key,reference,platform:PLATFORM,imageId:image.id})+'\n',{flag:'wx',mode:0o600});
+    preserve=false;
     const result={imageId:image.id,key,decision:'built'};
     log({action,...result});return result;
-  } catch(e) {
-    if (e.message==='BUILD_OUTCOME_UNKNOWN') preserve=true;
-    throw e;
   } finally {
     if (!preserve) {
       const sameDir=(p,s)=>{const n=fs.lstatSync(p);return n.isDirectory()&&n.dev===s.dev&&n.ino===s.ino&&n.uid===s.uid;};
