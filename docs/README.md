@@ -9,6 +9,7 @@
 - [开发交付流程](agent-workflow.md)：Harness、worktree、评审、PR、CI、合并及收尾。
 - [文档治理](documentation-governance.md)：权威关系、同步映射、免更新与检查。
 - [运行维护与恢复](operations.md)：存储、候选识别、启动边界和恢复步骤。
+- [外置存储规划](external-storage-plan.md)：可放外置的资源、现有数据迁移顺序及回退门。
 - [验收运行手册](acceptance-runbook.md)：受控真实任务与证据契约。
 - [架构决策](decisions/0001-paperclip-and-delivery.md)：路线选择、权限分层和重开条件。
 
