@@ -54,6 +54,12 @@ function dockerCall(args, {building=false}={}) {
   return r.stdout.trim();
 }
 
+export function exportedImageDigest(metadata) {
+  const digest=metadata?.['containerimage.digest'];
+  if (typeof digest!=='string' || !ID.test(digest)) fail('BUILD_IMAGE_ID_UNVERIFIED');
+  return digest;
+}
+
 export const dockerDriver = {
   inspect(ref) {
     // Empty success is absence. A daemon/inspect error is not a cache miss.
@@ -74,8 +80,7 @@ export const dockerDriver = {
     const metadata=JSON.parse(fs.readFileSync(metadataFile,'utf8'));
     // Buildx's IID can be the config digest. A containerd image store
     // addresses the exported manifest/index, not that config object.
-    const digest=metadata['containerimage.digest'];
-    if (typeof digest!=='string' || !ID.test(digest)) fail('BUILD_IMAGE_ID_UNVERIFIED');
+    const digest=exportedImageDigest(metadata);
     const built=dockerDriver.inspect(digest);
     if (!imageMatches(built,key)) fail('BUILD_IMAGE_ID_UNVERIFIED');
     return built.id;

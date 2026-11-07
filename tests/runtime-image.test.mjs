@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { inputSnapshot, runImageAction, INPUT_FILES } from '../scripts/runtime-image.mjs';
+import { inputSnapshot, runImageAction, INPUT_FILES, exportedImageDigest } from '../scripts/runtime-image.mjs';
 
 const base = 'node@sha256:' + 'a'.repeat(64);
 const id = 'sha256:' + 'b'.repeat(64);
@@ -108,4 +108,10 @@ test('same fingerprint label cannot substitute a different build result', t => {
   };
   assert.throws(()=>f.run('build'),/BUILT_IMAGE_UNVERIFIED/);
   assert.throws(()=>f.run('build'),/IMAGE_BUILD_IN_PROGRESS/);
+});
+
+test('containerd registration uses exported manifest identity, never config identity', () => {
+  const config='sha256:'+'d'.repeat(64);
+  assert.equal(exportedImageDigest({'containerimage.digest':id,'containerimage.config.digest':config}),id);
+  assert.throws(()=>exportedImageDigest({'containerimage.config.digest':config}),/BUILD_IMAGE_ID_UNVERIFIED/);
 });
