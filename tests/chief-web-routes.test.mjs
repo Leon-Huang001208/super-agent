@@ -13,7 +13,7 @@ function fixture() {
   const issue = { id: id(1), conversationAgentId: id(2), conversationUserId: 'owner', companyId: id(3), conversationSessionGeneration: 7 };
   const request = {
     actor: { type: 'board', sessionId: 'session', userId: 'owner', companyIds: [issue.companyId] },
-    params: { issueId: issue.id }, body: { action: 'pause' }, trustedOrigin: true,
+    params: { issueId: issue.id }, body: { action: 'pause' }, trustedOrigin: 'https://paperclip.test',
   };
   const calls = [];
   const logs = [];
@@ -81,7 +81,11 @@ test('fences session, membership, Chief identity, origin and browser supplement 
   issue.conversationAgentId = options.chiefAgentId;
   request.trustedOrigin = false;
   assert.equal((await call('post')).status, 403);
-  request.trustedOrigin = true;
+  request.trustedOrigin = Promise.resolve(false);
+  assert.equal((await call('post')).status, 403);
+  request.trustedOrigin = { origin: 'https://paperclip.test' };
+  assert.equal((await call('post')).status, 403);
+  request.trustedOrigin = 'https://paperclip.test';
   request.body = { action: 'supplement' };
   assert.equal((await call('post')).status, 400);
   assert.equal(calls.length, 0);

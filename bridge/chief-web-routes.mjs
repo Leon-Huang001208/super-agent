@@ -29,8 +29,11 @@ export function mountChiefWebRoutes(router, options = {}) {
             !isUuid(issueId)) {
           return response.status(404).json({ code: 'CHIEF_WEB_AUDIENCE_DENIED' });
         }
-        if (mutation && !trustedBoardMutationOrigin(request)) {
-          return response.status(403).json({ code: 'CHIEF_WEB_ORIGIN_DENIED' });
+        if (mutation) {
+          const origin = await trustedBoardMutationOrigin(request);
+          if (typeof origin !== 'string' || !/^https?:\/\//.test(origin)) {
+            return response.status(403).json({ code: 'CHIEF_WEB_ORIGIN_DENIED' });
+          }
         }
         if (mutation && !controls.has(request.body?.action)) {
           return response.status(400).json({ code: 'CHIEF_WEB_ACTION_INVALID' });
