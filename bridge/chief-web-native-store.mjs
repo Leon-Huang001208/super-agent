@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { CHIEF_WEB_PILOT } from './chief-web-pilot.mjs';
 
 const kind = 'chief-web-intent';
+const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const digest = /^[a-f0-9]{64}$/;
 
 function fail(code) {
@@ -10,7 +11,10 @@ function fail(code) {
 
 function readIntents(records) {
   const intents = records.filter(record => record.kind === kind);
-  if (intents.some(record => record.status !== 'reserved' || record.receipt?.operationId !== record.operationId ||
+  if (intents.some(record => record.status !== 'reserved' || record.taskId !== CHIEF_WEB_PILOT.taskId ||
+      typeof record.grantId !== 'string' || !uuid.test(record.grantId) ||
+      typeof record.payloadHash !== 'string' || !digest.test(record.payloadHash) ||
+      record.receipt?.status !== 'reserved' || record.receipt.operationId !== record.operationId ||
       typeof record.operationId !== 'string' || !digest.test(record.operationId) ||
       !['supplement', 'pause', 'resume', 'confirm'].includes(record.action)) ||
       new Set(intents.map(record => record.operationId)).size !== intents.length) {
@@ -27,6 +31,7 @@ function controlFrom(records) {
 /**
  * Adapts the existing official Native repository. readProjection translates
  * the locked activity history and authoritative RWB evidence into pilot state.
+ * readGrant must lock and recheck the current conversation in this transaction.
  * The application must use the same task transaction before claiming work.
  */
 export function createChiefWebNativeStore({ repository, readGrant, readProjection, verifyOwnerSupplement, now = Date.now } = {}) {
@@ -40,13 +45,12 @@ export function createChiefWebNativeStore({ repository, readGrant, readProjectio
     const outcome = await repository.transaction(async transaction => {
       const task = await transaction.lockTask(taskId);
       if (task?.id !== taskId) return { error: 'CHIEF_WEB_NATIVE_TASK_DENIED' };
-      const grant = await readGrant({ task });
+      const grant = await readGrant({ task, transaction });
       const ownerMatches = grant?.taskId === taskId && grant.ownerId === task.responsibleUserId &&
         grant.companyId === task.companyId;
       const binding = ownerMatches ? Object.freeze({ ...grant }) : null;
       const records = await transaction.listTaskOperations(taskId);
-      const intents = readIntents(records);
-      const pilotRecords = intents.filter(record => record.grantId === binding?.grantId);
+      let intents;
       let projection;
       let writeAttempted = false;
 
@@ -62,7 +66,7 @@ export function createChiefWebNativeStore({ repository, readGrant, readProjectio
         projection = Object.freeze({
           ...state,
           contextRevision,
-          control: controlFrom(pilotRecords),
+          control: controlFrom(intents),
           supplementReserved: intents.some(record => record.action === 'supplement'),
           confirmationReserved: intents.some(record => record.action === 'confirm'),
         });
@@ -112,6 +116,7 @@ export function createChiefWebNativeStore({ repository, readGrant, readProjectio
       };
 
       try {
+        intents = readIntents(records);
         return { value: await handle(port) };
       } catch (error) {
         // The repository maps exceptions to its own codes. Preserve the policy

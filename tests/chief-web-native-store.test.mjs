@@ -85,7 +85,7 @@ test('writes one task-bound Native activity and replays it from a recreated adap
 });
 
 test('reads a persisted pause fence and rejects commands bound to the previous revision', async () => {
-  const { createPilot, actor, grant, state } = fixture();
+  const { createPilot, actor, grant, state, activity } = fixture();
   const pilot = createPilot();
   Object.assign(state, {
     inputRevision: 'b'.repeat(64), supplementGrantId: grant.grantId, phase: 'awaiting_confirmation', reconciled: true,
@@ -95,6 +95,13 @@ test('reads a persisted pause fence and rejects commands bound to the previous r
   const restored = createPilot();
   const paused = await restored.handle(actor, { action: 'status' });
   assert.equal(paused.control, 'paused');
+  const originalGrantId = grant.grantId;
+  grant.grantId = id(12);
+  assert.equal((await restored.handle(actor, { action: 'status' })).control, 'paused');
+  grant.grantId = originalGrantId;
+  activity[0].grantId = undefined;
+  await assert.rejects(restored.handle(actor, { action: 'status' }), { code: 'CHIEF_WEB_OPERATION_UNKNOWN' });
+  activity[0].grantId = originalGrantId;
   const resume = { action: 'resume', contextRevision: before.contextRevision, requestId: id(8) };
   await assert.rejects(restored.handle(actor, resume), { code: 'CHIEF_WEB_CONTEXT_CHANGED' });
   await restored.handle(actor, { ...resume, contextRevision: paused.contextRevision });
