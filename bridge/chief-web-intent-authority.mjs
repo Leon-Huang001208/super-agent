@@ -39,6 +39,17 @@ function one(records, kind, operationId) {
   return matches[0];
 }
 
+function effectRecord(records, kind, operationId) {
+  const expectedId = childId(operationId, kind);
+  const matches = records.filter(record =>
+    record.kind === kind && (record.operationId === expectedId || record.parentOperationId === operationId));
+  if (matches.length > 1 ||
+      matches.some(record => record.operationId !== expectedId || record.parentOperationId !== operationId)) {
+    fail('CHIEF_WEB_EFFECT_HISTORY_AMBIGUOUS');
+  }
+  return matches[0];
+}
+
 /** The trusted execution verifier runs under both Native issue locks. */
 export function createChiefWebIntentAuthority({ repository, readGrant, verifyExecution, now = Date.now } = {}) {
   if (typeof repository?.transaction !== 'function' ||
@@ -51,21 +62,27 @@ export function createChiefWebIntentAuthority({ repository, readGrant, verifyExe
     return repository.transaction(async transaction => {
       const task = await transaction.lockTask(CHIEF_WEB_PILOT.taskId);
       if (task?.id !== CHIEF_WEB_PILOT.taskId) fail('CHIEF_WEB_NATIVE_TASK_DENIED');
-      const grant = await readGrant({ task, transaction });
       const records = await transaction.listTaskOperations(task.id);
       const intents = readChiefWebIntents(records);
       const intent = one(intents, intentKind, operationId);
-      if (!grant || !intent || grant.grantId !== intent.grantId || intent.taskId !== task.id ||
-          intent.expiresAt !== grant.expiresAt || !validateChiefWebIntent(intent, operationId)) return { operationId, status: 'blocked' };
-      const claim = one(records, claimKind, childId(operationId, claimKind));
-      const completion = one(records, completionKind, childId(operationId, completionKind));
+      if (!intent || intent.taskId !== task.id || !validateChiefWebIntent(intent, operationId)) {
+        return { operationId, status: 'blocked' };
+      }
+      const claim = effectRecord(records, claimKind, operationId);
+      const completion = effectRecord(records, completionKind, operationId);
       for (const record of [claim, completion]) {
-        if (record && (record.parentOperationId !== operationId || record.taskId !== task.id ||
-            record.grantId !== grant.grantId || record.payloadHash !== intent.payloadHash)) {
-          fail('CHIEF_WEB_EFFECT_HISTORY_AMBIGUOUS');
-        }
+        if (record && (record.taskId !== task.id || record.grantId !== intent.grantId ||
+            record.payloadHash !== intent.payloadHash)) fail('CHIEF_WEB_EFFECT_HISTORY_AMBIGUOUS');
       }
       if (completion && !claim) fail('CHIEF_WEB_EFFECT_HISTORY_AMBIGUOUS');
+
+      let grant;
+      if (!claim) {
+        grant = await readGrant({ task, transaction });
+        if (!grant || grant.grantId !== intent.grantId || intent.expiresAt !== grant.expiresAt) {
+          return { operationId, status: 'blocked' };
+        }
+      }
       return callback({ transaction, task, grant, intent, intents, records, claim, completion });
     });
   }

@@ -21,6 +21,7 @@ function fixture() {
   let tail = Promise.resolve();
   let allowed = true;
   let now = 10;
+  let currentGrant = { grantId, expiresAt: 100 };
   const repository = {
     transaction(callback) {
       const result = tail.then(() => callback({
@@ -33,18 +34,22 @@ function fixture() {
     },
   };
   const createAuthority = () => createChiefWebIntentAuthority({
-    repository, readGrant: () => ({ grantId, expiresAt: 100 }),
+    repository, readGrant: () => currentGrant,
     verifyExecution: () => allowed, now: () => now,
   });
-  return { records, createAuthority, deny: () => { allowed = false; }, expire: () => { now = 100; } };
+  return {
+    records, createAuthority, deny: () => { allowed = false; }, expire: () => { now = 100; },
+    revoke: () => { currentGrant = null; },
+  };
 }
 
 test('serializes claim once and records only a validated replayable completion', async () => {
-  const { records, createAuthority, expire } = fixture();
+  const { records, createAuthority, expire, revoke } = fixture();
   const first = createAuthority();
   const [left, right] = await Promise.all([first.claim(operationId), first.claim(operationId)]);
   assert.deepEqual([left.status, right.status], ['claimed_now', 'claimed']);
   expire();
+  revoke();
   const restored = createAuthority();
   assert.equal((await restored.claim(operationId)).status, 'claimed');
   const result = {
@@ -75,4 +80,14 @@ test('refuses a new claim when paused, denied by existing execution admission or
   expired.expire();
   assert.equal((await expired.createAuthority().claim(operationId)).status, 'blocked');
   assert.equal(expired.records.length, 1);
+});
+
+test('refuses a new effect when a conflicting child claim references the original operation', async () => {
+  const { records, createAuthority } = fixture();
+  records.push({
+    kind: 'chief-web-effect-claim', operationId: 'f'.repeat(64), parentOperationId: operationId,
+    taskId, grantId, payloadHash: intent.payloadHash, status: 'claimed',
+  });
+  await assert.rejects(createAuthority().claim(operationId), { code: 'CHIEF_WEB_EFFECT_HISTORY_AMBIGUOUS' });
+  assert.equal(records.length, 2);
 });

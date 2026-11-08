@@ -68,10 +68,16 @@ export function createChiefWebPaperclipRepository({ db, issueService, schema, or
               'chief-web-effect-claim': 'claimed',
               'chief-web-effect-completion': 'completed',
             }[record.kind];
-            if (!conversation || !expectedStatus || expectedStatus !== record.status) {
-              fail('CHIEF_WEB_PAPERCLIP_WRITE_DENIED');
-            }
+            if (!expectedStatus || expectedStatus !== record.status) fail('CHIEF_WEB_PAPERCLIP_WRITE_DENIED');
             const history = await port.listTaskOperations(record.taskId);
+            if (!conversation) {
+              const claims = history.filter(row => row.kind === 'chief-web-effect-claim' && row.status === 'claimed' &&
+                row.parentOperationId === record.parentOperationId && row.grantId === record.grantId &&
+                row.payloadHash === record.payloadHash && row.taskId === record.taskId);
+              if (record.kind !== 'chief-web-effect-completion' || claims.length !== 1) {
+                fail('CHIEF_WEB_PAPERCLIP_WRITE_DENIED');
+              }
+            }
             const sequence = history.reduce((max, row) => Math.max(max, Number.isSafeInteger(row.sequence) ? row.sequence : 0), 0) + 1;
             await tx.insert(activityLog).values({
               companyId: task.companyId, actorType: 'system', actorId: activityActor, action: activityAction,
