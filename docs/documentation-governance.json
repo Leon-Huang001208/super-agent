@@ -9,6 +9,7 @@
   "rules": [
     {"prefix": "docs/documentation-governance.json", "docs": ["docs/documentation-governance.md"]},
     {"prefix": "bridge/", "docs": ["docs/architecture.md", "docs/development-map.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "plugins/", "docs": ["docs/architecture.md", "docs/development-map.md", "docs/acceptance-runbook.md"]},
     {"prefix": "docker/", "docs": ["docs/architecture.md", "docs/operations.md", "docs/development-map.md"]},
     {"prefix": "compose", "docs": ["docs/architecture.md", "docs/operations.md"]},
     {"prefix": "evaluation/", "docs": ["docs/acceptance-runbook.md", "docs/development-map.md"]},

@@ -121,3 +121,19 @@ test('denies foreign Native owner and rolls back a failed activity write', async
   }), { code: 'CHIEF_WEB_STATE_UNAVAILABLE' });
   assert.equal(activity.length, 0);
 });
+
+test('separates the historical result from completion backed by exact new-head CI', async () => {
+  const { createPilot, actor, state } = fixture();
+  const pilot = createPilot();
+  assert.equal((await pilot.handle(actor, { action: 'status' })).historical, true);
+  Object.assign(state, { inputRevision: 'b'.repeat(64), prHead: 'c'.repeat(40) });
+  state.ci = {
+    headSha: previousHead,
+    repository: CHIEF_WEB_PILOT.repository,
+    pullRequest: CHIEF_WEB_PILOT.pullRequest,
+    checksPassed: true,
+  };
+  assert.equal((await pilot.handle(actor, { action: 'status' })).code, 'CHIEF_WEB_CI_EVIDENCE_MISSING');
+  state.ci.headSha = state.prHead;
+  assert.equal((await pilot.handle(actor, { action: 'status' })).phase, 'done');
+});

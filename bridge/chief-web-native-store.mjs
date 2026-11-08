@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { CHIEF_WEB_PILOT } from './chief-web-pilot.mjs';
+import { CHIEF_WEB_PILOT, projectChiefWebStatus } from './chief-web-pilot.mjs';
 
 const kind = 'chief-web-intent';
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -88,15 +88,7 @@ export function createChiefWebNativeStore({ repository, readGrant, readProjectio
         readBinding: () => binding,
         readState,
         async readStatus() {
-          const state = await readState();
-          return {
-            taskId,
-            contextRevision: state.contextRevision,
-            inputRevision: state.inputRevision,
-            phase: state.phase,
-            control: state.control,
-            prHead: state.prHead,
-          };
+          return projectChiefWebStatus(await readState(), binding, now());
         },
         readOperation,
         isOwnerSupplement: (verifiedBinding, messageId) => verifyOwnerSupplement({ task, binding: verifiedBinding, messageId }),

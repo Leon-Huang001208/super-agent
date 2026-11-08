@@ -103,6 +103,47 @@ function requireTransition(command, state, binding) {
   fail('CHIEF_WEB_TRANSITION_DENIED');
 }
 
+export function projectChiefWebStatus(state, binding, now) {
+  const status = {
+    taskId: CHIEF_WEB_PILOT.taskId,
+    contextRevision: state.contextRevision,
+    inputRevision: state.inputRevision,
+    phase: state.phase,
+    control: state.control,
+    prHead: state.prHead,
+    historical: state.inputRevision === CHIEF_WEB_PILOT.previousInputRevision,
+    actions: [],
+  };
+  if (state.phase === 'done' && !status.historical) {
+    const ci = state.ci;
+    if (!matches(sha, state.prHead) || state.prHead === CHIEF_WEB_PILOT.previousHead ||
+        ci?.headSha !== state.prHead || ci?.checksPassed !== true ||
+        ci?.repository !== CHIEF_WEB_PILOT.repository || ci?.pullRequest !== CHIEF_WEB_PILOT.pullRequest) {
+      status.phase = 'blocked';
+      status.code = 'CHIEF_WEB_CI_EVIDENCE_MISSING';
+    }
+  }
+  try {
+    requireGrant(binding, now);
+  } catch {
+    return status;
+  }
+  for (const action of ['pause', 'resume', 'confirm']) {
+    const command = {
+      action, contextRevision: state.contextRevision, candidate: state.candidate,
+      reviewDigest: state.independentReview?.digest,
+    };
+    if (action === 'confirm' && (!matches(sha, command.candidate) || !matches(digest, command.reviewDigest))) continue;
+    try {
+      requireTransition(command, state, binding);
+      status.actions.push(action === 'confirm' ? { action, candidate: command.candidate, reviewDigest: command.reviewDigest } : { action });
+    } catch {
+      // The authoritative state does not currently permit this control.
+    }
+  }
+  return status;
+}
+
 /**
  * The caller supplies the authenticated Paperclip actor. The transaction must lock
  * the original Native task and persist the operation and control fence together.
