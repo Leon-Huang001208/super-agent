@@ -28,4 +28,4 @@ CI 从目标分支读取原治理清单，通过 `--baseline-manifest` 同时检
 
 本地手工提供 review-context 只用于复现，不能替代远端真实评审；merge 前必须核对实际 API 与同 head 的 CI。本项目没有可用分支保护时始终禁止合并，例外不能扩展权限。
 
-Chief 网页操作策略沿 bridge 和 plugins 路径映射维护架构、开发地图与验收手册。离线路由、策略与 Native repository 适配用例分别核对。真实 Paperclip 网页和运行回执另行验证。
+Chief 网页操作策略沿 bridge 和 plugins 路径映射维护架构、开发地图与验收手册。离线路由、策略与 Native repository 适配用例分别核对。真实 Paperclip 网页、对话行锁和运行回执另行验证。
