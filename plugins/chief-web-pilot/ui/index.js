@@ -58,7 +58,7 @@ export function ChiefWebPilotPanel() {
     if (typeof issueId !== 'string' || !uuid.test(issueId)) return;
     const controller = new AbortController();
     const client = createChiefWebClient(issueId);
-    const current = { issueId, controller, busy: false, available: false, sequence: 0, timer: null };
+    const current = { issueId, controller, busy: false, available: null, sequence: 0, timer: null };
     live.current = current;
     current.refresh = async () => {
       const sequence = ++current.sequence;
@@ -75,7 +75,7 @@ export function ChiefWebPilotPanel() {
     };
     async function poll() {
       await current.refresh();
-      if (current.available && !controller.signal.aborted) current.timer = globalThis.setTimeout(poll, 15_000);
+      if (current.available !== false && !controller.signal.aborted) current.timer = globalThis.setTimeout(poll, 15_000);
     }
     current.control = command => client.control(command, controller.signal);
     void poll();

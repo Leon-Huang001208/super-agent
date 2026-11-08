@@ -122,18 +122,36 @@ test('denies foreign Native owner and rolls back a failed activity write', async
   assert.equal(activity.length, 0);
 });
 
-test('separates the historical result from completion backed by exact new-head CI', async () => {
-  const { createPilot, actor, state } = fixture();
+test('requires a published receipt and exact new-head CI for the same confirmed continuation', async () => {
+  const { createPilot, actor, state, grant } = fixture();
   const pilot = createPilot();
   assert.equal((await pilot.handle(actor, { action: 'status' })).historical, true);
-  Object.assign(state, { inputRevision: 'b'.repeat(64), prHead: 'c'.repeat(40) });
+  const candidate = 'c'.repeat(40);
+  const reviewDigest = 'd'.repeat(64);
+  Object.assign(state, {
+    inputRevision: 'b'.repeat(64), supplementGrantId: grant.grantId, phase: 'awaiting_confirmation',
+    candidate, independentReview: { candidate, digest: reviewDigest, verdict: 'approved' },
+    localChecks: { candidate, passed: true },
+  });
+  const ready = await pilot.handle(actor, { action: 'status' });
+  const confirm = ready.actions.find(item => item.action === 'confirm');
+  assert.deepEqual(confirm, { action: 'confirm', candidate, reviewDigest });
+  const accepted = await pilot.handle(actor, { ...confirm, contextRevision: ready.contextRevision, requestId: id(20) });
+  Object.assign(state, { phase: 'done', prHead: candidate });
   state.ci = {
-    headSha: previousHead,
+    headSha: candidate,
     repository: CHIEF_WEB_PILOT.repository,
     pullRequest: CHIEF_WEB_PILOT.pullRequest,
     checksPassed: true,
   };
-  assert.equal((await pilot.handle(actor, { action: 'status' })).code, 'CHIEF_WEB_CI_EVIDENCE_MISSING');
-  state.ci.headSha = state.prHead;
+  assert.equal((await pilot.handle(actor, { action: 'status' })).code, 'CHIEF_WEB_DELIVERY_EVIDENCE_MISSING');
+  state.publication = {
+    status: 'completed', grantId: grant.grantId, inputRevision: state.inputRevision,
+    repository: CHIEF_WEB_PILOT.repository, pullRequest: CHIEF_WEB_PILOT.pullRequest,
+    previousHead, headSha: candidate, confirmationOperationId: accepted.operationId,
+  };
+  state.ci.headSha = previousHead;
+  assert.equal((await pilot.handle(actor, { action: 'status' })).code, 'CHIEF_WEB_DELIVERY_EVIDENCE_MISSING');
+  state.ci.headSha = candidate;
   assert.equal((await pilot.handle(actor, { action: 'status' })).phase, 'done');
 });

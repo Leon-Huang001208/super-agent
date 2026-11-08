@@ -1,6 +1,7 @@
 import { createChiefWebNativeStore } from './chief-web-native-store.mjs';
 import { createChiefWebPilot } from './chief-web-pilot.mjs';
 import { mountChiefWebRoutes } from './chief-web-routes.mjs';
+import { createChiefWebSupplementEvidence } from './chief-web-supplement-evidence.mjs';
 
 /** Compose the pinned app hook with the server's trusted Native pilot bindings. */
 export function createChiefWebPaperclipMount({ loadBindings, log, now = Date.now } = {}) {
@@ -13,7 +14,8 @@ export function createChiefWebPaperclipMount({ loadBindings, log, now = Date.now
     try {
       const bindings = await loadBindings({ db });
       if (!bindings) throw new Error('CHIEF_WEB_MOUNT_BINDINGS_MISSING');
-      const { chiefAgentId, repository, readGrant, readProjection, verifyOwnerSupplement } = bindings;
+      const { chiefAgentId, repository, readGrant, readProjection, readNativeEvidence, readChiefCallReceipt } = bindings;
+      const verifyOwnerSupplement = createChiefWebSupplementEvidence({ chiefAgentId, readNativeEvidence, readChiefCallReceipt, log });
       const store = createChiefWebNativeStore({ repository, readGrant, readProjection, verifyOwnerSupplement, now });
       const pilot = createChiefWebPilot({ ...store, log, now });
       mountChiefWebRoutes(api, { enabled: true, deploymentMode, pilot, chiefAgentId, getIssue, trustedBoardMutationOrigin, log });

@@ -14,7 +14,8 @@ test('assembles authenticated routes from the app database binding without openi
         repository: { transaction() { assert.fail('route mounting must not open a transaction'); } },
         readGrant() {},
         readProjection() {},
-        verifyOwnerSupplement() {},
+        readNativeEvidence() {},
+        readChiefCallReceipt() {},
       };
     },
     log: entry => logs.push(entry),

@@ -115,12 +115,21 @@ export function projectChiefWebStatus(state, binding, now) {
     actions: [],
   };
   if (state.phase === 'done' && !status.historical) {
-    const ci = state.ci;
-    if (!matches(sha, state.prHead) || state.prHead === CHIEF_WEB_PILOT.previousHead ||
+    const { ci, publication, confirmationReceipt } = state;
+    if (!matches(digest, state.inputRevision) || state.supplementGrantId !== binding.grantId ||
+        !matches(sha, state.prHead) || state.prHead === CHIEF_WEB_PILOT.previousHead ||
+        publication?.status !== 'completed' || publication.grantId !== binding.grantId ||
+        publication.inputRevision !== state.inputRevision ||
+        publication.repository !== CHIEF_WEB_PILOT.repository || publication.pullRequest !== CHIEF_WEB_PILOT.pullRequest ||
+        publication.previousHead !== CHIEF_WEB_PILOT.previousHead || publication.headSha !== state.prHead ||
+        !matches(digest, publication.confirmationOperationId) ||
+        confirmationReceipt?.operationId !== publication.confirmationOperationId ||
+        confirmationReceipt?.expected?.inputRevision !== state.inputRevision ||
+        confirmationReceipt?.expected?.candidate !== state.prHead ||
         ci?.headSha !== state.prHead || ci?.checksPassed !== true ||
         ci?.repository !== CHIEF_WEB_PILOT.repository || ci?.pullRequest !== CHIEF_WEB_PILOT.pullRequest) {
       status.phase = 'blocked';
-      status.code = 'CHIEF_WEB_CI_EVIDENCE_MISSING';
+      status.code = 'CHIEF_WEB_DELIVERY_EVIDENCE_MISSING';
     }
   }
   try {

@@ -69,6 +69,7 @@ export function createChiefWebNativeStore({ repository, readGrant, readProjectio
           control: controlFrom(intents),
           supplementReserved: intents.some(record => record.action === 'supplement'),
           confirmationReserved: intents.some(record => record.action === 'confirm'),
+          confirmationReceipt: intents.find(record => record.action === 'confirm' && record.grantId === binding.grantId),
         });
         return projection;
       }
@@ -91,7 +92,7 @@ export function createChiefWebNativeStore({ repository, readGrant, readProjectio
           return projectChiefWebStatus(await readState(), binding, now());
         },
         readOperation,
-        isOwnerSupplement: (verifiedBinding, messageId) => verifyOwnerSupplement({ task, binding: verifiedBinding, messageId }),
+        isOwnerSupplement: (verifiedBinding, messageId) => verifyOwnerSupplement({ task, transaction, binding: verifiedBinding, messageId }),
         async reserveOperation(operation) {
           const state = await readState();
           const observedAt = now();
