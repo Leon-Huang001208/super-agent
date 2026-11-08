@@ -193,8 +193,17 @@ export function createChiefWebPilot({ withTaskTransaction, log, now = Date.now }
         requireGrant(binding, now());
         const state = await tx.readState();
         requireTransition(command, state, binding);
-        if (command.action === 'supplement' && await tx.isOwnerSupplement(binding, command.messageId) !== true) {
-          fail('CHIEF_WEB_MESSAGE_DENIED');
+        let sourceEvidence;
+        if (command.action === 'supplement') {
+          const proof = await tx.isOwnerSupplement(binding, command.messageId);
+          if (proof?.messageId !== command.messageId || !matches(digest, proof.messageDigest) ||
+              ![proof.runId, proof.wakeId, proof.providerClaimId].every(value => matches(uuid, value))) {
+            fail('CHIEF_WEB_MESSAGE_DENIED');
+          }
+          sourceEvidence = {
+            messageId: proof.messageId, messageDigest: proof.messageDigest,
+            runId: proof.runId, wakeId: proof.wakeId, providerClaimId: proof.providerClaimId,
+          };
         }
 
         requireGrant(binding, now());
@@ -205,6 +214,7 @@ export function createChiefWebPilot({ withTaskTransaction, log, now = Date.now }
           grantId: binding.grantId,
           expiresAt: binding.expiresAt,
           messageId: command.messageId,
+          sourceEvidence,
           expected: {
             contextRevision: state.contextRevision,
             inputRevision: state.inputRevision,

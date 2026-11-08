@@ -42,7 +42,9 @@ function fixture() {
     readStatus: () => ({ phase: state.phase }),
     isOwnerSupplement(_binding, messageId) {
       onOwnerMessage?.();
-      return messageId === id(5);
+      return messageId === id(5) ? {
+        messageId, messageDigest: '9'.repeat(64), runId: id(20), wakeId: id(21), providerClaimId: id(22),
+      } : false;
     },
     readOperation: operationId => operations.get(operationId),
     reserveOperation(operation) {
@@ -103,6 +105,8 @@ test('uses the owner message to deduplicate concurrent supplement delivery', asy
   assert.equal(operation.policy.path, 'docs/super-agent/unified-integration.md');
   assert.equal(operation.policy.developerCalls, 1);
   assert.equal(operation.policy.reviewerCalls, 1);
+  assert.equal(operation.sourceEvidence.messageDigest, '9'.repeat(64));
+  assert.equal(operation.sourceEvidence.providerClaimId, id(22));
   state.contextRevision = 'f'.repeat(64);
   assert.deepEqual(await pilot.handle(actor, replay), first);
   assert.deepEqual(await pilot.handle(actor, { ...replay, contextRevision: state.contextRevision }), first);

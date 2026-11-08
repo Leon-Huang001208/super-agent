@@ -53,7 +53,9 @@ function fixture() {
   const createPilot = () => createChiefWebPilot({
     ...createChiefWebNativeStore({
       repository, readGrant: () => grant, readProjection: () => state,
-      verifyOwnerSupplement: ({ messageId }) => messageId === id(5),
+      verifyOwnerSupplement: ({ messageId }) => messageId === id(5) ? {
+        messageId, messageDigest: '9'.repeat(64), runId: id(20), wakeId: id(21), providerClaimId: id(22),
+      } : false,
       now: () => 1,
     }),
     log() {},

@@ -33,7 +33,7 @@ function fixture() {
     grantId: binding.grantId, companyId: binding.companyId, conversationId: binding.conversationId,
     generation: binding.generation, messageId: message.id, runId: run.id, agentId: run.agentId,
     messageDigest: createHash('sha256').update(message.body).digest('hex'),
-    model: CHIEF_WEB_PILOT.model, reasoningEffort: 'low', apiFallback: false, physicalCallsForGrant: 1,
+    model: CHIEF_WEB_PILOT.model, reasoningEffort: 'low', apiFallback: false, physicalCallsForGrant: 1, providerClaimId: 'claim',
   };
   const transaction = {};
   const logs = [];
@@ -56,7 +56,10 @@ function fixture() {
 
 test('accepts one exact completed Chief turn and physical call', async () => {
   const { check, logs } = fixture();
-  assert.equal(await check(), true);
+  const proof = await check();
+  assert.equal(proof.providerClaimId, 'claim');
+  assert.equal(proof.runId, 'run');
+  assert.equal(proof.wakeId, 'wake');
   assert.deepEqual(logs, [{ code: 'CHIEF_WEB_CALL_EVIDENCE_VERIFIED' }]);
 });
 

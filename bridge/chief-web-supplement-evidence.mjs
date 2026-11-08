@@ -59,7 +59,11 @@ export function createChiefWebSupplementEvidence({ chiefAgentId, readNativeEvide
       const receipt = await readChiefCallReceipt({ transaction, binding, runId: run.id, messageId });
       const verified = matchesCallReceipt(receipt, binding, message, run, chiefAgentId);
       await log({ code: verified ? 'CHIEF_WEB_CALL_EVIDENCE_VERIFIED' : 'CHIEF_WEB_CALL_EVIDENCE_DENIED' });
-      return verified;
+      if (!verified) return false;
+      return {
+        messageId, messageDigest: receipt.messageDigest, runId: run.id,
+        wakeId: wake.id, providerClaimId: receipt.providerClaimId,
+      };
     } catch {
       try {
         await log({ code: 'CHIEF_WEB_EVIDENCE_UNAVAILABLE' });

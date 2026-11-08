@@ -40,15 +40,31 @@ export function patchChiefWebAppSource(source) {
   return imports + '\n' + source.replace(marker, call);
 }
 
-export async function notifyConfiguredChiefWebSettlement(db, run) {
-  if (typeof settle !== 'function') return;
-  try {
-    await settle({ db, run });
-  } catch {
-    // Native has already committed its own settlement. Keep its result intact.
-    // The integration can reconcile the same durable owner wake later.
-    console.error(JSON.stringify({ code: 'CHIEF_WEB_SETTLEMENT_RECONCILIATION_REQUIRED' }));
-  }
+export function notifyConfiguredChiefWebSettlement(db, run) {
+  if (typeof settle !== 'function' || run?.contextSnapshot?.conversationMode !== true) return;
+  const context = run.contextSnapshot;
+  const witness = {
+    id: run.id,
+    status: run.status,
+    companyId: run.companyId,
+    agentId: run.agentId,
+    wakeupRequestId: run.wakeupRequestId,
+    contextSnapshot: {
+      issueId: context.issueId,
+      wakeCommentId: context.wakeCommentId,
+      commentId: context.commentId,
+      conversationMode: context.conversationMode,
+      conversationSessionGeneration: context.conversationSessionGeneration,
+    },
+  };
+  setImmediate(async () => {
+    try {
+      await settle({ db, run: witness });
+    } catch {
+      // Preserve Native's result. Reconciliation reads the durable owner wake.
+      console.error(JSON.stringify({ code: 'CHIEF_WEB_SETTLEMENT_RECONCILIATION_REQUIRED' }));
+    }
+  });
 }
 
 export function patchChiefWebConversationSource(source) {
@@ -60,7 +76,7 @@ export function patchChiefWebConversationSource(source) {
     source.replace(settleSignature, 'async function settleConversationTurnNative(db, run) {') + `
 export async function settleConversationTurn(db, run) {
     const settled = await settleConversationTurnNative(db, run);
-    if (settled) await notifyConfiguredChiefWebSettlement(db, run);
+    if (settled) notifyConfiguredChiefWebSettlement(db, run);
     return settled;
 }
 `;
