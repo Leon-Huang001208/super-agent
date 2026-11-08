@@ -15,12 +15,19 @@ function fixture() {
     body: '补充同一任务续接的证据',
   };
   const run = {
-    id: 'run', status: 'succeeded', companyId: binding.companyId, agentId: 'chief',
+    id: 'run', wakeupRequestId: 'wake', status: 'succeeded', companyId: binding.companyId, agentId: 'chief',
     contextSnapshot: {
       issueId: binding.conversationId, conversationMode: true, conversationSessionGeneration: 1,
       wakeCommentId: message.id, wakeCommentIds: [message.id], conversationReplyBoundaryCommentId: message.id,
     },
   };
+  const wake = {
+    id: run.wakeupRequestId, runId: run.id, status: 'completed', companyId: binding.companyId,
+    agentId: run.agentId, reason: 'issue_commented', requestedByActorType: 'user', requestedByActorId: binding.ownerId,
+    idempotencyKey: 'conversation-comment:' + message.id,
+    payload: { issueId: binding.conversationId, commentId: message.id },
+  };
+  const evidence = { message, run, wake, boundaryChecked: true };
   const receipt = {
     status: 'completed', intent: 'supplement_rwb_pr261', taskId: binding.taskId, targetPath: CHIEF_WEB_PILOT.path,
     grantId: binding.grantId, companyId: binding.companyId, conversationId: binding.conversationId,
@@ -34,7 +41,7 @@ function fixture() {
     chiefAgentId: run.agentId,
     readNativeEvidence(input) {
       assert.equal(input.transaction, transaction);
-      return { message, run };
+      return evidence;
     },
     readChiefCallReceipt(input) {
       assert.equal(input.transaction, transaction);
@@ -44,7 +51,7 @@ function fixture() {
     log: entry => logs.push(entry),
   });
   const check = () => verify({ task: { id: binding.taskId }, transaction, binding, messageId: message.id });
-  return { check, binding, message, run, receipt, logs };
+  return { check, binding, message, run, wake, evidence, receipt, logs };
 }
 
 test('accepts one exact completed Chief turn and physical call', async () => {
@@ -60,6 +67,10 @@ test('rejects reset, other owner, another generation and bundled messages', asyn
     ({ run }) => { run.contextSnapshot.conversationSessionGeneration++; },
     ({ run }) => { run.contextSnapshot.wakeCommentIds.push('another'); },
     ({ run }) => { run.status = 'running'; },
+    ({ evidence }) => { evidence.boundaryChecked = false; },
+    ({ wake }) => { wake.reason = 'interaction_resolved'; },
+    ({ wake }) => { wake.requestedByActorId = 'other'; },
+    ({ wake }) => { wake.idempotencyKey = 'retry:' + wake.runId; },
   ]) {
     const f = fixture();
     apply(f);

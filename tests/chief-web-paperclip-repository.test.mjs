@@ -5,13 +5,14 @@ import { bindChiefWebPaperclipRepository } from '../bridge/chief-web-paperclip-r
 
 function fixture() {
   const task = { id: CHIEF_WEB_PILOT.taskId, originKind: 'task_bridge', responsibleUserId: 'owner', companyId: 'company' };
-  const conversation = { id: 'chat', companyId: task.companyId, conversationAgentId: 'chief', conversationUserId: 'owner', conversationSessionGeneration: 1 };
+  const conversation = { id: 'chat', companyId: task.companyId, conversationAgentId: 'chief', conversationUserId: 'owner', conversationSessionGeneration: 1, conversationBoundaryCommentId: 'reset' };
   const grant = { taskId: task.id, ownerId: 'owner', companyId: task.companyId, conversationId: conversation.id, generation: 1 };
-  const schema = Object.fromEntries(['activityLog', 'issueComments', 'heartbeatRuns'].map(key => [key, { table: key }]));
+  const schema = Object.fromEntries(['activityLog', 'issueComments', 'heartbeatRuns', 'agentWakeupRequests'].map(key => [key, { table: key }]));
   const rows = {
     activityLog: [{ details: { sequence: 4, kind: 'input-state' } }],
     issueComments: [{ id: 'message' }],
-    heartbeatRuns: [{ id: 'run' }],
+    heartbeatRuns: [{ id: 'run', wakeupRequestId: 'wake' }],
+    agentWakeupRequests: [{ id: 'wake' }],
   };
   const locks = [];
   const inserted = [];
@@ -53,7 +54,7 @@ test('locks the fixed task and its exact Chief conversation and appends only pil
     assert.deepEqual(locks, [task.id, conversation.id]);
     assert.deepEqual(await bindings.readNativeEvidence({
       transaction, binding: grant, messageId: 'message', chiefAgentId: 'chief',
-    }), { message: { id: 'message' }, run: { id: 'run' } });
+    }), { message: { id: 'message' }, run: { id: 'run', wakeupRequestId: 'wake' }, wake: { id: 'wake' }, boundaryChecked: true });
     await transaction.appendOperation({ taskId: task.id, kind: 'chief-web-intent', status: 'reserved' });
   });
   assert.equal(inserted[0].action, 'super_agent.integration_native');
@@ -77,8 +78,8 @@ test('fences a conversation reset and refuses an ambiguous completed turn', asyn
   await bindings.repository.transaction(async transaction => {
     await transaction.lockTask(task.id);
     const grant = await bindings.readGrant({ task, transaction });
-    assert.equal((await bindings.readNativeEvidence({
+    assert.equal(await bindings.readNativeEvidence({
       transaction, binding: grant, messageId: 'message', chiefAgentId: 'chief',
-    })).run, null);
+    }), null);
   });
 });

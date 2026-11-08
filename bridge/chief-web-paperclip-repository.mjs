@@ -9,9 +9,9 @@ function fail(code) {
 
 /** A single-task view of Paperclip's issue locks and existing integration activity. */
 export function createChiefWebPaperclipRepository({ db, issueService, schema, orm } = {}) {
-  const { activityLog, issueComments, heartbeatRuns } = schema ?? {};
+  const { activityLog, issueComments, heartbeatRuns, agentWakeupRequests } = schema ?? {};
   if (typeof db?.transaction !== 'function' || typeof issueService !== 'function' ||
-      !activityLog || !issueComments || !heartbeatRuns ||
+      !activityLog || !issueComments || !heartbeatRuns || !agentWakeupRequests ||
       !['eq', 'and', 'asc', 'sql'].every(key => typeof orm?.[key] === 'function')) {
     fail('CHIEF_WEB_PAPERCLIP_REPOSITORY_INVALID');
   }
@@ -79,11 +79,20 @@ export function createChiefWebPaperclipRepository({ db, issueService, schema, or
             if (!conversation || conversation.id !== binding.conversationId || conversation.conversationAgentId !== chiefAgentId) {
               fail('CHIEF_WEB_CONVERSATION_LOCK_REQUIRED');
             }
+            const boundary = conversation.conversationBoundaryCommentId;
+            if (binding.generation > 0 && !boundary) return null;
+            const afterBoundary = boundary ? sql`
+              (${issueComments.createdAt}, ${issueComments.id}) >
+              (select ${issueComments.createdAt}, ${issueComments.id} from ${issueComments}
+                where ${issueComments.id} = ${boundary}
+                  and ${issueComments.companyId} = ${conversation.companyId}
+                  and ${issueComments.issueId} = ${conversation.id})
+            ` : undefined;
             const [message] = await tx.select().from(issueComments).where(and(
               eq(issueComments.id, messageId), eq(issueComments.companyId, conversation.companyId),
-              eq(issueComments.issueId, conversation.id),
+              eq(issueComments.issueId, conversation.id), afterBoundary,
             )).limit(1);
-            if (!message) return { message: null, run: null };
+            if (!message) return null;
             const context = heartbeatRuns.contextSnapshot;
             const runs = await tx.select().from(heartbeatRuns).where(and(
               eq(heartbeatRuns.companyId, conversation.companyId), eq(heartbeatRuns.agentId, chiefAgentId),
@@ -92,7 +101,13 @@ export function createChiefWebPaperclipRepository({ db, issueService, schema, or
               sql`${context}->>'conversationSessionGeneration' = ${String(binding.generation)}`,
               sql`coalesce(${context}->>'wakeCommentId', ${context}->>'commentId') = ${messageId}`,
             )).limit(2);
-            return { message, run: runs.length === 1 ? runs[0] : null };
+            if (runs.length !== 1 || !runs[0].wakeupRequestId) return null;
+            const [run] = runs;
+            const [wake] = await tx.select().from(agentWakeupRequests).where(and(
+              eq(agentWakeupRequests.id, run.wakeupRequestId),
+              eq(agentWakeupRequests.companyId, conversation.companyId),
+            )).limit(1);
+            return { message, run, wake, boundaryChecked: true };
           },
         };
         return callback(Object.freeze(port));

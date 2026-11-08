@@ -19,6 +19,14 @@ function matchesChiefTurn(run, binding, messageId, chiefAgentId) {
       (Array.isArray(context.wakeCommentIds) && context.wakeCommentIds.length === 1 && context.wakeCommentIds[0] === messageId));
 }
 
+function matchesOwnerWake(wake, run, binding, messageId, chiefAgentId) {
+  return wake && wake.id === run.wakeupRequestId && wake.runId === run.id && wake.status === 'completed' &&
+    wake.companyId === binding.companyId && wake.agentId === chiefAgentId && wake.reason === 'issue_commented' &&
+    wake.requestedByActorType === 'user' && wake.requestedByActorId === binding.ownerId &&
+    wake.idempotencyKey === 'conversation-comment:' + messageId &&
+    wake.payload?.issueId === binding.conversationId && wake.payload?.commentId === messageId;
+}
+
 function matchesCallReceipt(receipt, binding, message, run, chiefAgentId) {
   return receipt?.status === 'completed' && receipt.intent === 'supplement_rwb_pr261' &&
     receipt.taskId === CHIEF_WEB_PILOT.taskId && receipt.targetPath === CHIEF_WEB_PILOT.path &&
@@ -40,8 +48,11 @@ export function createChiefWebSupplementEvidence({ chiefAgentId, readNativeEvide
   return async function verifyOwnerSupplement({ task, transaction, binding, messageId }) {
     if (task?.id !== CHIEF_WEB_PILOT.taskId || binding?.taskId !== task.id) return false;
     try {
-      const { message, run } = await readNativeEvidence({ transaction, binding, messageId, chiefAgentId });
-      if (!matchesOwnerMessage(message, binding, messageId) || !matchesChiefTurn(run, binding, messageId, chiefAgentId)) {
+      const evidence = await readNativeEvidence({ transaction, binding, messageId, chiefAgentId });
+      const { message, run, wake } = evidence ?? {};
+      if (evidence?.boundaryChecked !== true ||
+          !matchesOwnerMessage(message, binding, messageId) || !matchesChiefTurn(run, binding, messageId, chiefAgentId) ||
+          !matchesOwnerWake(wake, run, binding, messageId, chiefAgentId)) {
         await log({ code: 'CHIEF_WEB_NATIVE_EVIDENCE_DENIED' });
         return false;
       }
