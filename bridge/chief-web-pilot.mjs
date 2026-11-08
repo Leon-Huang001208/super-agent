@@ -81,7 +81,8 @@ function requireTransition(command, state, binding) {
     }
     return;
   }
-  if (!matches(digest, state.inputRevision) || state.inputRevision === CHIEF_WEB_PILOT.previousInputRevision ||
+  if (state.phase === 'done' || !matches(digest, state.inputRevision) ||
+      state.inputRevision === CHIEF_WEB_PILOT.previousInputRevision ||
       state.supplementGrantId !== binding.grantId) {
     fail('CHIEF_WEB_CONTINUATION_UNBOUND');
   }
@@ -89,7 +90,8 @@ function requireTransition(command, state, binding) {
   if (command.action === 'resume' && state.control === 'paused' && state.reconciled === true) return;
   if (command.action === 'confirm') {
     if (state.control !== 'active' || state.phase !== 'awaiting_confirmation' || state.confirmationReserved !== false ||
-        state.prHead !== CHIEF_WEB_PILOT.previousHead || state.candidate !== command.candidate ||
+        state.prHead !== CHIEF_WEB_PILOT.previousHead || command.candidate === state.prHead ||
+        state.candidate !== command.candidate ||
         state.independentReview?.candidate !== command.candidate ||
         state.independentReview?.digest !== command.reviewDigest ||
         state.independentReview?.verdict !== 'approved' ||
