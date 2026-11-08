@@ -1,4 +1,5 @@
 import { createChiefWebNativeStore } from './chief-web-native-store.mjs';
+import { bindChiefWebPaperclipRepository } from './chief-web-paperclip-repository.mjs';
 import { createChiefWebPilot } from './chief-web-pilot.mjs';
 import { mountChiefWebRoutes } from './chief-web-routes.mjs';
 import { createChiefWebSupplementEvidence } from './chief-web-supplement-evidence.mjs';
@@ -51,5 +52,23 @@ export function createChiefWebPaperclipRuntime({ resolveTurn, ...options } = {})
       if (!settle) throw new Error('CHIEF_WEB_MOUNT_BINDINGS_MISSING');
       return settle(context);
     },
+  });
+}
+
+/** Use only the installed pinned Paperclip dependency tree and its app DB handle. */
+export async function loadPinnedChiefWebPaperclipRuntime({ chiefAgentId, readApprovedGrant, readProjection, readChiefCallReceipt, log, now } = {}) {
+  if (![readApprovedGrant, readProjection, readChiefCallReceipt, log].every(fn => typeof fn === 'function')) {
+    throw new Error('CHIEF_WEB_MOUNT_BINDINGS_MISSING');
+  }
+  const [{ issueService }, schema, orm] = await Promise.all([
+    import('/opt/paperclip/node_modules/@paperclipai/server/dist/services/issues.js'),
+    import('/opt/paperclip/node_modules/@paperclipai/db/dist/index.js'),
+    import('/opt/paperclip/node_modules/drizzle-orm/index.js'),
+  ]);
+  return createChiefWebPaperclipRuntime({
+    log, now,
+    loadBindings: ({ db }) => bindChiefWebPaperclipRepository({
+      db, schema, orm, issueService, chiefAgentId, readApprovedGrant, readProjection, readChiefCallReceipt,
+    }),
   });
 }

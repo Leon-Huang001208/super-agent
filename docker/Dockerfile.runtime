@@ -5,6 +5,8 @@ RUN apt-get update \
 WORKDIR /opt/paperclip
 COPY docker/entrypoint.sh docker/bootstrap.mjs docker/serve.mjs docker/server-entry.mjs docker/chief-web-app-hook.mjs docker/complete-lock.mjs docker/verify-install.mjs docker/codex-hello-gate.mjs docker/package.install.json docker/package-lock.install.json /opt/super-agent/
 COPY docker/bin /opt/super-agent/bin
+COPY bridge/chief-web-*.mjs /opt/super-agent/bridge/
+COPY plugins/chief-web-pilot /opt/super-agent/plugins/chief-web-pilot/
 RUN chmod 0555 /opt/super-agent/entrypoint.sh /opt/super-agent/bin/codex /opt/super-agent/bin/claude
 ENV HOME=/paperclip/home NPM_CONFIG_CACHE=/paperclip/npm-cache NODE_ENV=production
 ENTRYPOINT ["/usr/bin/tini", "--", "/opt/super-agent/entrypoint.sh"]
