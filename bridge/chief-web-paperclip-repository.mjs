@@ -63,7 +63,12 @@ export function createChiefWebPaperclipRepository({ db, issueService, schema, or
           },
           async appendOperation(record) {
             requireTask(record.taskId);
-            if (!conversation || record.kind !== 'chief-web-intent' || record.status !== 'reserved') {
+            const expectedStatus = {
+              'chief-web-intent': 'reserved',
+              'chief-web-effect-claim': 'claimed',
+              'chief-web-effect-completion': 'completed',
+            }[record.kind];
+            if (!conversation || !expectedStatus || expectedStatus !== record.status) {
               fail('CHIEF_WEB_PAPERCLIP_WRITE_DENIED');
             }
             const history = await port.listTaskOperations(record.taskId);

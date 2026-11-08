@@ -9,7 +9,7 @@ function fail(code) {
   throw Object.assign(new Error(code), { code });
 }
 
-function readIntents(records) {
+export function readChiefWebIntents(records) {
   const intents = records.filter(record => record.kind === kind);
   if (intents.some(record => record.status !== 'reserved' || record.taskId !== CHIEF_WEB_PILOT.taskId ||
       typeof record.grantId !== 'string' || !uuid.test(record.grantId) ||
@@ -109,7 +109,7 @@ export function createChiefWebNativeStore({ repository, readGrant, readProjectio
       };
 
       try {
-        intents = readIntents(records);
+        intents = readChiefWebIntents(records);
         return { value: await handle(port) };
       } catch (error) {
         // The repository maps exceptions to its own codes. Preserve the policy

@@ -3,11 +3,12 @@ import { test } from 'node:test';
 import { CHIEF_WEB_PILOT } from '../bridge/chief-web-pilot.mjs';
 import { createChiefWebIntentConsumer } from '../bridge/chief-web-intent-consumer.mjs';
 
+const id = index => `00000000-0000-0000-0000-${String(index).padStart(12, '0')}`;
 const operationId = 'a'.repeat(64);
 const intent = {
-  operationId, taskId: CHIEF_WEB_PILOT.taskId, kind: 'chief-web-intent', grantId: 'grant',
-  action: 'supplement', messageId: 'message',
-  sourceEvidence: { messageId: 'message', messageDigest: 'b'.repeat(64) },
+  operationId, taskId: CHIEF_WEB_PILOT.taskId, kind: 'chief-web-intent', grantId: id(1), payloadHash: '2'.repeat(64),
+  action: 'supplement', messageId: id(2),
+  sourceEvidence: { messageId: id(2), messageDigest: 'b'.repeat(64), runId: id(3), wakeId: id(4), providerClaimId: id(5) },
   expected: { inputRevision: CHIEF_WEB_PILOT.previousInputRevision, prHead: CHIEF_WEB_PILOT.previousHead },
 };
 
@@ -26,6 +27,7 @@ test('reconciles a lost append receipt without repeating the already claimed eff
       complete({ result }) {
         assert.deepEqual(result, nativeReceipt);
         complete = true;
+        return { operationId, status: 'completed' };
       },
     },
     native: {
@@ -72,4 +74,22 @@ test('will not complete a published receipt for a different candidate or reposit
   });
   assert.equal((await consumer.consume(operationId)).status, 'unknown');
   assert.equal(updateCalls, 1);
+});
+
+test('rejects missing message and grant identities before calling the provider', async () => {
+  for (const invalid of [
+    { ...intent, grantId: undefined },
+    { ...intent, messageId: undefined, sourceEvidence: { messageDigest: intent.sourceEvidence.messageDigest } },
+    { ...intent, sourceEvidence: { ...intent.sourceEvidence, providerClaimId: undefined } },
+  ]) {
+    let calls = 0;
+    const consumer = createChiefWebIntentConsumer({
+      authority: { claim: () => ({ status: 'claimed_now', intent: invalid }), complete() {} },
+      native: { append() { calls++; }, observe() {} },
+      publication: { update() {}, observe() {} },
+      log() {},
+    });
+    assert.equal((await consumer.consume(operationId)).status, 'unknown');
+    assert.equal(calls, 0);
+  }
 });
