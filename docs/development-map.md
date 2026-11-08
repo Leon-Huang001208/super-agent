@@ -3,7 +3,7 @@
 | 子系统 | 本仓库入口 | 维护与验证 |
 |---|---|---|
 | 容器与存储 | `compose.yaml`、`docker/Dockerfile.runtime`、`scripts/sa` | 专用 APFS、只读根、固定镜像、日志和缺盘拒绝；Docker 回归 |
-| 镜像复用 | `scripts/runtime-image.mjs`、`tests/runtime-image.test.mjs` | 同输入重复构建只执行一次；输入变更、未知镜像、引用漂移、并发和低盘拒绝；独立镜像清点不删除 |
+| 镜像复用 | `scripts/runtime-image.mjs`、`tests/runtime-image.test.mjs` | 同输入重复构建只执行一次；Chief 网页源码和插件纳入输入指纹；输入变更、未知镜像、引用漂移、并发和低盘拒绝；独立镜像清点不删除 |
 | 依赖与候选 | `docker/package*.json`、`evaluation/candidate.json` | 固定版本与完整性；候选校验不等于安装或业务验收 |
 | 订阅 hello | `docker/bin/codex`、`docker/codex-hello-gate.mjs` | 单次许可、只读、无回退、进程终止与审计；不能充当业务执行器 |
 | 网关与初始化 | `docker/gateway.mjs`、`docker/bootstrap*.mjs`、`docker/server-entry.mjs` | 精确 Origin、秘密不回显、启动校验及错误传播 |
