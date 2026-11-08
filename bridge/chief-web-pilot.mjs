@@ -181,7 +181,8 @@ export function createChiefWebPilot({ withTaskTransaction, log, now = Date.now }
           confirm: [command.candidate, command.reviewDigest],
         }[command.action] ?? command.requestId;
         operationId = hash([binding.grantId, binding.conversationId, binding.generation, command.action, identity]);
-        const payloadHash = hash([command.action, command.contextRevision, command.candidate ?? null,
+        const payloadHash = hash([command.action, command.action === 'supplement' ? null : command.contextRevision,
+          command.candidate ?? null,
           command.reviewDigest ?? null, command.messageId ?? null]);
         const previous = await tx.readOperation(operationId);
         if (previous) {

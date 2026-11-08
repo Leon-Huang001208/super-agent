@@ -105,9 +105,7 @@ test('uses the owner message to deduplicate concurrent supplement delivery', asy
   assert.equal(operation.policy.reviewerCalls, 1);
   state.contextRevision = 'f'.repeat(64);
   assert.deepEqual(await pilot.handle(actor, replay), first);
-  await assert.rejects(pilot.handle(actor, { ...replay, contextRevision: state.contextRevision }), {
-    code: 'CHIEF_WEB_OPERATION_CONFLICT',
-  });
+  assert.deepEqual(await pilot.handle(actor, { ...replay, contextRevision: state.contextRevision }), first);
 });
 
 test('rejects unverified messages, foreign scope, stale context and wrong historical budget', async () => {
