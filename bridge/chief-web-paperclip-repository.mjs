@@ -121,16 +121,35 @@ export function bindChiefWebPaperclipRepository({ chiefAgentId, readApprovedGran
       ![readApprovedGrant, readProjection, readChiefCallReceipt].every(fn => typeof fn === 'function')) {
     fail('CHIEF_WEB_PAPERCLIP_BINDING_INVALID');
   }
+  const repository = createChiefWebPaperclipRepository(options);
+  async function readGrant({ task, transaction }) {
+    const grant = await readApprovedGrant({ task });
+    if (!grant || !await transaction.lockConversation(grant, chiefAgentId)) return null;
+    return grant;
+  }
   return Object.freeze({
     chiefAgentId,
-    repository: createChiefWebPaperclipRepository(options),
-    async readGrant({ task, transaction }) {
-      const grant = await readApprovedGrant({ task });
-      if (!grant || !await transaction.lockConversation(grant, chiefAgentId)) return null;
-      return grant;
-    },
+    repository,
+    readGrant,
     readProjection,
     readNativeEvidence: ({ transaction, ...scope }) => transaction.readChiefEvidence(scope),
     readChiefCallReceipt,
+    async resolveTurn({ run }) {
+      const context = run?.contextSnapshot;
+      const messageId = context?.wakeCommentId ?? context?.commentId;
+      if (run?.agentId !== chiefAgentId || context?.source !== 'issue.comment' ||
+          typeof messageId !== 'string' || !messageId) return null;
+      return repository.transaction(async transaction => {
+        const task = await transaction.lockTask(CHIEF_WEB_PILOT.taskId);
+        if (!task) return null;
+        const grant = await readGrant({ task, transaction });
+        if (!grant || context.issueId !== grant.conversationId || run.companyId !== grant.companyId ||
+            context.conversationSessionGeneration !== grant.generation) return null;
+        return {
+          actor: { userId: grant.ownerId, companyId: grant.companyId, conversationId: grant.conversationId, generation: grant.generation },
+          messageId,
+        };
+      });
+    },
   });
 }

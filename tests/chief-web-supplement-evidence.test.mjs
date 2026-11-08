@@ -17,7 +17,7 @@ function fixture() {
   const run = {
     id: 'run', wakeupRequestId: 'wake', status: 'succeeded', companyId: binding.companyId, agentId: 'chief',
     contextSnapshot: {
-      issueId: binding.conversationId, conversationMode: true, conversationSessionGeneration: 1,
+      issueId: binding.conversationId, conversationMode: true, conversationSessionGeneration: 1, source: 'issue.comment',
       wakeCommentId: message.id, wakeCommentIds: [message.id], conversationReplyBoundaryCommentId: message.id,
     },
   };
@@ -70,6 +70,7 @@ test('rejects reset, other owner, another generation and bundled messages', asyn
     ({ run }) => { run.contextSnapshot.conversationSessionGeneration++; },
     ({ run }) => { run.contextSnapshot.wakeCommentIds.push('another'); },
     ({ run }) => { run.status = 'running'; },
+    ({ run }) => { run.contextSnapshot.source = undefined; },
     ({ evidence }) => { evidence.boundaryChecked = false; },
     ({ wake }) => { wake.reason = 'interaction_resolved'; },
     ({ wake }) => { wake.requestedByActorId = 'other'; },

@@ -11,7 +11,7 @@ function matchesOwnerMessage(message, binding, messageId) {
 function matchesChiefTurn(run, binding, messageId, chiefAgentId) {
   const context = run?.contextSnapshot;
   return run?.status === 'succeeded' && run.companyId === binding.companyId && run.agentId === chiefAgentId &&
-    context?.issueId === binding.conversationId && context.conversationMode === true &&
+    context?.issueId === binding.conversationId && context.conversationMode === true && context.source === 'issue.comment' &&
     context.conversationSessionGeneration === binding.generation &&
     (context.wakeCommentId ?? context.commentId) === messageId &&
     (context.conversationReplyBoundaryCommentId ?? messageId) === messageId &&

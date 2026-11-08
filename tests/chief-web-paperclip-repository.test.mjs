@@ -83,3 +83,18 @@ test('fences a conversation reset and refuses an ambiguous completed turn', asyn
     }), null);
   });
 });
+
+test('resolves only the current locked conversation and Native direct wake source', async () => {
+  const { bindings, conversation } = fixture();
+  const contextSnapshot = {
+    issueId: conversation.id, wakeCommentId: 'message',
+    conversationSessionGeneration: 1, source: 'issue.comment',
+  };
+  const run = { agentId: conversation.conversationAgentId, companyId: conversation.companyId, contextSnapshot };
+  assert.equal((await bindings.resolveTurn({ run })).messageId, 'message');
+  contextSnapshot.source = 'manual';
+  assert.equal(await bindings.resolveTurn({ run }), null);
+  contextSnapshot.source = 'issue.comment';
+  conversation.conversationSessionGeneration = 2;
+  assert.equal(await bindings.resolveTurn({ run }), null);
+});

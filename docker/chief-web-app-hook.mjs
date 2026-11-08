@@ -51,6 +51,7 @@ export function notifyConfiguredChiefWebSettlement(db, run) {
     wakeupRequestId: run.wakeupRequestId,
     contextSnapshot: {
       issueId: context.issueId,
+      source: context.source,
       wakeCommentId: context.wakeCommentId,
       commentId: context.commentId,
       conversationMode: context.conversationMode,

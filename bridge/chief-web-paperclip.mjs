@@ -21,7 +21,7 @@ export function createChiefWebPaperclipMount({ loadBindings, log, now = Date.now
       const store = createChiefWebNativeStore({ repository, readGrant, readProjection, verifyOwnerSupplement, now });
       const pilot = createChiefWebPilot({ ...store, log, now });
       mountChiefWebRoutes(api, { enabled: true, deploymentMode, pilot, chiefAgentId, getIssue, trustedBoardMutationOrigin, log });
-      await onMounted?.(pilot);
+      await onMounted?.(pilot, bindings);
       await log({ code: 'CHIEF_WEB_MOUNT_READY' });
     } catch {
       try {
@@ -36,13 +36,15 @@ export function createChiefWebPaperclipMount({ loadBindings, log, now = Date.now
 
 /** Options consumed by the pinned server loader when the pilot is explicitly enabled. */
 export function createChiefWebPaperclipRuntime({ resolveTurn, ...options } = {}) {
-  if (typeof resolveTurn !== 'function') throw new Error('CHIEF_WEB_SETTLEMENT_CONFIGURATION_INVALID');
+  if (resolveTurn !== undefined && typeof resolveTurn !== 'function') {
+    throw new Error('CHIEF_WEB_SETTLEMENT_CONFIGURATION_INVALID');
+  }
   let settle;
   return Object.freeze({
     mountChiefWebPilot: createChiefWebPaperclipMount({
       ...options,
-      onMounted(pilot) {
-        settle = createChiefWebSettlement({ pilot, resolveTurn, log: options.log });
+      onMounted(pilot, bindings) {
+        settle = createChiefWebSettlement({ pilot, resolveTurn: resolveTurn ?? bindings.resolveTurn, log: options.log });
       },
     }),
     settleChiefWebPilot(context) {
