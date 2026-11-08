@@ -13,6 +13,7 @@ function fixture(t) {
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   fs.mkdirSync(path.join(root, 'docker/bin'), {recursive: true});
   for (const p of INPUT_FILES) {
+    fs.mkdirSync(path.dirname(path.join(root, p)), {recursive: true});
     fs.writeFileSync(path.join(root, p), p.endsWith('Dockerfile.runtime') ? `FROM ${base}\n` : p);
   }
   fs.writeFileSync(path.join(root, 'docker/bin/codex'), 'command');
@@ -56,6 +57,22 @@ test('runtime source and executable mode changes alter the key', t => {
   assert.notEqual(inputSnapshot(f.root).key, mode);
   assert.throws(() => f.run('resolve'), /RUNTIME_IMAGE_NOT_RECORDED/);
   assert.equal(f.builds(), 0);
+});
+
+test('runtime copies fingerprint the Chief app hook, policy and native UI source', t => {
+  const f = fixture(t);
+  const paths = [
+    'docker/chief-web-app-hook.mjs',
+    'bridge/chief-web-pilot.mjs',
+    'plugins/chief-web-pilot/ui/index.js',
+  ];
+  let previous = inputSnapshot(f.root).key;
+  for (const name of paths) {
+    fs.appendFileSync(path.join(f.root, name), 'changed');
+    const next = inputSnapshot(f.root).key;
+    assert.notEqual(next, previous);
+    previous = next;
+  }
 });
 
 test('unknown tag or changed image ID fails closed without rebuilding', t => {

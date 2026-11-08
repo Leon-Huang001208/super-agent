@@ -1,0 +1,11 @@
+{
+  "name": "super-agent-chief-web-pilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "paperclipPlugin": {
+    "manifest": "./manifest.js",
+    "worker": "./worker.js",
+    "ui": "./ui"
+  }
+}
