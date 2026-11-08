@@ -27,3 +27,5 @@ CI 从目标分支读取原治理清单，通过 `--baseline-manifest` 同时检
 本地离线检查只有来自 PR 的当前 head、非作者且有效状态 APPROVED 的 GitHub review 证据才能接受例外。CI 通过只读 GitHub API 获取 review，按每人最后一次决定性意见计算，并把其及 PR head/作者传入 `--review-context <文件>`；不从 PR 文件读取评审身份。普通 COMMENTED 不撤销批准，CHANGES_REQUESTED 和 DISMISSED 撤销同一人的旧批准。过期、作者自评和伪造声明均不能豁免。
 
 本地手工提供 review-context 只用于复现，不能替代远端真实评审；merge 前必须核对实际 API 与同 head 的 CI。本项目没有可用分支保护时始终禁止合并，例外不能扩展权限。
+
+Chief 网页操作策略沿 bridge 路径映射维护架构、开发地图与验收手册。离线策略用例与真实 Paperclip 网页和运行回执分别核对。

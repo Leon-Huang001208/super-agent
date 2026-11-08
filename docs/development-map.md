@@ -13,6 +13,12 @@
 
 本轮候选要求已改为 `gpt-6.1-sol` / `low`，预检拒绝旧 xhigh 配置；`acceptance` 仍为 NOT_RUN。此更改不修改运行实例的 Agent 配置或 hello 历史，也不代表业务模型调用已发生。
 
+## Chief 网页续接策略
+
+`bridge/chief-web-pilot.mjs` 是 #261 的限定操作策略。入口接收服务器已认证的本人会话和命令。调用方提供持久事务接口，在原 Paperclip 任务锁下读取绑定、版本、消息和历史操作，并原子记录意图与控制门。该接口只保留关联与回执，任务状态以 Paperclip 为准。
+
+`tests/chief-web-pilot.test.mjs` 用内存事务验证策略合同。实际 Native 事务适配、Chief 调用许可和网页接线仍需独立实现及验证。
+
 ## 已验证的运行检查入口
 
 现有评估管理脚本依赖外置卷，不能用于无专用卷的干净 CI：
