@@ -20,7 +20,8 @@ const repository = REAL_RWB_REPOSITORY, targetDoc = REAL_RWB_DOCUMENT;
 const url = 'https://github.com/' + repository + '/pull/321';
 const repo = 'repos/' + repository;
 
-function fixture(t, { failFirstResourceRecord = false, preflightErrors = {}, postProbeError = null, pauseOnWait = false } = {}) {
+function fixture(t, { failFirstResourceRecord = false, preflightErrors = {}, postProbeError = null,
+  pauseOnWait = false, pauseOnRetryRemote = false } = {}) {
   const tmp = mkdtempSync(path.join(tmpdir(), 'sa-publisher-workspace-'));
   t.after(() => rmSync(tmp, { recursive: true, force: true }));
   const projectRoot = path.join(tmp, 'rwb'), worktreeRoot = path.join(tmp, 'worktrees');
@@ -77,7 +78,10 @@ function fixture(t, { failFirstResourceRecord = false, preflightErrors = {}, pos
     },
     github: { get(endpoint) {
       if (endpoint === repo) return { full_name: repository, private: false, allow_auto_merge: false, default_branch: 'master' };
-      if (endpoint === repo + '/git/ref/heads/master') return { ref: 'refs/heads/master', object: { type: 'commit', sha: remoteBase } };
+      if (endpoint === repo + '/git/ref/heads/master') {
+        if (pauseOnRetryRemote && waits.length) paused = true;
+        return { ref: 'refs/heads/master', object: { type: 'commit', sha: remoteBase } };
+      }
       if (endpoint === repo + '/git/ref/heads/' + branch) return remoteHead && { ref: 'refs/heads/' + branch,
         object: { type: 'commit', sha: remoteHead } };
       if (endpoint === repo + '/pulls/321') return { number: 321, html_url: url, state: 'open', merged: false, auto_merge: null,
@@ -216,6 +220,17 @@ test('lock waiting stops for pause, timeout, unknown errors or a lock code after
     assert.deepEqual(sample.actions, ['start']);
     assert.deepEqual(sample.waits, []);
   }
+});
+
+test('a pause during retry evidence verification prevents re-entering Git Safety', async t => {
+  const sample = fixture(t, { preflightErrors: { prepare: ['REPOSITORY_LOCKED'] }, pauseOnRetryRemote: true });
+  const request = sample.request(1);
+  const snapshot = await sample.workspace.read(request);
+  await assert.rejects(sample.workspace.prepare(sample.artifact(request, snapshot, '# Acceptance\n')), { code: 'WORKSPACE_PAUSED' });
+  assert.deepEqual(sample.actions, ['start', 'prepare']);
+  assert.deepEqual(sample.waits, [4000]);
+  assert.equal(sample.commits(), 1);
+  assert.equal(sample.resourceAttempts(), 1);
 });
 
 test('resumes resource registration from the exact started worktree without replaying managed start', async t => {

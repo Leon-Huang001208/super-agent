@@ -139,12 +139,13 @@ export function createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitB
       Number.isSafeInteger(leaseSubject.expiresAt) ? leaseSubject.expiresAt : Infinity);
     let lockDenied;
     for (;;) {
-      await assertWorkspaceLease(leaseSubject);
       if (lockDenied) {
+        await assertWorkspaceLease(leaseSubject);
         if (now() >= deadline) throw lockDenied;
         if (remote(scope, snapshot.previousHead, snapshot.prNumber) !== snapshot.baseSha) fail('REMOTE_BASE_CHANGED');
       }
       assertCandidate?.();
+      await assertWorkspaceLease(leaseSubject);
       if (lockDenied && now() >= deadline) throw lockDenied;
       const result = await managedOnce(scope, action, snapshot);
       if (result.receipt) return result.receipt;
