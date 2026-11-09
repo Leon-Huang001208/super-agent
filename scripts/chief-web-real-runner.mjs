@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
@@ -245,6 +245,20 @@ export async function runChiefWebRealBroker(filename) {
     ...options, config: { ...config, credentialGrantId: options.credentialGrantId },
     modelRoot: path.join(root, 'model'), logRoot: path.join(root, 'model-logs'),
     credentialRoot: path.join(root, 'credential-slots'), workspace: rwb.workspace, log,
+    async invokeDocker(args) {
+      const spawn = () => new Promise((resolve, reject) => {
+        execFile(options.dockerBinary, args, { timeout: 180000, maxBuffer: 65536 },
+          (error, stdout, stderr) => error ? reject(error) : resolve({ stdout, stderr }));
+      });
+      if (args[0] !== 'run') return spawn();
+      const holder = await spool.withControlFence(async () => {
+        if (await spool.isPaused()) fail('CHIEF_WEB_REAL_PAUSED_BEFORE_WORKER');
+        const pending = spawn();
+        pending.catch(() => {});
+        return { pending };
+      });
+      return holder.pending;
+    },
   });
   const broker = createChiefWebRealBroker({ spool, executor, publisher: rwb.publisher, admission, log });
   let stopped = false;

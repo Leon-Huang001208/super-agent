@@ -83,7 +83,7 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
       const recorded = state.controls.find(row => row.requestId === requestId);
       if (recorded) {
         if (recorded.payload !== payload) fail('CHIEF_WEB_REAL_CONTROL_CONFLICT');
-        return publicView(state);
+        return { ...publicView(state), applied: false };
       }
       if (terminal.has(state.phase) || state.contextRevision !== expectedRevision) fail('CHIEF_WEB_REAL_CONTROL_STALE');
       if (state.controls.length >= 64) fail('CHIEF_WEB_REAL_CONTROL_LIMIT');
@@ -102,7 +102,7 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
           patch.confirmation = null;
         }
       }
-      return publicView(await change(tx, state, patch));
+      return { ...publicView(await change(tx, state, patch)), applied: true };
     });
   }
 

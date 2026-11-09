@@ -130,8 +130,8 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
     return receipt.reply;
   }
 
-  async function withFence(work) {
-    const name = 'dispatch-lock.json';
+  async function withNamedFence(kind, work) {
+    const name = kind + '-lock.json';
     const lock = path.join(root, name);
     const claim = { ...owner, token: randomUUID() };
     if (!await write(root, name, claim)) {
@@ -143,7 +143,7 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
           prior.conversationId !== config.conversationId || !guid.test(prior.token ?? '')) {
         fail('CHIEF_WEB_REAL_DISPATCH_FENCE_BUSY');
       }
-      const recovery = path.join(root, 'dispatch-lock-recovery');
+      const recovery = path.join(root, kind + '-lock-recovery');
       try { await fs.mkdir(recovery, { mode: 0o700 }); }
       catch (error) { if (error.code === 'EEXIST') fail('CHIEF_WEB_REAL_DISPATCH_FENCE_BUSY'); throw error; }
       try {
@@ -180,7 +180,8 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
   }
 
   return Object.freeze({
-    withFence,
+    withFence: work => withNamedFence('dispatch', work),
+    withControlFence: work => withNamedFence('control', work),
     setPaused,
     isPaused,
     async list() {

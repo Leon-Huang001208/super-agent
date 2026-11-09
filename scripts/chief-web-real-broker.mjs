@@ -22,6 +22,7 @@ export function createChiefWebRealBroker({ spool, executor, publisher, admission
       if (!wasClaimed && paused) return false;
       try {
         const result = await admission.run(request, async lease => {
+          if (await spool.isPaused() && !wasClaimed) return { status: 'pending' };
           let fresh;
           try { fresh = await spool.claim(operationId); }
           catch (error) {
@@ -31,7 +32,7 @@ export function createChiefWebRealBroker({ spool, executor, publisher, admission
           if (request.role === 'publish') {
             return publisher[fresh ? 'publish' : 'observePublication'](request, lease);
           }
-          return executor[fresh ? 'execute' : 'observe'](request, lease, { dispatchAllowed: !paused });
+          return executor[fresh ? 'execute' : 'observe'](request, lease, { dispatchAllowed: !await spool.isPaused() });
         });
         if (result?.unclaimed === true) await spool.rejectUnclaimed(operationId, result.code);
         else if (['completed', 'blocked', 'unknown'].includes(result?.status)) await spool.complete(operationId, result);

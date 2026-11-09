@@ -21,21 +21,21 @@ export async function loadChiefWebRealRuntime({ log }) {
       timer.unref();
       return {
         ...engine,
-        async control(command) {
-          if (command.action === 'pause') {
-            const state = await engine.status();
-            if (state.contextRevision !== command.expectedRevision) return engine.control(command);
-            // Publish the fence before the DB control. A concurrent state
-            // change keeps the transport fenced until the current board Resume.
-            await spool.setPaused(true);
-            return engine.control(command);
-          }
-          return spool.withFence(async () => {
+        control(command) {
+          return spool.withControlFence(async () => {
+            if (command.action === 'pause') {
+              const state = await engine.status();
+              if (state.contextRevision !== command.expectedRevision) return engine.control(command);
+              // Publish the fence before the DB control. A concurrent state
+              // change keeps transport fenced until the current board Resume.
+              await spool.setPaused(true);
+              return engine.control(command);
+            }
             if (command.action === 'confirm' && await spool.isPaused()) {
               throw Object.assign(new Error('CHIEF_WEB_REAL_PAUSED'), { code: 'CHIEF_WEB_REAL_PAUSED', status: 409 });
             }
             const result = await engine.control(command);
-            if (command.action === 'resume') await spool.setPaused(result.paused === true);
+            if (command.action === 'resume' && result.applied) await spool.setPaused(result.paused === true);
             return result;
           });
         },

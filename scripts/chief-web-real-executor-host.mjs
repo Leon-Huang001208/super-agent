@@ -267,7 +267,10 @@ export function createChiefWebRealDockerExecutor({
       modelSlot: modelSlot(identity.slotId), credentialSlot: credentialSlot(identity.slotId), slotId: identity.slotId, proxy });
     let launched = false;
     try { await invokeDocker(args); launched = true; }
-    catch { await log({ code: 'CHIEF_WEB_REAL_WORKER_RECONCILIATION_REQUIRED', operationId: identity.slotId }); }
+    catch (error) {
+      if (error?.code === 'CHIEF_WEB_REAL_PAUSED_BEFORE_WORKER') return { status: 'pending' };
+      await log({ code: 'CHIEF_WEB_REAL_WORKER_RECONCILIATION_REQUIRED', operationId: identity.slotId });
+    }
     if (!await retire()) return { status: 'pending' };
     try {
       const current = await readPersonalSubscription();
