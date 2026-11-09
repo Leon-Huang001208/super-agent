@@ -14,7 +14,7 @@ const receiptDigest = 'e'.repeat(64);
 function setup() {
   const calls = [], publications = [], records = [], messages = [], statuses = [];
   let issued = 0, staleCi = true, clock = 100;
-  let respondToReview = true;
+  let respondToReview = true, failDeveloper = false, recoverDeveloper = false;
   const repository = {
     async readOwnerMessages() { return structuredClone(messages); },
     async transaction(work) {
@@ -33,7 +33,8 @@ function setup() {
   const models = request => {
     if (request.role === 'chief') return receipt(request, { accepted: true, targetDoc: REAL_RWB_DOCUMENT, requirements: request.text });
     if (request.role === 'developer') {
-      return receipt(request, { candidateSha: request.revision === 1 ? firstHead : secondHead, baseSha, branch, checksPassed: true });
+      if (failDeveloper && !recoverDeveloper) return { status: 'unknown', code: 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN' };
+      return { ...receipt(request, { candidateSha: request.revision === 1 ? firstHead : secondHead, baseSha, branch, checksPassed: true }), ...(recoverDeveloper && { recoveryVerified: true }) };
     }
     return respondToReview ? receipt(request, { approved: true, candidateSha: request.candidateSha, reviewDigest: receiptDigest }) :
       { status: 'pending' };
@@ -63,6 +64,7 @@ function setup() {
     newMessage: text => messages.push({ id: randomUUID(), text, generation: 0 }),
     advanceClock: value => { clock += value; }, answerReview: value => { respondToReview = value; },
     correctCi: () => { staleCi = false; },
+    failDev: () => { failDeveloper = true; }, recoverDev: () => { recoverDeveloper = true; },
   };
 }
 
@@ -161,4 +163,23 @@ test('restart observes an already reserved review without a new model call', asy
   await until(resumed, 'awaiting_confirmation');
   assert.equal(f.calls.length, 3);
   assert.equal(f.records.at(-1).results.at(-1).operationId, op);
+});
+
+test('prelaunch recovery preserves the blocked original Native attempt', async () => {
+  const f = setup();
+  f.failDev();
+  const original = f.engine();
+  f.newMessage('创建验收文档');
+  const blocked = await until(original, 'blocked');
+  assert.equal(blocked.operationKind, 'developer');
+  await original.tick();
+  assert.equal((await original.status()).phase, 'blocked');
+  f.recoverDev();
+  const resumed = f.engine();
+  const candidate = await until(resumed, 'awaiting_confirmation');
+  assert.equal(candidate.taskId, blocked.taskId);
+  assert.equal(candidate.inputRevision, blocked.inputRevision);
+  assert.equal(f.issued(), 1);
+  assert.equal(f.calls.filter(call => call.role === 'developer').length, 1);
+  assert.equal(f.records.at(-1).recoveredOperationId, blocked.operationId);
 });

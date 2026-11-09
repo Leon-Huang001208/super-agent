@@ -10,6 +10,8 @@ const stages = { understanding: 'chief', developing: 'developer', reviewing: 're
 const terminal = new Set(['done', 'blocked']);
 const confirmKeys = ['candidateSha', 'reviewDigest', 'baseSha', 'previousHead'];
 const confirmationLifetime = 15 * 60_000;
+const prelaunchUnknown = state => state.phase === 'blocked' && state.attempt?.role === 'developer' &&
+  state.recoveredOperationId !== state.attempt.id && state.code === 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN';
 
 function fail(code, status = 409) {
   throw Object.assign(new Error(code), { code, status });
@@ -110,7 +112,7 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
     const messages = await repository.readOwnerMessages();
     return repository.transaction(async tx => {
       let state = stateFrom(await tx.readState());
-      if (terminal.has(state.phase)) return null;
+      if (terminal.has(state.phase)) return prelaunchUnknown(state) ? { state, fresh: false, messages } : null;
       const mayAdmit = !state.paused && now() < config.expiresAt && (!state.attempt || state.attempt.role === 'ci') &&
         (state.phase === 'ready' ||
         (['waiting_ci', 'awaiting_supplement'].includes(state.phase) && state.revision === 1));
@@ -193,8 +195,13 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
   async function settle(work, reply) {
     const role = work.state.attempt.role;
     return repository.transaction(async tx => {
-      const state = stateFrom(await tx.readState());
-      if (state.attempt?.id !== work.state.attempt.id || terminal.has(state.phase)) return false;
+      let state = stateFrom(await tx.readState());
+      if (state.attempt?.id !== work.state.attempt.id) return false;
+      if (terminal.has(state.phase)) {
+        if (!prelaunchUnknown(state) || reply?.recoveryVerified !== true) return false;
+        await tx.setTask({ taskId: state.taskId, status: 'in_progress' });
+        state = await change(tx, state, { phase: 'developing', code: null, recoveredOperationId: state.attempt.id });
+      }
       if (reply?.status === 'pending') return false;
       if (role === 'ci' && reply?.status === 'completed' &&
           (reply.result?.headSha !== state.pr.headSha || reply.result?.number !== state.pr.number)) return false;
