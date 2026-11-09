@@ -1,5 +1,19 @@
 # 运行维护与恢复
 
+## 独立 Chief 网页演练
+
+使用 `compose.chief-web-evaluation.yaml`，项目名为 `super-agent-chief-web-rehearsal`，网页绑定 `127.0.0.1:8107`。设置 `SUPER_AGENT_RUNTIME_IMAGE` 为按构建输入复用的确切镜像，设置 `SUPER_AGENT_VERIFIED_DEPENDENCIES` 为与候选锁文件一致的只读安装目录。应用与数据库位于内部网络，网关仅将网页转发到本机端口。
+
+首次启动保持 `SUPER_AGENT_CHIEF_WEB_EVALUATION_ENABLED=false`。在该实例通过 Native 登录和首次管理员认领建立测试账户，启用 Agent Chat，建立公司、项目、测试 Chief 和该账户的原生对话。从实例安装镜像中的 `/opt/super-agent/plugins/chief-web-pilot`。将 `userId`、`companyId`、`chiefAgentId`、`conversationId`、`projectId` 和独立随机 `ciToken` 放入演练 state 卷的 `/paperclip/control/chief-web-evaluation.json`，使用 root 所有且权限 0600 的常规文件。随后以启用开关重新创建该项目的应用容器。配置和测试密码只保存在私有演练记录中。
+
+模拟 CI 由同源已认证演练账户向 `/api/issues/<对话ID>/chief-web-evaluation/ci` 提交 `operationId`、`candidateSha` 和 `conclusion`，请求头 `X-Super-Agent-Eval-Token` 使用演练 token。重启仅针对 `paperclip` 服务，关闭入口后保留独立数据卷和回执。
+
+## #261 受控恢复
+
+Docker 内的操作员入口为 `node /opt/super-agent/bridge/chief-web-recovery-cli.mjs <inspect|claim|publish|record-ci|release> <确认操作ID> [CI事件ID]`。仅 root 且显式启用 `SUPER_AGENT_CHIEF_WEB_RECOVERY_ENABLED=1` 时可用。恢复读取原 Native 任务、对话和受控记录。`inspect` 可只读核对保留的原认领。应用仍需提供现有私有 Pilot 绑定、受控运行状态和原租约账本。
+
+发布使用私有宿主交接。Mac 侧适配器校验首轮固定的 RWB Git Safety 工具包，只允许更新 #261 现有分支，并要求部署侧提供独占分支发布护栏和可信回执存储。认领后的结果未知只核对该操作的宿主回执。基线、当前 head、候选或批准变化时返回阻塞。网页演练使用独立的测试账本、模拟 CI 和测试租约。
+
 ## 资产与身份
 
 Paperclip 评估项目名为 `super-agent-paperclip-eval`。专用数据根 `/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0`，底层为外置 SSD 的 APFS sparsebundle。Docker.raw 仍保持原位。数据库、订阅认证、workspace、日志和旧候选必须保留；本仓库不保存秘密。
@@ -30,6 +44,8 @@ Paperclip 评估项目名为 `super-agent-paperclip-eval`。专用数据根 `/Vo
 恢复数据库连接、应用和单一飞书连接后先保持派发关闭。核对同一任务、原 attempt、幂等键、旧许可消费和外部 PR/通知状态；只有确定尚未发生的动作才继续，未知动作先查回执。旧模型许可不恢复，不为了恢复重跑模型。
 
 本轮可在排空后升级专用评估实例；Docker Desktop 全局重启、数据库迁移、新依赖、RWB 常驻服务及系统配置不在授权内。当前有并发脏集成候选时不执行更新。两条验收结束后恢复暂停调度。
+
+固定版本的 Chief 网页路由由显式启动配置提供装配器。运行镜像包含源码模块和对话插件包，镜像复用键覆盖全部打包输入。启用前核对发布包 app.js、agent-conversations.js 摘要和认证模式。路由插入发生在进程加载时，已安装依赖文件保持原样。回合回调未知结果时使用持久消息唤醒核对，不重发模型。插件启用、实际业务授权和专用应用重启各自留证。
 
 ## 故障与回退
 

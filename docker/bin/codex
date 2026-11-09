@@ -6,6 +6,9 @@ case "${1:-}" in
     ;;
   *)
     sa_bin_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    if [ "${SUPER_AGENT_CHIEF_WEB_ENABLED:-false}" = true ] && [ -n "${PAPERCLIP_RUN_ID:-}" ] && [ -f "/paperclip/control/chief-web/permits/${PAPERCLIP_RUN_ID}.json" ]; then
+      exec node "$sa_bin_dir/../codex-chief-web-gate.mjs" "$@"
+    fi
     exec node "$sa_bin_dir/../codex-hello-gate.mjs" "$@"
     ;;
 esac

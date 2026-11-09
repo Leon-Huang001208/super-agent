@@ -1,0 +1,109 @@
+name: super-agent-chief-web-rehearsal
+
+x-log: &log
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+
+x-app: &app
+  image: "${SUPER_AGENT_RUNTIME_IMAGE:?select the content-addressed runtime image}"
+  platform: linux/arm64
+  pull_policy: never
+  read_only: true
+  security_opt: [no-new-privileges:true]
+  pids_limit: 256
+  mem_limit: 1536m
+  cpus: 2.0
+  logging: *log
+  tmpfs: ["/tmp:size=256m,mode=1777"]
+
+services:
+  bootstrap:
+    <<: *app
+    command: [bootstrap]
+    network_mode: none
+    volumes:
+      - state:/paperclip
+  db:
+    image: postgres@sha256:a717692f944862397bd102c6abee9b3f7927adbf7ee5f3a93e50b65aea0c5396
+    platform: linux/arm64
+    pull_policy: never
+    mem_limit: 512m
+    pids_limit: 256
+    cpus: 1.0
+    logging: *log
+    depends_on:
+      bootstrap: {condition: service_completed_successfully}
+    networks: [evaluation]
+    environment:
+      POSTGRES_USER: paperclip
+      POSTGRES_DB: paperclip
+      POSTGRES_PASSWORD_FILE: /paperclip/secrets/postgres-password
+    volumes:
+      - database:/var/lib/postgresql/data
+      - state:/paperclip:ro
+    healthcheck:
+      test: [CMD, pg_isready, -U, paperclip, -d, paperclip]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  paperclip:
+    <<: *app
+    command: [serve]
+    networks: [evaluation]
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3100"
+      PAPERCLIP_HOME: /paperclip
+      PAPERCLIP_INSTANCE_ID: chief-web-rehearsal
+      PAPERCLIP_BUILD_VERSION: "2026.1023.0"
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_PUBLIC_URL: http://127.0.0.1:8107
+      PAPERCLIP_AUTH_BASE_URL_MODE: explicit
+      PAPERCLIP_AUTH_PUBLIC_BASE_URL: http://127.0.0.1:8107
+      BETTER_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:8107
+      PAPERCLIP_ALLOWED_HOSTNAMES: localhost,127.0.0.1
+      HEARTBEAT_SCHEDULER_ENABLED: "false"
+      SERVE_UI: "true"
+      SUPER_AGENT_CHIEF_WEB_EVALUATION_ENABLED: "${SUPER_AGENT_CHIEF_WEB_EVALUATION_ENABLED:-false}"
+    volumes:
+      - state:/paperclip
+      - type: bind
+        source: ${SUPER_AGENT_VERIFIED_DEPENDENCIES:?set the verified pinned dependency directory}
+        target: /opt/paperclip
+        read_only: true
+        bind: {create_host_path: false}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3100/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      start_period: 30s
+      retries: 30
+  gateway:
+    image: node@sha256:a52166d89cfcc66ea62d10535ca712d161cece5d77ff4cfa758866b6b75ccb3f
+    platform: linux/arm64
+    pull_policy: never
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    pids_limit: 96
+    cpus: 0.5
+    logging: *log
+    depends_on:
+      paperclip: {condition: service_healthy}
+    networks: [evaluation, ui]
+    ports: [127.0.0.1:8107:3100]
+    command: [node, /gateway.mjs]
+    volumes:
+      - ./docker/gateway.mjs:/gateway.mjs:ro
+
+volumes:
+  state: {}
+  database: {}
+networks:
+  evaluation:
+    internal: true
+  ui: {}

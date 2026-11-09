@@ -6,10 +6,39 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 export const INPUT_FILES = [
+  ...[
   'Dockerfile.runtime', 'entrypoint.sh', 'bootstrap.mjs', 'serve.mjs',
-  'server-entry.mjs', 'complete-lock.mjs', 'verify-install.mjs',
-  'codex-hello-gate.mjs', 'package.install.json', 'package-lock.install.json',
-].map(name => 'docker/' + name);
+  'server-entry.mjs', 'chief-web-app-hook.mjs', 'complete-lock.mjs', 'verify-install.mjs',
+  'codex-hello-gate.mjs', 'codex-chief-web-gate.mjs', 'package.install.json', 'package-lock.install.json',
+  ].map(name => 'docker/' + name),
+  'bridge/chief-web-call-admission.mjs',
+  'bridge/chief-web-evaluation.mjs',
+  'bridge/chief-web-intent-authority.mjs',
+  'bridge/chief-web-intent-consumer.mjs',
+  'bridge/chief-web-native-store.mjs',
+  'bridge/chief-web-paperclip-repository.mjs',
+  'bridge/chief-web-paperclip.mjs',
+  'bridge/chief-web-pilot.mjs',
+  'bridge/chief-web-private-file.mjs',
+  'bridge/chief-web-projection.mjs',
+  'bridge/chief-web-recovery-cli.mjs',
+  'bridge/chief-web-recovery-entry.mjs',
+  'bridge/chief-web-recovery-finalization.mjs',
+  'bridge/chief-web-recovery-io.mjs',
+  'bridge/chief-web-recovery-lease.mjs',
+  'bridge/chief-web-recovery-native.mjs',
+  'bridge/chief-web-recovery-publisher.mjs',
+  'bridge/chief-web-recovery.mjs',
+  'bridge/chief-web-routes.mjs',
+  'bridge/chief-web-runtime-bootstrap.mjs',
+  'bridge/chief-web-settlement.mjs',
+  'bridge/chief-web-skipped-wake.mjs',
+  'bridge/chief-web-supplement-evidence.mjs',
+  'plugins/chief-web-pilot/manifest.js',
+  'plugins/chief-web-pilot/package.json',
+  'plugins/chief-web-pilot/worker.js',
+  'plugins/chief-web-pilot/ui/index.js',
+];
 const PLATFORM = 'linux/arm64';
 const ID = /^sha256:[0-9a-f]{64}$/;
 const KEY = /^[0-9a-f]{64}$/;
