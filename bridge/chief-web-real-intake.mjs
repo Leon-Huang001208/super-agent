@@ -1,3 +1,5 @@
+import { CHIEF_WEB_DAILY_DOCUMENTS, matchChiefWebDailyTarget, resolveChiefWebRealScope } from './chief-web-real-engine.mjs';
+
 const route = '/issues/:issueId/chief-web-real';
 const commentRoute = '/issues/:issueId/comments';
 const activityAction = 'super_agent.chief_web_real';
@@ -13,7 +15,6 @@ const same = (value, expected) => Object.entries(expected).every(([key, item]) =
 function fail(code, status = 409) {
   throw Object.assign(new Error(code), { code, status });
 }
-
 function checkConfig(config) {
   if (!config || !['companyId', 'chiefAgentId', 'conversationId', 'projectId'].every(key => is(uuid, config[key])) ||
       typeof config.userId !== 'string' || !config.userId || !Number.isSafeInteger(config.generation) || config.generation < 0 ||
@@ -41,6 +42,7 @@ export function verifyChiefWebRealOwnerMessage(message, config) {
       typeof message.body !== 'string' || !message.body.trim() || /^\s*\//.test(message.body) || message.body.length > 4000) {
     return null;
   }
+  if (config.daily === true && matchChiefWebDailyTarget(message.body) !== config.targetDoc) return null;
   return Object.freeze({ id: message.id, text: message.body, generation: config.generation });
 }
 
@@ -50,10 +52,14 @@ export function createChiefWebRealIntakeRepository({ db, issueService, schema, o
   const { activityLog, issueComments, agents, instanceSettings } = schema;
   const { and, asc, desc, eq, gt, isNull, sql } = orm;
   const issues = issueService(db);
-  const requestKey = systemActor + ':' + config.conversationId + ':' + config.generation;
-  const scope = and(eq(activityLog.companyId, config.companyId), eq(activityLog.entityId, config.conversationId),
+  const daily = config.daily === true;
+  if (daily) resolveChiefWebRealScope(config);
+  const ledgerAction = target => daily ? activityAction + ':' + target : activityAction;
+  const action = ledgerAction(config.targetDoc);
+  const requestKey = systemActor + ':' + config.conversationId + ':' + config.generation + (daily ? ':' + config.targetDoc : '');
+  const activityScope = entry => and(eq(activityLog.companyId, config.companyId), eq(activityLog.entityId, config.conversationId),
     eq(activityLog.entityType, 'issue'), eq(activityLog.actorType, 'system'), eq(activityLog.actorId, systemActor),
-    eq(activityLog.action, activityAction));
+    eq(activityLog.action, entry));
 
   async function lockConversation(tx) {
     const conversation = await issues.getByIdForUpdate(config.conversationId, tx);
@@ -88,7 +94,7 @@ export function createChiefWebRealIntakeRepository({ db, issueService, schema, o
         let latest;
         async function readLatest() {
           if (latest !== undefined) return latest;
-          const [record] = await tx.select({ details: activityLog.details }).from(activityLog).where(scope)
+          const [record] = await tx.select({ details: activityLog.details }).from(activityLog).where(activityScope(action))
             .orderBy(desc(sql`(${activityLog.details}->>'sequence')::bigint`)).limit(1);
           latest = record?.details ?? null;
           if (latest && (latest.schemaVersion !== 1 || latest.generation !== config.generation ||
@@ -121,6 +127,7 @@ export function createChiefWebRealIntakeRepository({ db, issueService, schema, o
                 (description !== undefined && (typeof description !== 'string' || description.length > 16384))) {
               fail('CHIEF_WEB_REAL_TASK_INPUT_INVALID');
             }
+            if (daily && (await readLatest())?.state?.taskId !== taskId) fail('CHIEF_WEB_REAL_TASK_CHANGED');
             const task = await issues.getByIdForUpdate(taskId, tx);
             if (!same(task, {
               id: taskId, companyId: config.companyId, projectId: config.projectId, originKind,
@@ -138,12 +145,33 @@ export function createChiefWebRealIntakeRepository({ db, issueService, schema, o
               schemaVersion: 1, generation: config.generation, sequence: (current?.sequence ?? 0) + 1, state,
             };
             await tx.insert(activityLog).values({
-              companyId: config.companyId, actorType: 'system', actorId: systemActor, action: activityAction,
+              companyId: config.companyId, actorType: 'system', actorId: systemActor, action,
               entityType: 'issue', entityId: config.conversationId, responsibleUserId: config.userId, details,
             });
             latest = details;
           },
         });
+      });
+    },
+
+    async readHistory() {
+      if (!daily || config.targetDoc !== CHIEF_WEB_DAILY_DOCUMENTS[1]) return [];
+      return db.transaction(async tx => {
+        await lockConversation(tx);
+        const priorDoc = CHIEF_WEB_DAILY_DOCUMENTS[0];
+        const [row] = await tx.select({ details: activityLog.details }).from(activityLog)
+          .where(activityScope(ledgerAction(priorDoc)))
+          .orderBy(desc(sql`(${activityLog.details}->>'sequence')::bigint`)).limit(1);
+        const state = row?.details?.state;
+        const { pr, ci } = state ?? {};
+        if (!same(row?.details, { schemaVersion: 1, generation: config.generation }) ||
+            !same(state, { phase: 'done', targetDoc: priorDoc, generation: config.generation, revision: 1 }) ||
+            !is(uuid, state.taskId) || !is(digest, state.inputRevision) || typeof state.identifier !== 'string' ||
+            !Number.isSafeInteger(pr?.number) || pr.number < 1 || !is(sha, pr.headSha) ||
+            !same(ci, { conclusion: 'success', headSha: pr.headSha, number: pr.number }) ||
+            !is(digest, ci.checksDigest)) return [];
+        return [{ taskId: state.taskId, identifier: state.identifier, targetDoc: priorDoc, revision: state.revision,
+          prNumber: pr.number, headSha: pr.headSha, conclusion: ci.conclusion }];
       });
     },
 
@@ -250,6 +278,9 @@ export function mountChiefWebRealRoutes(router, { config, origin, repository, en
       if (typeof request.body?.body === 'string' && /^\s*\//.test(request.body.body)) {
         fail('CHIEF_WEB_REAL_NATIVE_COMMAND_DENIED', 400);
       }
+      if (config.daily === true && matchChiefWebDailyTarget(request.body?.body) !== config.targetDoc) {
+        fail('CHIEF_WEB_REAL_DAILY_TARGET_DENIED', 409);
+      }
     } catch (error) {
       return reportError(error, response);
     }
@@ -267,12 +298,17 @@ export function mountChiefWebRealRoutes(router, { config, origin, repository, en
       response.set('Cache-Control', 'no-store');
       if (!matchesBoard(request)) return response.status(404).json({ code: 'CHIEF_WEB_REAL_AUDIENCE_DENIED' });
       try {
-        if (!mutation) return response.status(200).json(await engine.status());
+        if (!mutation) {
+          const view = await engine.status();
+          if (config.daily === true) return response.status(200).json({ ...view, daily: true, history: await repository.readHistory() });
+          return response.status(200).json(view);
+        }
         await assertOrigin(request);
         const command = validateCommand(request.body);
         if (command.generation !== config.generation) fail('CHIEF_WEB_REAL_GENERATION_CHANGED');
         const result = await engine.control(command);
         if (command.action !== 'pause') wake();
+        if (config.daily === true) return response.status(202).json({ ...result, daily: true, history: await repository.readHistory() });
         return response.status(202).json(result);
       } catch (error) {
         return reportError(error, response);

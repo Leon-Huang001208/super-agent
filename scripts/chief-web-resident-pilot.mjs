@@ -6,12 +6,22 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
+import { CHIEF_WEB_DAILY_DOCUMENTS as DAILY_TARGETS, matchChiefWebDailyTarget } from '../bridge/chief-web-real-engine.mjs';
+
+export { DAILY_TARGETS };
 
 export const RESIDENT_PROJECT = 'super-agent-chief-web-resident-rwb';
 export const RESIDENT_ORIGIN = 'http://localhost:8112';
 export const RESIDENT_OWNER_TRANSPORT = 'http://127.0.0.1:8112';
 export const RESIDENT_TARGETS = Object.freeze(['intake', 'recovery', 'status'].map(name =>
   'docs/super-agent/chief-resident-' + name + '.md'));
+export const DAILY_PROJECT = 'super-agent-chief-web-daily-rwb';
+export const DAILY_ORIGIN = 'http://localhost:8113';
+export const DAILY_OWNER_TRANSPORT = 'http://127.0.0.1:8113';
+const deployments = Object.freeze({
+  2: { project: RESIDENT_PROJECT, origin: RESIDENT_ORIGIN, ownerTransport: RESIDENT_OWNER_TRANSPORT, variant: 'resident' },
+  3: { project: DAILY_PROJECT, origin: DAILY_ORIGIN, ownerTransport: DAILY_OWNER_TRANSPORT, variant: 'daily' },
+});
 const data = '/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0';
 const logs = data + '/logs';
 const leaseDatabase = data + '/state/control/admission.sqlite';
@@ -20,10 +30,10 @@ const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const digest = /^[a-f0-9]{64}$/;
 const sha = /^[a-f0-9]{40}$/;
 const hostDirectory = new RegExp('^' + logs.replaceAll('.', '\\.') + '/chief-web-real-rwb\\.[A-Za-z0-9._-]+$');
-const supervisorDirectory = new RegExp('^' + logs.replaceAll('.', '\\.') + '/chief-web-resident-rwb\\.[A-Za-z0-9._-]+$');
+const supervisorDirectory = new RegExp('^' + logs.replaceAll('.', '\\.') + '/chief-web-(?:resident|daily)-rwb\\.[A-Za-z0-9._-]+$');
 const phases = new Set(['activating', 'active', 'draining', 'blocked', 'complete', 'expired']);
 const nativePhases = new Set(['ready', 'understanding', 'developing', 'reviewing', 'awaiting_confirmation', 'approved',
-  'waiting_ci', 'done', 'blocked']);
+  'waiting_ci', 'awaiting_supplement', 'done', 'blocked']);
 const codePattern = /^CHIEF_WEB_RESIDENT_[A-Z_]+$/;
 const hash = value => createHash('sha256').update(value).digest('hex');
 const fail = code => { throw Object.assign(new Error(code), { code }); };
@@ -35,18 +45,20 @@ function absolute(value) {
 
 export function validateChiefWebResidentManifest(value) {
   const keys = ['schemaVersion', 'sourceRoot', 'sourceSha', 'imageId', 'dependenciesRoot', 'expiresAt', 'ownerSessionFile', 'slots'];
+  const daily = value?.schemaVersion === 3;
+  const targets = daily ? DAILY_TARGETS : RESIDENT_TARGETS;
   if (!value || Object.keys(value).length !== keys.length || !keys.every(key => Object.hasOwn(value, key)) ||
-      value.schemaVersion !== 2 || !absolute(value.sourceRoot) || !absolute(value.dependenciesRoot) ||
+      (!daily && value.schemaVersion !== 2) || !absolute(value.sourceRoot) || !absolute(value.dependenciesRoot) ||
       !absolute(value.ownerSessionFile) || !sha.test(value.sourceSha ?? '') || !/^sha256:[a-f0-9]{64}$/.test(value.imageId ?? '') ||
       !Number.isSafeInteger(value.expiresAt) || value.expiresAt <= 0 || !Array.isArray(value.slots) ||
-      value.slots.length !== RESIDENT_TARGETS.length || value.slots.some(slot => !slot || Object.keys(slot).length !== 3 ||
+      value.slots.length !== targets.length || value.slots.some(slot => !slot || Object.keys(slot).length !== 3 ||
         !hostDirectory.test(slot.scopeRoot ?? '') || !uuid.test(slot.conversationId ?? '') ||
         !uuid.test(slot.chiefAgentId ?? '')) ||
-      new Set(value.slots.map(slot => slot.conversationId)).size !== value.slots.length ||
-      new Set(value.slots.map(slot => slot.chiefAgentId)).size !== value.slots.length ||
+      new Set(value.slots.map(slot => slot.conversationId)).size !== (daily ? 1 : value.slots.length) ||
+      new Set(value.slots.map(slot => slot.chiefAgentId)).size !== (daily ? 1 : value.slots.length) ||
       new Set(value.slots.map(slot => slot.scopeRoot)).size !== value.slots.length) fail('CHIEF_WEB_RESIDENT_MANIFEST_INVALID');
   return Object.freeze({ ...value, slots: Object.freeze(value.slots.map((slot, index) =>
-    Object.freeze({ ...slot, targetDoc: RESIDENT_TARGETS[index] }))) });
+    Object.freeze({ ...slot, targetDoc: targets[index] }))) });
 }
 
 export function validateChiefWebResidentBindings(manifest, records) {
@@ -56,9 +68,11 @@ export function validateChiefWebResidentBindings(manifest, records) {
       typeof first?.userId !== 'string' || !first.userId) fail('CHIEF_WEB_RESIDENT_BINDING_INVALID');
   return records.map((binding, index) => {
     const slot = manifest.slots[index];
+    const daily = manifest.schemaVersion === 3;
     if (!matches(binding, { companyId: first.companyId, projectId: first.projectId, userId: first.userId,
       chiefAgentId: slot.chiefAgentId, conversationId: slot.conversationId, expiresAt: manifest.expiresAt,
-      targetDoc: slot.targetDoc, maxRevisions: 1 }) ||
+      targetDoc: slot.targetDoc, maxRevisions: daily ? index + 1 : 1 }) ||
+      (daily ? binding.daily !== true || binding.generation !== first.generation : binding.daily === true) ||
       !Number.isSafeInteger(binding.generation) || binding.generation < 0 ||
       !Number.isSafeInteger(binding.intakeFrom) || binding.intakeFrom >= binding.expiresAt ||
       !uuid.test(binding.conversationId)) fail('CHIEF_WEB_RESIDENT_BINDING_INVALID');
@@ -76,13 +90,17 @@ export function verifyChiefWebResidentFreshComments(comments, binding) {
       fail('CHIEF_WEB_RESIDENT_COMMENTS_UNVERIFIED');
     }
     if (created > binding.intakeFrom && row.authorUserId === binding.userId && row.deletedAt === null) {
+      if (binding.daily === true) {
+        if (typeof row.body !== 'string') fail('CHIEF_WEB_RESIDENT_COMMENTS_UNVERIFIED');
+        if (matchChiefWebDailyTarget(row.body) !== binding.targetDoc) continue;
+      }
       fail('CHIEF_WEB_RESIDENT_INACTIVE_OWNER_COMMENT');
     }
   }
 }
 
 function terminalReceipt(status, binding) {
-  if (status?.phase !== 'done' || status.generation !== binding.generation || status.revision !== 1 ||
+  if (status?.phase !== 'done' || status.generation !== binding.generation || status.revision !== binding.maxRevisions ||
       !uuid.test(status.taskId ?? '') || !digest.test(status.inputRevision ?? '') || status.operationId ||
       !Number.isSafeInteger(status.pr?.number) || status.pr.number <= 0 ||
       status.pr.url !== 'https://github.com/Leon-Huang001208/ResearchWorkbench/pull/' + status.pr.number ||
@@ -146,6 +164,7 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
     }
     const status = await host.status(slot);
     if (status?.phase !== 'ready' || status.generation !== binding.generation || status.taskId ||
+        (binding.daily === true && !matches(status, { targetDoc: binding.targetDoc, maxRevisions: binding.maxRevisions })) ||
         status.revision !== 0 || status.operationId) fail('CHIEF_WEB_RESIDENT_INTAKE_NOT_EMPTY');
     if (now() >= manifest.expiresAt) {
       await host.drain();
@@ -164,21 +183,26 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
         (blocked && (current.code !== 'CHIEF_WEB_RESIDENT_TASK_BLOCKED' || now() >= manifest.expiresAt))) return current;
     if (['activating', 'draining'].includes(current.phase)) fail('CHIEF_WEB_RESIDENT_TRANSITION_UNKNOWN');
     const slot = manifest.slots[current.index];
+    const binding = bindings[current.index];
     if (now() >= manifest.expiresAt) {
       if (current.phase === 'active') {
         await commit(current, { phase: 'draining' });
         await stop();
         await host.drain();
-        await host.disable(slot, bindings[current.index]);
+        await host.disable(slot, binding);
       }
       return commit(current, { phase: 'expired' });
     }
     if (current.phase === 'ready') return activate(current);
     if (current.conversationId !== slot.conversationId) fail('CHIEF_WEB_RESIDENT_PROGRESS_INVALID');
-    if (!localConsumer) await host.verifyActive(slot, bindings[current.index]);
+    if (!localConsumer) await host.verifyActive(slot, binding);
     const status = await host.status(slot);
-    if (!nativePhases.has(status?.phase) || status.generation !== bindings[current.index].generation || !Number.isSafeInteger(status.revision) ||
-        status.revision < 0 || status.revision > 1) fail('CHIEF_WEB_RESIDENT_NATIVE_STATUS_UNVERIFIED');
+    if (!nativePhases.has(status?.phase) || status.generation !== binding.generation || !Number.isSafeInteger(status.revision) ||
+        status.revision < 0 || status.revision > binding.maxRevisions ||
+        (status.phase === 'awaiting_supplement' && (binding.daily !== true || status.revision !== 1 || binding.maxRevisions !== 2)) ||
+        (binding.daily === true && !matches(status, { targetDoc: binding.targetDoc, maxRevisions: binding.maxRevisions }))) {
+      fail('CHIEF_WEB_RESIDENT_NATIVE_STATUS_UNVERIFIED');
+    }
     // The operator may have reconciled the original Native operation while the supervisor was stopped.
     // Only adopt a terminal receipt. The supervisor must never start an executor for a blocked slot.
     if (blocked && status.phase !== 'done') return current;
@@ -188,7 +212,7 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
       return commit(current, { phase: 'blocked', code: 'CHIEF_WEB_RESIDENT_TASK_BLOCKED' });
     }
     if (status.phase === 'done') {
-      const result = terminalReceipt(status, bindings[current.index]);
+      const result = terminalReceipt(status, binding);
       if (current.completed.some(entry => entry.taskId === result.taskId || entry.prNumber === result.prNumber)) {
         fail('CHIEF_WEB_RESIDENT_TERMINAL_UNVERIFIED');
       }
@@ -201,7 +225,8 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
       await stop();
       await host.drain();
       if (current.index + 1 === manifest.slots.length) {
-        await host.disable(slot, bindings[current.index]);
+        // Daily receipts remain readable after the capped terminal lane stops.
+        if (binding.daily !== true) await host.disable(slot, binding);
         return commit(current, { phase: 'complete', completed, code: null });
       }
       return activate({ ...current, index: current.index + 1, completed });
@@ -209,7 +234,7 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
     if (!localConsumer) {
       await host.drain();
       if (now() >= manifest.expiresAt) {
-        await host.disable(slot, bindings[current.index]);
+        await host.disable(slot, binding);
         return commit(current, { phase: 'expired', code: null });
       }
       localConsumer = true;
@@ -255,9 +280,10 @@ async function syncDirectory(directory) {
   try { await fd.sync(); } finally { await fd.close(); }
 }
 
-export async function claimChiefWebResidentLock(directory) {
+export async function claimChiefWebResidentLock(directory, project = RESIDENT_PROJECT) {
+  if (![RESIDENT_PROJECT, DAILY_PROJECT].includes(project)) fail('CHIEF_WEB_RESIDENT_CONFIGURATION_INVALID');
   await privateDirectory(directory);
-  const lock = path.join(directory, RESIDENT_PROJECT + '.supervisor.lock');
+  const lock = path.join(directory, project + '.supervisor.lock');
   try { await fs.mkdir(lock, { mode: 0o700 }); }
   catch (error) { if (error?.code === 'EEXIST') fail('CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED'); throw error; }
   const handle = await fs.open(lock, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
@@ -292,7 +318,7 @@ function hostEnvironment() {
 }
 
 export function chiefWebResidentChildEnvironment(slot) {
-  if (!RESIDENT_TARGETS.includes(slot?.targetDoc)) fail('CHIEF_WEB_RESIDENT_BINDING_INVALID');
+  if (!RESIDENT_TARGETS.includes(slot?.targetDoc) && !DAILY_TARGETS.includes(slot?.targetDoc)) fail('CHIEF_WEB_RESIDENT_BINDING_INVALID');
   return { ...hostEnvironment(), SUPER_AGENT_CHIEF_WEB_REAL_BROKER_ENABLED: '1',
     SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT: slot.targetDoc };
 }
@@ -338,16 +364,17 @@ async function createMacHost({ manifest, log }) {
   const docker = '/usr/local/bin/docker';
   const dockerDo = (args, options) => command(docker, args, options);
   const runner = path.join(manifest.sourceRoot, 'scripts/chief-web-real-runner.mjs');
-  const app = RESIDENT_PROJECT + '-paperclip-1';
-  const db = RESIDENT_PROJECT + '-db-1';
-  const gateway = RESIDENT_PROJECT + '-gateway-1';
+  const { project, origin, ownerTransport, variant } = deployments[manifest.schemaVersion];
+  const app = project + '-paperclip-1';
+  const db = project + '-db-1';
+  const gateway = project + '-gateway-1';
   let child;
   let childExit;
 
   function compose(slot, enabled, args, options) {
-    return dockerDo(['compose', '--env-file', '/dev/null', '--project-name', RESIDENT_PROJECT,
+    return dockerDo(['compose', '--env-file', '/dev/null', '--project-name', project,
       '-f', path.join(manifest.sourceRoot, 'compose.chief-web-real.yaml'),
-      '-f', path.join(manifest.sourceRoot, 'compose.chief-web-resident.yaml'), ...args], {
+      '-f', path.join(manifest.sourceRoot, 'compose.chief-web-' + variant + '.yaml'), ...args], {
       env: { ...hostEnvironment(), SUPER_AGENT_RUNTIME_IMAGE: manifest.imageId,
         SUPER_AGENT_VERIFIED_DEPENDENCIES: manifest.dependenciesRoot,
         SUPER_AGENT_CHIEF_REAL_BROKER_ROOT: path.join(slot.scopeRoot, 'broker'),
@@ -361,7 +388,7 @@ async function createMacHost({ manifest, log }) {
       '{{index .Config.Labels "com.docker.compose.service"}}|' + checks;
     const raw = await dockerDo(['inspect', '--type', 'container', '--format', format, name]);
     const parts = raw.split('|');
-    if (parts[0] !== 'true' || parts[1] !== RESIDENT_PROJECT || parts[2] !== service) fail('CHIEF_WEB_RESIDENT_CONTAINER_UNVERIFIED');
+    if (parts[0] !== 'true' || parts[1] !== project || parts[2] !== service) fail('CHIEF_WEB_RESIDENT_CONTAINER_UNVERIFIED');
     return parts.slice(3);
   }
 
@@ -378,9 +405,9 @@ async function createMacHost({ manifest, log }) {
       '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}');
     await inspect(gateway, 'gateway', '');
     const port = await dockerDo(['port', gateway, '3100/tcp']);
-    if (appImage !== manifest.imageId || appVolume !== RESIDENT_PROJECT + '_state' ||
+    if (appImage !== manifest.imageId || appVolume !== project + '_state' ||
         dependencies !== 'bind:' + manifest.dependenciesRoot + ':false' ||
-        dbVolume !== RESIDENT_PROJECT + '_database' || port !== '127.0.0.1:8112' ||
+        dbVolume !== project + '_database' || port !== new URL(ownerTransport).host ||
         (enabled !== undefined && feature !== String(enabled)) || (slot && configuredDoc !== 'matched') ||
         (slot && broker !== path.join(slot.scopeRoot, 'broker')) ||
         (!slot && !manifest.slots.some(item => broker === path.join(item.scopeRoot, 'broker')))) {
@@ -418,8 +445,8 @@ async function createMacHost({ manifest, log }) {
     for (let attempt = 0; attempt < 8; attempt++) {
       let response;
       try {
-        response = await fetch(RESIDENT_OWNER_TRANSPORT + '/api/issues/' + slot.conversationId + '/' + resource, {
-          headers: { cookie, accept: 'application/json', host: 'localhost:8112', origin: RESIDENT_ORIGIN },
+        response = await fetch(ownerTransport + '/api/issues/' + slot.conversationId + '/' + resource, {
+          headers: { cookie, accept: 'application/json', host: new URL(origin).host, origin },
           redirect: 'error', signal: AbortSignal.timeout(5000),
         });
       } catch {
@@ -520,6 +547,8 @@ async function runCli(mode, filename) {
   const directory = path.dirname(filename);
   await privateDirectory(directory);
   const manifest = validateChiefWebResidentManifest(await readPrivate(filename));
+  const { project, origin, variant } = deployments[manifest.schemaVersion];
+  if (!path.basename(directory).startsWith('chief-web-' + variant + '-rwb.')) fail('CHIEF_WEB_RESIDENT_COMMAND_INVALID');
   const progress = path.join(directory, 'progress.json');
   const manifestDigest = hash(JSON.stringify(manifest));
   const store = {
@@ -534,7 +563,7 @@ async function runCli(mode, filename) {
     write: state => writeProgress(progress, { schemaVersion: 1, manifestDigest, state }),
   };
   if (mode === 'status') {
-    return { project: RESIDENT_PROJECT, origin: RESIDENT_ORIGIN, expiresAt: manifest.expiresAt,
+    return { project, origin, expiresAt: manifest.expiresAt,
       progress: await store.read() ?? { phase: 'ready', index: 0, completed: [] } };
   }
   if (process.platform !== 'darwin' || process.env.SUPER_AGENT_CHIEF_WEB_RESIDENT_ENABLED !== '1' ||
@@ -554,7 +583,7 @@ async function runCli(mode, filename) {
     if (scope.imageId !== manifest.imageId || scope.dependenciesRoot !== manifest.dependenciesRoot) fail('CHIEF_WEB_RESIDENT_SCOPE_DRIFT');
     return readPrivate(path.join(slot.scopeRoot, 'binding.json'));
   })));
-  const releaseLock = await claimChiefWebResidentLock(logs);
+  const releaseLock = await claimChiefWebResidentLock(logs, project);
   const log = async event => {
     const file = await fs.open(path.join(directory, 'supervisor.jsonl'),
       constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);

@@ -3,6 +3,7 @@ import { setImmediate } from 'node:timers/promises';
 import { test } from 'node:test';
 import { createChiefWebRealIntakeRepository, mountChiefWebRealRoutes, verifyChiefWebRealOwnerMessage } from '../bridge/chief-web-real-intake.mjs';
 import { createChiefWebRealClient } from '../plugins/chief-web-pilot/ui/index.js';
+import { CHIEF_WEB_DAILY_DOCUMENTS } from '../bridge/chief-web-real-engine.mjs';
 
 const id = n => '00000000-0000-0000-0000-00000000000' + n;
 const config = Object.freeze({ companyId: id(1), chiefAgentId: id(2), conversationId: id(3), projectId: id(4),
@@ -25,6 +26,70 @@ test('selects only the verified Native owner message in the authorized intake wi
     { clientRequestId: '' }, { conversationSessionGeneration: 0 }, { createdAt: new Date(10) }, { body: ' /new' }, { body: 'x'.repeat(4001) }]) {
     assert.equal(verifyChiefWebRealOwnerMessage({ ...message, ...changes }, config), null);
   }
+});
+
+test('daily intake routes a Native message to exactly one document in the same conversation', () => {
+  const [first, second] = CHIEF_WEB_DAILY_DOCUMENTS;
+  const binding = { ...config, daily: true, targetDoc: second, maxRevisions: 2 };
+  const body = '请在 ' + second + ' 追加一节，沿用原 PR。';
+  assert.equal(verifyChiefWebRealOwnerMessage({ ...message, body }, binding).text, body);
+  for (const text of [message.body, first, '把 ' + first + ' 和 ' + second + ' 一起改',
+    second + '.backup', '../' + second, second + ' 还要修改 docs/other.md']) {
+    assert.equal(verifyChiefWebRealOwnerMessage({ ...message, body: text }, binding), null);
+  }
+});
+
+test('daily tasks use separate Native idempotency keys and expose the verified prior receipt', async () => {
+  const [first, second] = CHIEF_WEB_DAILY_DOCUMENTS;
+  const columns = ['companyId', 'entityId', 'entityType', 'actorType', 'actorId', 'action', 'details'];
+  const activityLog = Object.fromEntries(columns.map(key => [key, key]));
+  const records = [];
+  const keys = [];
+  const tx = {
+    select() {
+      const query = {
+        from() { return query; },
+        where(predicate) { query.predicate = predicate; return query; },
+        orderBy() { return query; },
+        async limit() { return records.filter(query.predicate).slice(0, 1); },
+      };
+      return query;
+    },
+    insert() { return { async values(row) { records.unshift(row); } }; },
+  };
+  const conversation = { id: config.conversationId, companyId: config.companyId, conversationAgentId: config.chiefAgentId,
+    conversationUserId: config.userId, conversationSessionGeneration: config.generation };
+  const repository = (targetDoc, maxRevisions) => createChiefWebRealIntakeRepository({
+    db: { transaction: work => work(tx) }, config: { ...config, daily: true, targetDoc, maxRevisions },
+    schema: { activityLog },
+    orm: { eq: (key, expected) => row => row[key] === expected, and: (...filters) => row => filters.every(fn => fn(row)),
+      sql: () => {}, desc: () => {} },
+    issueService: () => ({
+      getByIdForUpdate: () => conversation,
+      create(companyId, data) {
+        keys.push(data.idempotencyKey);
+        return { ...data, id: id(6 + keys.length), identifier: 'DOC-' + keys.length, companyId, assigneeAgentId: null };
+      },
+    }),
+  });
+  const left = repository(first, 1);
+  const right = repository(second, 2);
+  const headSha = 'a'.repeat(40);
+  await left.transaction(async store => {
+    const task = await store.createTask({ title: 'First', description: 'First scope' });
+    await store.appendState({ taskId: task.id, identifier: task.identifier, targetDoc: first, revision: 1, generation: config.generation,
+      phase: 'done', inputRevision: 'b'.repeat(64), pr: { number: 10, headSha },
+      ci: { number: 10, headSha, conclusion: 'success', checksDigest: 'c'.repeat(64) } });
+  });
+  await right.transaction(async store => {
+    assert.equal(await store.readState(), null);
+    const task = await store.createTask({ title: 'Second', description: 'Second scope' });
+    await store.appendState({ taskId: task.id, identifier: task.identifier, targetDoc: second });
+    await assert.rejects(store.setTask({ taskId: id(7), status: 'done' }), { code: 'CHIEF_WEB_REAL_TASK_CHANGED' });
+  });
+  assert.equal(new Set(keys).size, 2);
+  assert.deepEqual(await right.readHistory(), [{ taskId: id(7), identifier: 'DOC-1', targetDoc: first, revision: 1,
+    prNumber: 10, headSha, conclusion: 'success' }]);
 });
 
 function routeFixture() {
