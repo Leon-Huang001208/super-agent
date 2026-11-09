@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createFeishuProjectDeliveryAdmission } from '../bridge/feishu-auto-rwb-admission.mjs';
+import { createFeishuProjectDeliveryAdmission } from '../bridge/feishu-project-admission.mjs';
 import { validateProjectDeliverySupplement } from '../bridge/feishu-project-delivery-policy.mjs';
 import { routeFeishuProjectDelivery } from '../bridge/feishu-project-delivery.mjs';
 
@@ -19,7 +19,7 @@ function projectsFor(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const effects = [];
   const profile = (key, taskId, file) => {
-    const namespace = 'feishu-auto-' + key;
+    const namespace = 'feishu-project-' + key;
     mkdirSync(path.join(root, namespace), { mode: 0o700 });
     const now = Date.now();
     writeFileSync(path.join(root, namespace, 'policy.json'), JSON.stringify({
@@ -73,3 +73,13 @@ test('two projects share intake but keep scopes, permits and continuations isola
   ]);
 });
 
+test('concurrent replay of one message cannot reserve two projects', async t => {
+  const { route, effects } = projectsFor(t);
+  const [first, second] = await Promise.all([
+    route('/任务 rwb 新增文档\n文件：\ndocs/super-agent/intake.md', 1),
+    route('/任务 sandbox 改进工作程序\n文件：\nsrc/worker.js', 1),
+  ]);
+  assert.equal(first.taskId, rwbTask);
+  assert.equal(second.code, 'FPD_OPERATION_PROJECT_CONFLICT');
+  assert.equal(effects.length, 1);
+});

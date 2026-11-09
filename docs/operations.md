@@ -83,6 +83,6 @@ RWB 是当前运行覆盖层的内置项目，保留现有 `/rwb` 兼容入口�
 
 ### RWB 运行覆盖层
 
-自动接单以实际运行的 Native、飞书和宿主组件为基线。操作前确认飞书唯一监听、Paperclip 任务排空、共享写租约和旧 Host 窗口为空。保留现有容器配置、镜像及数据，保持历史发件请求隔离。用 `node scripts/prepare-feishu-auto-rwb-overlay.mjs <Paperclip运行包> <飞书运行包> <新目录>` 从固定基线生成候选。准备器核对每个替换文件的字节摘要，输出候选摘要清单。用 `scripts/check-feishu-auto-rwb-compose.mjs` 对照正在运行的容器核对原文件字节、镜像、挂载、环境和隔离选项。候选复用原镜像、网络和数据卷。
+自动接单以实际运行的 Native、飞书和宿主组件为基线。操作前确认飞书唯一监听、Paperclip 任务排空、共享写租约和旧 Host 窗口为空。保留现有容器配置、镜像及数据，保持历史发件请求隔离。用 `node scripts/prepare-feishu-project-overlay.mjs <Paperclip运行包> <飞书运行包> <新目录>` 从固定基线生成候选。准备器核对每个替换文件的字节摘要，输出候选摘要清单。用 `scripts/check-feishu-project-compose.mjs` 对照正在运行的容器核对原文件字节、镜像、挂载、环境和隔离选项。候选复用原镜像、网络和数据卷。
 
-在统一集成状态根的私有 `feishu-auto-rwb/policy.json` 设置有效窗口和至多两组精确路径。每组写入预先用目标仓库验证规划器核实的检查 ID。原运行配置保持 `dispatchMode=off` 和 `githubMode=off`，仅专项已绑定任务进入受控派发。结束时排空原操作、关闭专项策略并保留记录。回退恢复原容器定义和镜像，先核对在途操作与远端 PR。
+在统一集成状态根的私有 `feishu-project-rwb/policy.json` 设置有效窗口和至多两组精确路径。每组写入预先用目标仓库验证规划器核实的检查 ID。原运行配置保持 `dispatchMode=off` 和 `githubMode=off`，仅专项已绑定任务进入受控派发。结束时排空原操作、关闭专项策略并保留记录。回退恢复原容器定义和镜像，先核对在途操作与远端 PR。

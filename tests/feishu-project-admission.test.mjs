@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createFeishuAutoRwbAdmission } from '../bridge/feishu-auto-rwb-admission.mjs';
+import { createRwbFeishuAdmission } from '../bridge/project-adapters/rwb/feishu-adapter.mjs';
 
 const operation = '10000000-0000-4000-8000-000000000001';
 const secondOperation = '10000000-0000-4000-8000-000000000002';
@@ -27,14 +27,14 @@ const base = Object.freeze({ schemaVersion: 1, dispatchMode: 'off', effectiveAtU
 function setup(t) {
   const root = mkdtempSync(path.join(tmpdir(), 'feishu-auto-admission-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const directory = path.join(root, 'feishu-auto-rwb');
+  const directory = path.join(root, 'feishu-project-rwb');
   const policyFile = path.join(directory, 'policy.json');
   const policy = { schemaVersion: 1, effectiveAt: 10, expiresAt: 30, scopes: [{ paths, checks },
     { paths: codePaths, checks: codeChecks }] };
   const contexts = new Map();
   let now = 20;
   const open = (readTaskContext = taskId => contexts.get(taskId)) =>
-    createFeishuAutoRwbAdmission({ root, now: () => now, readTaskContext });
+    createRwbFeishuAdmission({ root, now: () => now, readTaskContext });
   function enable() {
     mkdirSync(directory, { mode: 0o700 });
     writeFileSync(policyFile, JSON.stringify(policy), { mode: 0o600 });

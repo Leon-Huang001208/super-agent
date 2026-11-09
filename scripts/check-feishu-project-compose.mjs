@@ -27,7 +27,7 @@ function securityOptions(values, cwd) {
   }));
 }
 
-export function checkFeishuAutoRwbCompose(overlay, name) {
+export function checkFeishuProjectCompose(overlay, name) {
   if (!['paperclip', 'feishu-connection'].includes(name) || !path.isAbsolute(overlay)) fail('argument');
   const [running] = JSON.parse(docker(['inspect', project + '-' + name + '-1']));
   const labels = running.Config.Labels;
@@ -99,7 +99,7 @@ export function checkFeishuAutoRwbCompose(overlay, name) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const result = checkFeishuAutoRwbCompose(process.argv[2], process.argv[3]);
+    const result = checkFeishuProjectCompose(process.argv[2], process.argv[3]);
     console.log(JSON.stringify(result));
   } catch (error) {
     console.error(JSON.stringify({ code: /^FRA_COMPOSE_DRIFT:[a-z-]+$/.test(error?.message ?? '') ? error.message : 'FRA_COMPOSE_CHECK_FAILED' }));

@@ -11,7 +11,7 @@ const PATH_REFERENCE = /(?<![A-Za-z0-9_./\\%])(?:[\\/])?(?:[A-Za-z0-9_.%*?\[\]-]
 const UNICODE_FILE_REFERENCE = /(?<![\p{L}\p{M}\p{N}_./\\%])(?:[\\/])?[A-Za-z0-9_.%*?\[\]-]+[\\/](?:[\p{L}\p{M}\p{N}_.%*?\[\]-]+[\\/])*[\p{L}\p{M}\p{N}_.%*?\[\]-]+\.[A-Za-z0-9]+(?![A-Za-z0-9_.%*?\[\]\\/])/gu;
 const QUOTED_REFERENCE = /\x60([^\x60\r\n]+)\x60|「([^」\r\n]+)」|“([^”\r\n]+)”/gu;
 const FILE_REFERENCE = /(?:\.[\p{L}\p{N}]+$|[%*?\[\]])/u;
-const NESTED_COMMAND = /(?:^|\n)[ \t]*\/(?:任务|rwb)(?:[ \t]|$)/u;
+const NESTED_COMMAND = /(?:^|\n)[ \t]*\/(?:任务|[A-Za-z][A-Za-z0-9_-]*)(?:[ \t]|$)/u;
 const denied = code => ({ ok: false, code });
 const invalid = code => ({ kind: 'invalid', code });
 

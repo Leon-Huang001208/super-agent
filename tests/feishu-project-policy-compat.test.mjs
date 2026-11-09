@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseFeishuAutoRwbIntake, validateFeishuAutoRwbSupplement } from '../bridge/feishu-auto-rwb-policy.mjs';
+import { parseFeishuAutoRwbIntake, validateFeishuAutoRwbSupplement } from '../bridge/project-adapters/rwb/feishu-policy.mjs';
 
 const doc = 'docs/super-agent/feishu-scope.md';
 const ui = 'app/research_web/ui/progress.mjs';

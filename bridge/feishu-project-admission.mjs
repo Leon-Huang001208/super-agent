@@ -3,7 +3,6 @@ import {
   closeSync, constants, fstatSync, fsyncSync, lstatSync, openSync, readSync, renameSync, unlinkSync, writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { validateFeishuAutoRwbSupplement } from './feishu-auto-rwb-policy.mjs';
 
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const digest = /^[a-f0-9]{64}$/;
@@ -158,7 +157,7 @@ function receipt(record) {
 export function createFeishuProjectDeliveryAdmission({ root, namespace, validateSupplement, now = Date.now, readTaskContext } = {}) {
   if (typeof root !== 'string' || !path.isAbsolute(root) || path.resolve(root) !== root ||
       root.includes('\0') || typeof now !== 'function' ||
-      typeof namespace !== 'string' || !/^feishu-auto-[a-z0-9][a-z0-9-]{0,47}$/.test(namespace) ||
+      typeof namespace !== 'string' || !/^feishu-project-[a-z0-9][a-z0-9-]{0,47}$/.test(namespace) ||
       typeof validateSupplement !== 'function' ||
       (readTaskContext !== undefined && typeof readTaskContext !== 'function')) deny('FRA_CONFIGURATION_INVALID');
   const directory = path.join(root, namespace);
@@ -290,9 +289,4 @@ export function createFeishuProjectDeliveryAdmission({ root, namespace, validate
   }
   return Object.freeze({ enabled: () => Boolean(activePolicy()), deadline,
     reserve, bind, runtimeConfig, lookup, operation });
-}
-
-export function createFeishuAutoRwbAdmission(options = {}) {
-  return createFeishuProjectDeliveryAdmission({ ...options, namespace: 'feishu-auto-rwb',
-    validateSupplement: validateFeishuAutoRwbSupplement });
 }
