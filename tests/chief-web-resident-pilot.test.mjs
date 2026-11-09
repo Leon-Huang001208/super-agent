@@ -3,7 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
 import {
-  RESIDENT_PROJECT, RESIDENT_OWNER_TRANSPORT, RESIDENT_TARGETS, validateChiefWebResidentBindings,
+  DAILY_PROJECT, DAILY_OWNER_TRANSPORT, DAILY_TARGETS, RESIDENT_PROJECT, RESIDENT_OWNER_TRANSPORT, RESIDENT_TARGETS,
+  validateChiefWebResidentBindings,
   validateChiefWebResidentManifest, createChiefWebResidentPilot, verifyChiefWebResidentFreshComments,
   chiefWebResidentChildEnvironment, claimChiefWebResidentLock,
 } from '../scripts/chief-web-resident-pilot.mjs';
@@ -22,6 +23,18 @@ const expectedBindings = () => manifest.slots.map((slot, n) => ({
   generation: n, intakeFrom: 20,
 }));
 const bindings = validateChiefWebResidentBindings(manifest, expectedBindings());
+const dailyManifestInput = () => {
+  const original = manifestInput();
+  const first = original.slots[0];
+  return { ...original, schemaVersion: 3, slots: [
+    first, { ...original.slots[1], conversationId: first.conversationId, chiefAgentId: first.chiefAgentId },
+  ] };
+};
+const dailyManifest = validateChiefWebResidentManifest(dailyManifestInput());
+const expectedDailyBindings = () => dailyManifest.slots.map((slot, index) => ({
+  ...expectedBindings()[0], daily: true, targetDoc: slot.targetDoc, maxRevisions: index + 1,
+}));
+const dailyBindings = validateChiefWebResidentBindings(dailyManifest, expectedDailyBindings());
 const ready = index => ({ phase: 'ready', generation: index, revision: 0, taskId: null });
 function done(index) {
   const number = index + 1;
@@ -31,7 +44,7 @@ function done(index) {
     ci: { number, headSha, conclusion: 'success', checksDigest: 'f'.repeat(64) } };
 }
 
-function fixture() {
+function fixture({ manifest: scope = manifest, bindings: records = bindings } = {}) {
   let state;
   let clock = 100;
   let refuseDrain = false;
@@ -40,8 +53,10 @@ function fixture() {
   let inactiveComment = null;
   let expiryAfterStatus = null;
   const seen = [];
-  const statuses = bindings.map((_binding, index) => ready(index));
-  const slotIndex = slot => manifest.slots.indexOf(slot);
+  const statuses = records.map((binding, index) => ({
+    ...ready(index), generation: binding.generation, targetDoc: binding.targetDoc, maxRevisions: binding.maxRevisions,
+  }));
+  const slotIndex = slot => scope.slots.indexOf(slot);
   const store = {
     read: () => state,
     write(value) { state = value; seen.push(['write', value.phase, value.index]); },
@@ -64,7 +79,7 @@ function fixture() {
     status(slot) {
       const index = slotIndex(slot);
       seen.push(['status', index]);
-      if (expiryAfterStatus === index) clock = manifest.expiresAt;
+      if (expiryAfterStatus === index) clock = scope.expiresAt;
       return statuses[index];
     },
     start(slot) { seen.push(['start', slotIndex(slot)]); },
@@ -73,8 +88,8 @@ function fixture() {
   };
   return {
     get current() { return state; }, statuses, seen,
-    make: () => createChiefWebResidentPilot({ manifest, bindings, store, host, now: () => clock }),
-    setExpiry: () => { clock = manifest.expiresAt; },
+    make: () => createChiefWebResidentPilot({ manifest: scope, bindings: records, store, host, now: () => clock }),
+    setExpiry: () => { clock = scope.expiresAt; },
     setLease: value => { refuseDrain = value; },
     activationFails: () => { activateFailure = true; },
     activationExpires: () => { activateExpired = true; },
@@ -100,6 +115,44 @@ test('private manifest fixes ordered documents and a single Native owner scope',
   foreign[2].userId = 'owner';
   foreign[2].maxRevisions = 2;
   assert.throws(() => validateChiefWebResidentBindings(manifest, foreign), { code: 'CHIEF_WEB_RESIDENT_BINDING_INVALID' });
+});
+
+test('daily manifest fixes two document scopes to the same Chief conversation', () => {
+  assert.deepEqual(dailyManifest.slots.map(slot => slot.targetDoc), DAILY_TARGETS);
+  const separate = dailyManifestInput();
+  separate.slots[1].conversationId = id(99);
+  assert.throws(() => validateChiefWebResidentManifest(separate), { code: 'CHIEF_WEB_RESIDENT_MANIFEST_INVALID' });
+  const differentGeneration = expectedDailyBindings();
+  differentGeneration[1].generation++;
+  assert.throws(() => validateChiefWebResidentBindings(dailyManifest, differentGeneration), { code: 'CHIEF_WEB_RESIDENT_BINDING_INVALID' });
+  const wrongCap = expectedDailyBindings();
+  wrongCap[1].maxRevisions = 1;
+  assert.throws(() => validateChiefWebResidentBindings(dailyManifest, wrongCap), { code: 'CHIEF_WEB_RESIDENT_BINDING_INVALID' });
+});
+
+test('daily rotation waits for both required exact receipts and keeps the final task view readable', async () => {
+  const env = fixture({ manifest: dailyManifest, bindings: dailyBindings });
+  const pilot = env.make();
+  await pilot.step();
+  const status = (index, phase, revision) => ({
+    ...done(index), phase, revision, generation: 0, targetDoc: DAILY_TARGETS[index], maxRevisions: index + 1,
+  });
+  env.statuses[0] = status(0, 'waiting_ci', 1);
+  assert.equal((await pilot.step()).index, 0);
+  env.statuses[0] = status(0, 'done', 1);
+  assert.equal((await pilot.step()).index, 1);
+  env.statuses[1] = status(1, 'awaiting_supplement', 1);
+  assert.equal((await pilot.step()).phase, 'active');
+  env.statuses[1] = status(1, 'done', 1);
+  await assert.rejects(pilot.step(), { code: 'CHIEF_WEB_RESIDENT_TERMINAL_UNVERIFIED' });
+  env.statuses[1] = status(1, 'done', 2);
+  const final = await pilot.step();
+  assert.equal(final.phase, 'complete');
+  assert.deepEqual(final.completed.map(item => item.prNumber), [1, 2]);
+  assert.equal(final.completed[0].conversationId, final.completed[1].conversationId);
+  assert.deepEqual(env.seen.filter(([type]) => ['start', 'stop', 'disable'].includes(type)), [
+    ['start', 0], ['stop'], ['start', 1], ['stop'],
+  ]);
 });
 
 test('moves to the next exact chat only after each positive Native receipt and drain', async () => {
@@ -229,13 +282,26 @@ test('comment gate verifies exact conversation metadata and rejects a truncated 
   assert.throws(() => verifyChiefWebResidentFreshComments(Array(65).fill(old), binding), { code: 'CHIEF_WEB_RESIDENT_COMMENTS_UNVERIFIED' });
 });
 
+test('daily comment gate admits prior lane context and rejects premature current lane input', () => {
+  const binding = dailyBindings[1];
+  const recent = { id: id(22), issueId: binding.conversationId, companyId: binding.companyId,
+    authorUserId: binding.userId, deletedAt: null, createdAt: new Date(binding.intakeFrom + 1).toISOString(),
+    body: '修改 ' + DAILY_TARGETS[0] + ' 的说明。' };
+  verifyChiefWebResidentFreshComments([recent, { ...recent, body: '进展如何' }], binding);
+  assert.throws(() => verifyChiefWebResidentFreshComments([{ ...recent, body: DAILY_TARGETS[1] }], binding),
+    { code: 'CHIEF_WEB_RESIDENT_INACTIVE_OWNER_COMMENT' });
+  assert.throws(() => verifyChiefWebResidentFreshComments([{ ...recent, body: undefined }], binding),
+    { code: 'CHIEF_WEB_RESIDENT_COMMENTS_UNVERIFIED' });
+});
+
 test('child receives only the fixed selected document and owner transport is numeric loopback', () => {
-  for (const slot of manifest.slots) {
+  for (const slot of [...manifest.slots, ...dailyManifest.slots]) {
     const env = chiefWebResidentChildEnvironment(slot);
     assert.equal(env.SUPER_AGENT_CHIEF_WEB_REAL_BROKER_ENABLED, '1');
     assert.equal(env.SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT, slot.targetDoc);
   }
   assert.equal(RESIDENT_OWNER_TRANSPORT, 'http://127.0.0.1:8112');
+  assert.equal(DAILY_OWNER_TRANSPORT, 'http://127.0.0.1:8113');
 });
 
 test('project-wide lock refuses another manifest and preserves a replaced unknown owner', async t => {
@@ -243,6 +309,7 @@ test('project-wide lock refuses another manifest and preserves a replaced unknow
   t.after(() => fs.rm(parent, { recursive: true }));
   const release = await claimChiefWebResidentLock(parent);
   await assert.rejects(claimChiefWebResidentLock(parent), { code: 'CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED' });
+  await assert.rejects(claimChiefWebResidentLock(parent, DAILY_PROJECT), { code: 'CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED' });
   const lock = path.join(parent, RESIDENT_PROJECT + '.supervisor.lock');
   await fs.rename(lock, path.join(parent, 'old-owner'));
   await fs.mkdir(lock, { mode: 0o700 });

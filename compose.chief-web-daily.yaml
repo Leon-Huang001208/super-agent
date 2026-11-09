@@ -1,0 +1,15 @@
+name: super-agent-chief-web-daily-rwb
+
+services:
+  db:
+    restart: unless-stopped
+  paperclip:
+    restart: unless-stopped
+    environment:
+      PAPERCLIP_PUBLIC_URL: http://localhost:8113
+      PAPERCLIP_AUTH_PUBLIC_BASE_URL: http://localhost:8113
+      BETTER_AUTH_TRUSTED_ORIGINS: http://localhost:8113
+      SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT: "${SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT:?set the exact daily document}"
+  gateway:
+    restart: unless-stopped
+    ports: !override [127.0.0.1:8113:3100]
