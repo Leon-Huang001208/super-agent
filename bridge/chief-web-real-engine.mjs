@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 
 const defaultDocument = 'docs/super-agent/chief-task-verification.md';
 const packagedDocument = 'docs/super-agent/chief-browser-acceptance.md';
+export const CHIEF_WEB_DAILY_DOCUMENTS = Object.freeze([
+  'docs/super-agent/chief-daily-task-intake.md',
+  'docs/super-agent/chief-daily-result-recovery.md',
+]);
 const documentCaps = new Map([
   [defaultDocument, 2],
   [packagedDocument, 2],
@@ -9,6 +13,8 @@ const documentCaps = new Map([
   ['docs/super-agent/chief-resident-intake.md', 1],
   ['docs/super-agent/chief-resident-recovery.md', 1],
   ['docs/super-agent/chief-resident-status.md', 1],
+  [CHIEF_WEB_DAILY_DOCUMENTS[0], 1],
+  [CHIEF_WEB_DAILY_DOCUMENTS[1], 2],
 ]);
 export const REAL_RWB_DOCUMENT = process.env.SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT || defaultDocument;
 if (!documentCaps.has(REAL_RWB_DOCUMENT)) fail('CHIEF_WEB_REAL_DOCUMENT_DENIED');
@@ -38,8 +44,17 @@ export function realDigest(fields) {
 
 export function resolveChiefWebRealScope(config = {}) {
   const { targetDoc = defaultDocument, maxRevisions = 2 } = config;
-  if (documentCaps.get(targetDoc) !== maxRevisions) fail('CHIEF_WEB_REAL_SCOPE_CONFIGURATION_INVALID');
+  if (documentCaps.get(targetDoc) !== maxRevisions ||
+      CHIEF_WEB_DAILY_DOCUMENTS.includes(targetDoc) !== (config.daily === true)) fail('CHIEF_WEB_REAL_SCOPE_CONFIGURATION_INVALID');
   return Object.freeze({ targetDoc, maxRevisions });
+}
+
+export function matchChiefWebDailyTarget(text) {
+  if (typeof text !== 'string') return null;
+  const paths = new Set((text.match(/(?<![A-Za-z0-9_./-])docs\/[A-Za-z0-9_./-]+/g) ?? [])
+    .map(value => value.replace(/\.$/, '')));
+  const [target] = paths;
+  return paths.size === 1 && CHIEF_WEB_DAILY_DOCUMENTS.includes(target) ? target : null;
 }
 
 export function assertChiefWebRealDocumentBinding(config) {
@@ -96,7 +111,9 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
         (targetDoc === packagedDocument && state.targetDoc === packagedDocument));
     if ((!legacy && !same(state, scope)) || !Number.isSafeInteger(state.revision) ||
         state.revision < 0 || state.revision > maxRevisions) fail('CHIEF_WEB_REAL_SCOPE_CHANGED');
-    return { ...state, ...scope, contextRevision: realDigest([config.conversationId, state.generation, state.sequence]) };
+    const context = [config.conversationId, state.generation, state.sequence];
+    if (config.daily === true) context.push(targetDoc);
+    return { ...state, ...scope, contextRevision: realDigest(context) };
   }
 
   function messageRevision(generation, inputs, text) {

@@ -255,6 +255,7 @@ function ChiefWebRealTask({ issueId }) {
         const next = await client.status(controller.signal);
         if (controller.signal.aborted || revision !== current.revision) return undefined;
         setView(next);
+        setError(null);
         return next;
       } catch (cause) {
         if (!controller.signal.aborted && revision === current.revision) setError(safeCode(cause?.message));
@@ -264,7 +265,8 @@ function ChiefWebRealTask({ issueId }) {
 
     async function poll() {
       const next = current.busy ? undefined : await current.refresh();
-      if (!controller.signal.aborted && next !== null && !['done', 'blocked'].includes(next?.phase)) {
+      const dailyRotation = next?.daily === true && next.phase === 'done' && next.maxRevisions === 1;
+      if (!controller.signal.aborted && next !== null && (dailyRotation || !['done', 'blocked'].includes(next?.phase))) {
         timer = globalThis.setTimeout(poll, 2500);
       }
     }
@@ -310,12 +312,18 @@ function ChiefWebRealTask({ issueId }) {
 
   return el('section', { 'aria-label': 'Chief 真实 RWB 任务', className: 'space-y-2 p-2' },
     el('p', { role: 'status' }, paused ? '任务已暂停' : (realLabels[phase] ?? '任务处理中')),
+    view.daily ? el('p', null, '当前文件 ' + view.targetDoc) : null,
     taskId ? el('p', null, 'Paperclip 任务 ' + identifier + ' · ' + taskId) : null,
     view.inputRevision ? el('p', null, '输入版本 ' + view.revision + ' · ' + view.inputRevision) : null,
     prUrl ? el('p', null, el('a', { href: prUrl }, 'RWB PR #' + pr.number), ' · ' + pr.headSha) : null,
     ci ? el('p', null, 'CI ' + ci.conclusion + ' · ' + ci.headSha) : null,
     view.canConfirm ? el('p', null, '待确认候选 ' + candidateSha) : null,
     error || view.code ? el('p', { role: 'alert' }, error ?? safeCode(view.code)) : null,
+    view.daily && Array.isArray(view.history) && view.history.length > 0 ? el('ul', { 'aria-label': '原对话的历史任务回执' },
+      ...view.history.map(item => el('li', { key: item.taskId },
+        item.targetDoc + ' · ' + item.identifier + ' · ' + item.taskId + ' · 输入版本 ' + item.revision + ' · ',
+        el('a', { href: 'https://github.com/Leon-Huang001208/ResearchWorkbench/pull/' + item.prNumber }, 'RWB PR #' + item.prNumber),
+        ' · ' + item.headSha + ' · CI ' + item.conclusion))) : null,
     el('div', { className: 'flex flex-wrap gap-2' },
       el('button', { type: 'button', className: buttonClass, disabled: busy, onClick: () => void live.current?.refresh() }, '刷新状态'),
       canControl ? el('button', { type: 'button', className: buttonClass, disabled: busy,

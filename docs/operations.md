@@ -4,6 +4,8 @@
 
 单镜像复验使用 `docs/super-agent/chief-single-image-verification.md`。应用、独立模型容器和宿主发布器绑定同一个构建候选，复验中重启应用前后核对镜像 ID。
 
+同一 Chief 对话的双任务验收使用 `compose.chief-web-real.yaml` 叠加 `compose.chief-web-daily.yaml`，监听 `localhost:8113`。第三版私有清单的两个槽绑定同一用户、公司、项目、Chief、对话和代际，各自使用独立的交接目录。先处理 `docs/super-agent/chief-daily-task-intake.md`，再处理 `docs/super-agent/chief-daily-result-recovery.md`。第一项限一轮，第二项允许一次补充。每条消息带当时开放的文件路径，发布绑定本任务的候选、评审和远端 head。排空后切换，页面继续显示前一项成功回执。两项完成后保留末项面板供查询，关闭执行消费者。
+
 小范围常驻使用 `compose.chief-web-real.yaml` 叠加 `compose.chief-web-resident.yaml`，监听 `localhost:8112`。宿主监督器按私有清单顺序开放 `chief-resident-intake.md`、`chief-resident-recovery.md` 和 `chief-resident-status.md`。Paperclip 为同一用户与 Agent 保留一条原生对话，因此每个文件使用独立 Chief，共用专用实例的数据库和登录。第二版私有清单逐项固定 `scopeRoot`、`conversationId` 和 `chiefAgentId`。每个绑定限一轮输入。只在前一条确认完成、原消费者已退出、共享租约为空后切换当前绑定。每次发布仍需网页确认。
 
 完整镜像复验可在部署时选择 `docs/super-agent/chief-browser-acceptance.md`。同一专用实例、宿主和模型容器使用相同的 `SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT`，私有会话绑定记录中的 `targetDoc` 必须匹配。缺省沿用首轮限定文档，输入版本和发布护栏仍绑定当次唯一目标。
