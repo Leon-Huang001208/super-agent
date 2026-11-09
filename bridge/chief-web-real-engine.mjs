@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 
-export const REAL_RWB_DOCUMENT = 'docs/super-agent/chief-task-verification.md';
+const defaultDocument = 'docs/super-agent/chief-task-verification.md';
+const packagedDocument = 'docs/super-agent/chief-browser-acceptance.md';
+export const REAL_RWB_DOCUMENT = process.env.SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT || defaultDocument;
+if (REAL_RWB_DOCUMENT !== defaultDocument && REAL_RWB_DOCUMENT !== packagedDocument) {
+  fail('CHIEF_WEB_REAL_DOCUMENT_DENIED');
+}
 export const REAL_RWB_REPOSITORY = 'Leon-Huang001208/ResearchWorkbench';
 
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -19,6 +24,10 @@ function fail(code, status = 409) {
 
 export function realDigest(fields) {
   return createHash('sha256').update(JSON.stringify(fields)).digest('hex');
+}
+
+export function assertChiefWebRealDocumentBinding(config) {
+  if ((config.targetDoc ?? defaultDocument) !== REAL_RWB_DOCUMENT) fail('CHIEF_WEB_REAL_DOCUMENT_BINDING_MISMATCH');
 }
 
 function operationId(fields) {
@@ -51,17 +60,26 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
     publisher?.publish, publisher?.observePublication, publisher?.readCi, log, now].every(fn => typeof fn === 'function') ||
     !uuid.test(config?.conversationId ?? '') || !Number.isSafeInteger(config.generation) ||
     !Number.isSafeInteger(config.expiresAt)) fail('CHIEF_WEB_REAL_CONFIGURATION_INVALID');
+  assertChiefWebRealDocumentBinding(config);
   let running;
 
   const first = {
     phase: 'ready', sequence: 0, generation: config.generation, revision: 0, messages: [], results: [],
     controls: [], publications: [], taskId: null, pr: null, paused: false,
+    ...(REAL_RWB_DOCUMENT !== defaultDocument && { targetDoc: REAL_RWB_DOCUMENT }),
   };
 
   function stateFrom(value) {
     const state = value ?? first;
     if (state.generation !== config.generation) fail('CHIEF_WEB_REAL_GENERATION_CHANGED');
+    assertChiefWebRealDocumentBinding(state);
     return { ...state, contextRevision: realDigest([config.conversationId, state.generation, state.sequence]) };
+  }
+
+  function messageRevision(generation, inputs, text) {
+    const fields = [config.conversationId, generation, inputs, realDigest(text)];
+    if (REAL_RWB_DOCUMENT !== defaultDocument) fields.push(REAL_RWB_DOCUMENT);
+    return realDigest(fields);
   }
 
   async function change(tx, state, patch) {
@@ -121,7 +139,7 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
       if (message) {
         const inputs = [...state.messages, message.id];
         state = await change(tx, state, { phase: 'understanding', revision: state.revision + 1, messages: inputs,
-          inputRevision: realDigest([config.conversationId, state.generation, inputs, realDigest(message.text)]),
+          inputRevision: messageRevision(state.generation, inputs, message.text),
           candidate: null, review: null, confirmation: null, ci: null, attempt: null });
       }
       if (state.attempt) {
@@ -148,8 +166,7 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
   function requestFor(state, messages) {
     const { taskId, inputRevision, revision, attempt, pr, candidate, review, requirements, confirmation } = state;
     const text = messages.find(row => row.id === state.messages.at(-1) && row.generation === state.generation)?.text;
-    if (attempt.role === 'chief' && (!text ||
-        realDigest([config.conversationId, config.generation, state.messages, realDigest(text)]) !== inputRevision)) {
+    if (attempt.role === 'chief' && (!text || messageRevision(config.generation, state.messages, text) !== inputRevision)) {
       fail('CHIEF_WEB_REAL_MESSAGE_UNAVAILABLE');
     }
     return {
