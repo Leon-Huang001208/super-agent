@@ -1,6 +1,7 @@
 /** Consume only durable Paperclip handoffs. This worker never creates tasks. */
 export function createChiefWebRealBroker({ spool, executor, publisher, admission, log } = {}) {
   if (![spool?.list, spool?.readRequest, spool?.observe, spool?.claim, spool?.complete, spool?.isClaimed, spool?.rejectUnclaimed,
+    spool?.readRecovery,
     spool?.isPaused, spool?.withFence, executor?.execute, executor?.observe, publisher?.publish,
     publisher?.observePublication, publisher?.readCi, admission?.run, log].every(fn => typeof fn === 'function')) {
     throw new Error('CHIEF_WEB_REAL_BROKER_CONFIGURATION_INVALID');
@@ -30,6 +31,11 @@ export function createChiefWebRealBroker({ spool, executor, publisher, admission
             throw error;
           }
           if (request.role === 'publish') {
+            const recovery = !fresh && await spool.readRecovery(operationId);
+            if (recovery?.proofType === 'publication_before_push') {
+              if (await spool.isPaused()) return { status: 'pending' };
+              return publisher.publish(request, lease, recovery.recovery);
+            }
             return publisher[fresh ? 'publish' : 'observePublication'](request, lease);
           }
           return executor[fresh ? 'execute' : 'observe'](request, lease, { dispatchAllowed: !await spool.isPaused() });

@@ -84,9 +84,9 @@ function createHostChecks({ projectRoot, resourceSource, pythonBinary, nodeBinar
  */
 export async function loadChiefWebRealRwbHost({ toolRoot, controllerPath, controllerSha256, projectRoot, worktreeRoot,
   resourceSource, ghBinary, pythonBinary, nodeBinary, verifyResourceSource, workspaceJournal, publicationJournal,
-  assertWorkspaceLease, readReview, withExclusiveBranch, verifyPush, log, now = Date.now } = {}) {
+  assertWorkspaceLease, readReview, withExclusiveBranch, verifyPush, verifyRecovery, log, now = Date.now } = {}) {
   if (process.platform !== 'darwin' || ![projectRoot, worktreeRoot, resourceSource].every(value => isAbsolute(value) &&
-      fs.realpathSync(value) === value) || ![withExclusiveBranch, verifyPush, assertWorkspaceLease, readReview, log, now]
+      fs.realpathSync(value) === value) || ![withExclusiveBranch, verifyPush, verifyRecovery, assertWorkspaceLease, readReview, log, now]
       .every(fn => typeof fn === 'function')) fail('HOST_CONFIGURATION_INVALID');
   const [runDelivery, controller] = await Promise.all([
     loadChiefWebRecoveryRwbTool({ toolRoot }), loadController(controllerPath, controllerSha256),
@@ -96,8 +96,8 @@ export async function loadChiefWebRealRwbHost({ toolRoot, controllerPath, contro
   const workspace = createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitBinary: '/usr/bin/git', controller,
     runDelivery, github, journal: workspaceJournal, ...checks, assertWorkspaceLease, readReview, log });
   const publisher = createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDelivery, controller, github,
-    recordResources: checks.recordResources, readPrepared: workspace.readPrepared, journal: publicationJournal, verifyPush, log, now,
-    withPublicationFence(scope, work, lease) {
+    recordResources: checks.recordResources, readPrepared: workspace.readPrepared, journal: publicationJournal, verifyPush, verifyRecovery, log, now,
+    withPublicationFence(scope, work, lease, recovery) {
       if (!match(lease, { taskId: scope.taskId, inputRevision: scope.inputRevision }) || !digest.test(lease.nonce ?? '')) fail('PUBLICATION_LEASE_DENIED');
       return withExclusiveBranch(scope, lease, readAuthority => {
         if (typeof readAuthority !== 'function') fail('FENCE_DENIED');
@@ -108,7 +108,7 @@ export async function loadChiefWebRealRwbHost({ toolRoot, controllerPath, contro
             allowedCandidateSha: scope.candidateSha })) fail('FENCE_DENIED');
           return { ...scope, verified: true, exclusive: true, drained: true, pauseFenceClear: true };
         });
-      });
+      }, recovery);
     },
   });
   return Object.freeze({ workspace, publisher });

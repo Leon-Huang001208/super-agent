@@ -15,8 +15,10 @@ const stages = { understanding: 'chief', developing: 'developer', reviewing: 're
 const terminal = new Set(['done', 'blocked']);
 const confirmKeys = ['candidateSha', 'reviewDigest', 'baseSha', 'previousHead'];
 const confirmationLifetime = 15 * 60_000;
-const prelaunchUnknown = state => state.phase === 'blocked' && state.attempt?.role === 'developer' &&
-  state.recoveredOperationId !== state.attempt.id && state.code === 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN';
+const prelaunchUnknown = state => state.phase === 'blocked' && state.attempt &&
+  state.recoveredOperationId !== state.attempt.id &&
+  ((state.attempt.role === 'developer' && state.code === 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN') ||
+   (state.attempt.role === 'publish' && state.code === 'RWB_REAL_PUBLICATION_UNKNOWN'));
 
 function fail(code, status = 409) {
   throw Object.assign(new Error(code), { code, status });
@@ -217,7 +219,8 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
       if (terminal.has(state.phase)) {
         if (!prelaunchUnknown(state) || reply?.recoveryVerified !== true) return false;
         await tx.setTask({ taskId: state.taskId, status: 'in_progress' });
-        state = await change(tx, state, { phase: 'developing', code: null, recoveredOperationId: state.attempt.id });
+        state = await change(tx, state, { phase: role === 'publish' ? 'approved' : 'developing',
+          code: null, recoveredOperationId: state.attempt.id });
       }
       if (reply?.status === 'pending') return false;
       if (role === 'ci' && reply?.status === 'completed' &&

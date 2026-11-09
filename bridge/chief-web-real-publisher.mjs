@@ -68,10 +68,11 @@ export async function loadChiefWebRealPublisher({ toolRoot, ...ports } = {}) {
 
 /** All injected ports belong to the deployment. The fence covers local and remote branch writers, confirmation and pause. */
 export function createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDelivery, controller, readPrepared,
-  withPublicationFence, verifyPush, recordResources, journal, github, log, now = Date.now } = {}) {
+  withPublicationFence, verifyPush, verifyRecovery, recordResources, journal, github, log, now = Date.now } = {}) {
   if (![projectRoot, worktreeRoot].every(absolute) || projectRoot === worktreeRoot ||
       ![runDelivery, controller?.readDeliveryReceipt, controller?.publishDelivery, readPrepared, withPublicationFence,
-        verifyPush, recordResources, journal?.read, journal?.createExclusive, github?.get, github?.createPullRequest, log, now]
+        verifyPush, verifyRecovery, recordResources, journal?.read, journal?.createExclusive, journal?.readRecovery,
+        journal?.createRecoveryExclusive, github?.get, github?.createPullRequest, log, now]
         .every(fn => typeof fn === 'function')) fail('PUBLISHER_CONFIGURATION_INVALID');
 
   function get(suffix, { absent = false, array = false } = {}) {
@@ -176,7 +177,7 @@ export function createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDeli
     return { status: 'passed', command: verification.command.trim(), durationSeconds: verification.durationSeconds };
   }
 
-  function githubRunner(scope, assertCurrent) {
+  function githubRunner(scope, assertCurrent, mode) {
     let attemptedCreate = false;
     return (executable, args, extra) => {
       assertCurrent();
@@ -202,7 +203,7 @@ export function createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDeli
           equalArgs(['pr', 'create', '--repo', repo, '--base', base, '--head', branch, '--title',
             'merge: deliver ' + scope.deliveryTaskId, '--body-file', args[11]]) && absolute(args[11]) &&
           /^pr-body-[a-f0-9-]{36}\.md$/.test(path.basename(args[11]))) {
-        if (verifyPush(scope) !== true || refSha(base) !== scope.baseSha ||
+        if (verifyPush(scope, mode) !== true || refSha(base) !== scope.baseSha ||
             refSha(branch) !== scope.candidateSha || matchingPrs(scope).length) {
           fail('REMOTE_PR_CREATION_DENIED');
         }
@@ -223,18 +224,44 @@ export function createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDeli
     };
   }
 
+  function validClaim(scope, entry) {
+    return same(entry, { schemaVersion: 1, scopeDigest: scope.scopeDigest, operationId: scope.operationId }) &&
+      Number.isSafeInteger(entry.claimedAt) && entry.claimedAt < scope.expiresAt &&
+      typeof entry.repair === 'boolean' && (!entry.repair || scope.revision === 2) &&
+      digest.test(entry.verificationDigest ?? '');
+  }
+
+  function validateRecovery(scope, claim, recovery, lease) {
+    const { taskId, operationId, inputRevision, branch, candidateSha, baseSha, reviewDigest, confirmationId } = scope;
+    const bound = { schemaVersion: 1, action: 'recover_pre_push_lock_denial', taskId, operationId, inputRevision,
+      branch, candidateSha, baseSha, previousHead: null, reviewDigest, confirmationId, originalClaimDigest: realDigest(claim) };
+    const extra = ['managedReceiptDigest', 'originalHookPolicyDigest', 'leaseDigest', 'evidenceDigest'];
+    if (scope.revision !== 1 || scope.previousHead !== null || scope.number !== null || !validClaim(scope, claim) ||
+        claim.repair || claim.claimedAt > now() ||
+        !same(recovery, bound) || Object.keys(recovery).length !== Object.keys(bound).length + extra.length ||
+        !extra.every(key => Object.hasOwn(recovery, key) && digest.test(recovery[key])) ||
+        !same(lease, { taskId, inputRevision }) || !uuid.test(lease.projectId ?? '') || !digest.test(lease.nonce ?? '') ||
+        recovery.leaseDigest !== realDigest([taskId, lease.projectId, inputRevision, lease.nonce]) ||
+        verifyPush(scope, 'initial') === true || verifyRecovery(scope, recovery, lease) !== true) fail('PUBLICATION_RECOVERY_DENIED');
+  }
+
   async function observe(scope, claim = undefined) {
     const entry = claim ?? await journal.read(scope.operationId);
-    if (!same(entry, { schemaVersion: 1, scopeDigest: scope.scopeDigest, operationId: scope.operationId }) ||
-        !Number.isSafeInteger(entry.claimedAt) || entry.claimedAt >= scope.expiresAt ||
-        typeof entry.repair !== 'boolean' || (entry.repair && scope.revision !== 2) ||
-        !digest.test(entry.verificationDigest ?? '')) return unknown;
+    if (!validClaim(scope, entry)) return unknown;
     try {
-      if (verifyPush(scope) !== true) return unknown;
+      const recovery = await journal.readRecovery(scope.operationId);
+      if (recovery !== null && (scope.revision !== 1 || scope.previousHead !== null || entry.repair ||
+          !same(recovery, { schemaVersion: 1, action: 'recover_pre_push_lock_denial', operationId: scope.operationId,
+            scopeDigest: scope.scopeDigest, originalClaimDigest: realDigest(entry), verificationDigest: entry.verificationDigest }) ||
+          !digest.test(recovery.recoveryDigest ?? '') || !digest.test(recovery.evidenceDigest ?? '') ||
+          !Number.isSafeInteger(recovery.claimedAt) || recovery.claimedAt < entry.claimedAt || recovery.claimedAt >= scope.expiresAt)) {
+        return unknown;
+      }
+      if (verifyPush(scope, recovery ? 'recovery' : 'initial') !== true || (recovery && verifyPush(scope, 'initial') === true)) return unknown;
       const receipt = readManaged(scope, true, entry.repair);
       const { status, command, durationSeconds, recordedAt } = receipt.verification ?? {};
       if (receipt.ci?.status !== 'pending' || realDigest({ status, command, durationSeconds }) !== entry.verificationDigest ||
-          !(Date.parse(recordedAt) >= entry.claimedAt && Date.parse(recordedAt) <= now()) ||
+          !(Date.parse(recordedAt) >= (recovery?.claimedAt ?? entry.claimedAt) && Date.parse(recordedAt) <= now()) ||
           receipt.remoteCommit !== scope.baseSha) return unknown;
       settings();
       const { number, url } = receipt.pullRequest;
@@ -242,19 +269,27 @@ export function createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDeli
       if (refSha(base) !== scope.baseSha) return unknown;
       const result = { number, url, branch: scope.branch, headSha: scope.candidateSha, baseSha: scope.baseSha };
       await log({ code: 'RWB_REAL_PUBLICATION_OBSERVED', operationId: scope.operationId });
-      return proof(scope, realDigest([entry, realDigest(receipt), result]), result);
+      const evidence = recovery === null ? [entry, realDigest(receipt), result] : [entry, recovery, realDigest(receipt), result];
+      return proof(scope, realDigest(evidence), result);
     } catch {
       await log({ code: 'RWB_REAL_PUBLICATION_UNKNOWN', operationId: scope.operationId });
       return unknown;
     }
   }
 
-  async function publish(request, lease) {
+  async function publish(request, lease, recovery = null) {
     const scope = scopeFor(request, 'publish');
     const existing = await journal.read(scope.operationId);
-    if (existing !== null) return observe(scope, existing);
+    const priorRecovery = await journal.readRecovery(scope.operationId);
+    if (priorRecovery !== null || (existing !== null && recovery === null)) return observe(scope, existing);
+    if (recovery !== null) {
+      recovery = Object.freeze({ ...recovery });
+      validateRecovery(scope, existing, recovery, lease);
+    }
+    const mode = recovery === null ? 'initial' : 'recovery';
     let entered = false;
     let claimed = false;
+    let controllerDispatched = false;
     try {
       await withPublicationFence(scope, async readFence => {
         if (entered || typeof readFence !== 'function') fail('FENCE_DENIED');
@@ -279,11 +314,24 @@ export function createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDeli
         settings();
         assertBefore(scope);
         requiredChecks();
-        await log({ code: 'RWB_REAL_PUBLICATION_RESERVING', operationId: scope.operationId });
+        if (recovery !== null) {
+          validateRecovery(scope, await journal.read(scope.operationId), recovery, lease);
+          if (repair || prepared.managedReceiptDigest !== recovery.managedReceiptDigest ||
+              realDigest(verification) !== existing.verificationDigest) fail('PUBLICATION_RECOVERY_EVIDENCE_CHANGED');
+        }
+        await log({ code: recovery === null ? 'RWB_REAL_PUBLICATION_RESERVING' : 'RWB_REAL_PUBLICATION_RECOVERY_RESERVING',
+          operationId: scope.operationId });
         assertCurrent();
         try {
-          await journal.createExclusive(scope.operationId, { schemaVersion: 1, scopeDigest: scope.scopeDigest,
-            operationId: scope.operationId, claimedAt: now(), verificationDigest: realDigest(verification), repair });
+          if (recovery === null) {
+            await journal.createExclusive(scope.operationId, { schemaVersion: 1, scopeDigest: scope.scopeDigest,
+              operationId: scope.operationId, claimedAt: now(), verificationDigest: realDigest(verification), repair });
+          } else {
+            await journal.createRecoveryExclusive(scope.operationId, { schemaVersion: 1, action: recovery.action,
+              operationId: scope.operationId, scopeDigest: scope.scopeDigest, originalClaimDigest: recovery.originalClaimDigest,
+              recoveryDigest: realDigest(recovery), evidenceDigest: recovery.evidenceDigest, claimedAt: now(),
+              verificationDigest: existing.verificationDigest });
+          }
           claimed = true;
         } catch (error) {
           if (error?.code !== 'EEXIST') fail('PUBLICATION_CLAIM_UNKNOWN');
@@ -291,7 +339,6 @@ export function createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDeli
         }
         assertCurrent();
         let resourcesRecorded = false;
-        let controllerDispatched = false;
         const result = await runDelivery({ projectRoot, taskId: scope.deliveryTaskId, action: 'publish', verification, repair }, {
           identityRoot: projectRoot,
           controller: {
@@ -306,13 +353,14 @@ export function createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDeli
               assertReceipt();
               assertBefore(scope);
               requiredChecks();
+              if (recovery !== null && verifyPush(scope, 'initial') === true) fail('PUBLICATION_RECOVERY_DENIED');
               assertCurrent();
               controllerDispatched = true;
               return controller.publishDelivery({ projectRoot, taskId: scope.deliveryTaskId, verification,
                 repair, pushDefault: () => ({ status: 'protected' }), githubRunner: input.githubRunner });
             },
           },
-          githubRunner: githubRunner(scope, assertCurrent),
+          githubRunner: githubRunner(scope, assertCurrent, mode),
           resourceRevalidationProbe(repository, taskId, phase) {
             assertCurrent();
             if (resourcesRecorded || repository?.repositoryRoot !== projectRoot || taskId !== scope.deliveryTaskId || phase !== 'record') {
@@ -326,18 +374,20 @@ export function createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDeli
           },
         });
         if (!controllerDispatched || !same(result, { taskId: scope.deliveryTaskId, status: 'awaiting_ci', mode: 'pr',
-          safetyAutoMergeDeferred: true, integrationCommit: scope.candidateSha }) || verifyPush(scope) !== true) {
+          safetyAutoMergeDeferred: true, integrationCommit: scope.candidateSha }) || verifyPush(scope, mode) !== true) {
           fail('PUBLICATION_RESULT_UNPROVEN');
         }
         assertCurrent();
-      }, lease);
+      }, lease, recovery);
     } catch (error) {
       if (!claimed && error?.code !== 'RWB_REAL_PUBLICATION_CLAIM_UNKNOWN') {
         const code = errorCode(error, 'RWB_REAL_PUBLICATION_BLOCKED');
         await log({ code, operationId: scope.operationId });
         return { status: 'blocked', code };
       }
-      await log({ code: 'RWB_REAL_PUBLICATION_RECONCILIATION_REQUIRED', operationId: scope.operationId });
+      const preflightCode = !controllerDispatched && ['REPOSITORY_LOCKED', 'NATIVE_LOCKED'].includes(error?.code) ? error.code : null;
+      await log({ code: 'RWB_REAL_PUBLICATION_RECONCILIATION_REQUIRED', operationId: scope.operationId,
+        ...(preflightCode && { preflightCode, controllerDispatched: false }) });
     }
     if (!entered) fail('FENCE_DENIED');
     return observe(scope);
@@ -412,7 +462,7 @@ export function createChiefWebRealPublisher({ projectRoot, worktreeRoot, runDeli
     }
   }
   return Object.freeze({
-    publish: (request, lease) => call(request, () => publish(request, lease)),
+    publish: (request, lease, recovery) => call(request, () => publish(request, lease, recovery)),
     observePublication: request => call(request, () => observe(scopeFor(request, 'publish'))),
     readCi: request => call(request, () => readCi(request)),
   });
