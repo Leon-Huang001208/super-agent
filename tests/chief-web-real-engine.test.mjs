@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { createChiefWebRealEngine, REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY, realDigest, resolveChiefWebRealScope } from '../bridge/chief-web-real-engine.mjs';
+import { createChiefWebRealEngine, REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY, REAL_CI_TRANSPORT_UNKNOWN, realDigest, resolveChiefWebRealScope } from '../bridge/chief-web-real-engine.mjs';
 
 const conversationId = randomUUID();
 const taskId = randomUUID();
@@ -44,6 +44,7 @@ function setup({ scope = {}, firstCiSucceeds = false, chiefTarget, factory = cre
   };
   const config = { conversationId, generation: 0, expiresAt: 9_000_000, ...scope };
   let failPublication = false, recoverPublication = false;
+  let ciObservation;
   const publishReceipt = request => receipt(request, { headSha: request.candidateSha, baseSha, branch, number: 123,
     url: 'https://github.com/' + REAL_RWB_REPOSITORY + '/pull/123' });
   const publisher = {
@@ -57,6 +58,7 @@ function setup({ scope = {}, firstCiSucceeds = false, chiefTarget, factory = cre
         { status: 'unknown', code: 'RWB_REAL_PUBLICATION_UNKNOWN' };
     },
     async readCi(request) {
+      if (ciObservation) return ciObservation(request, result => receipt(request, result));
       if (request.revision === 1) return firstCiSucceeds
         ? receipt(request, { number: 123, headSha: firstHead, conclusion: 'success', checksDigest: receiptDigest })
         : { status: 'pending' };
@@ -75,6 +77,7 @@ function setup({ scope = {}, firstCiSucceeds = false, chiefTarget, factory = cre
     newMessage: text => messages.push({ id: randomUUID(), text, generation: 0 }),
     advanceClock: value => { clock += value; }, answerReview: value => { respondToReview = value; },
     correctCi: () => { staleCi = false; },
+    setCiObservation: observe => { ciObservation = observe; },
     failDev: () => { failDeveloper = true; }, recoverDev: () => { recoverDeveloper = true; },
     failPublish: () => { failPublication = true; }, recoverPublish: () => { recoverPublication = true; },
   };
@@ -318,6 +321,33 @@ test('prelaunch recovery preserves the blocked original Native attempt', async (
   assert.equal(f.issued(), 1);
   assert.equal(f.calls.filter(call => call.role === 'developer').length, 1);
   assert.equal(f.records.at(-1).recoveredOperationId, blocked.operationId);
+});
+
+test('a verified CI observation recovers the original blocked attempt and exact head only', async () => {
+  const f = setup();
+  f.setCiObservation(() => ({ status: 'blocked', code: REAL_CI_TRANSPORT_UNKNOWN }));
+  const original = f.engine();
+  f.newMessage('创建验收文档');
+  await original.control(approval(await until(original, 'awaiting_confirmation')));
+  const blocked = await until(original, 'blocked');
+  assert.equal(blocked.operationKind, 'ci');
+  const recovered = f.engine();
+  f.setCiObservation((_request, receipt) => ({
+    ...receipt({ number: 123, headSha: secondHead, conclusion: 'success', checksDigest: receiptDigest }),
+    recoveryVerified: true,
+  }));
+  await recovered.tick();
+  assert.equal((await recovered.status()).phase, 'blocked');
+  f.setCiObservation((request, receipt) => {
+    assert.equal(request.operationId, blocked.operationId);
+    return { ...receipt({ number: 123, headSha: firstHead, conclusion: 'success', checksDigest: receiptDigest }), recoveryVerified: true };
+  });
+  const done = await until(recovered, 'awaiting_supplement');
+  assert.equal(done.taskId, blocked.taskId);
+  assert.equal(done.inputRevision, blocked.inputRevision);
+  assert.equal(f.records.at(-1).recoveredOperationId, blocked.operationId);
+  assert.equal(f.publications.length, 1);
+  assert.equal(f.calls.length, 3);
 });
 
 test('packaged target requires a matching private binding and remains a single allowed document', async () => {

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createChiefWebRealSpool } from '../bridge/chief-web-real-spool.mjs';
-import { REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY } from '../bridge/chief-web-real-engine.mjs';
+import { REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY, REAL_CI_TRANSPORT_UNKNOWN } from '../bridge/chief-web-real-engine.mjs';
 import { createChiefWebRealBroker } from '../scripts/chief-web-real-broker.mjs';
 import { verifyChiefWebRealPush } from '../scripts/chief-web-real-pre-push.mjs';
 
@@ -42,6 +42,41 @@ test('private broker dispatches a fixed model operation once and observes it aft
   assert.equal(observations, 1);
   assert.equal((await spool.executor.observe(request)).status, 'unknown');
   await assert.rejects(spool.executor.observe({ ...request, revision: 2 }), { code: 'CHIEF_WEB_REAL_SPOOL_SCOPE_DENIED' });
+});
+
+test('CI transport interruptions retain the original attempt without claiming execution', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sa-real-ci-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const config = { conversationId: randomUUID(), generation: 0, expiresAt: 30000 };
+  const log = () => {};
+  const spool = await createChiefWebRealSpool({ root, config, log, now: () => 100 });
+  const id = randomUUID();
+  const headSha = 'b'.repeat(40);
+  const request = { conversationId: config.conversationId, generation: 0, taskId: randomUUID(),
+    inputRevision: 'a'.repeat(64), operationId: id, slotId: id, repository: REAL_RWB_REPOSITORY,
+    targetDoc: REAL_RWB_DOCUMENT, revision: 1, role: 'ci', pr: { number: 123, headSha }, headSha };
+  const error = { status: 'blocked', code: REAL_CI_TRANSPORT_UNKNOWN };
+  const receipt = { status: 'completed', taskId: request.taskId, inputRevision: request.inputRevision, operationId: id,
+    evidenceDigest: 'e'.repeat(64), result: { number: 123, headSha, conclusion: 'success', checksDigest: 'f'.repeat(64) } };
+  let observation = error;
+  const broker = createChiefWebRealBroker({ spool, log,
+    admission: { run() { assert.fail('CI must not claim execution'); } },
+    executor: { execute() {}, observe() {} },
+    publisher: { publish() {}, observePublication() {}, readCi() { return observation; } },
+  });
+  await spool.publisher.readCi(request);
+  await broker.tick();
+  assert.equal((await spool.publisher.readCi(request)).status, 'pending');
+  await spool.complete(id, error);
+  const original = await fs.readFile(path.join(root, id, 'response.json'), 'utf8');
+  await assert.rejects(spool.complete(id, { ...receipt, result: { ...receipt.result, headSha: 'c'.repeat(40) } }),
+    { code: 'CHIEF_WEB_REAL_SPOOL_RECOVERY_MISMATCH' });
+  assert.deepEqual(await spool.publisher.readCi(request), error);
+  observation = receipt;
+  await broker.tick();
+  assert.deepEqual(await spool.publisher.readCi(request), { ...receipt, recoveryVerified: true });
+  assert.equal(await fs.readFile(path.join(root, id, 'response.json'), 'utf8'), original);
+  assert.equal(await spool.isClaimed(id), false);
 });
 
 test('pre-push rejects a different advertised old head and extra refs', () => {
