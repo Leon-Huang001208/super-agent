@@ -283,7 +283,9 @@ async function syncDirectory(directory) {
 export async function claimChiefWebResidentLock(directory, project = RESIDENT_PROJECT) {
   if (![RESIDENT_PROJECT, DAILY_PROJECT].includes(project)) fail('CHIEF_WEB_RESIDENT_CONFIGURATION_INVALID');
   await privateDirectory(directory);
-  const lock = path.join(directory, project + '.supervisor.lock');
+  // Both projects use the shared model, publication and admission authorities.
+  // Keep the original lock name so older resident supervisors contend too.
+  const lock = path.join(directory, RESIDENT_PROJECT + '.supervisor.lock');
   try { await fs.mkdir(lock, { mode: 0o700 }); }
   catch (error) { if (error?.code === 'EEXIST') fail('CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED'); throw error; }
   const handle = await fs.open(lock, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);

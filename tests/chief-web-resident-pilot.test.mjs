@@ -309,8 +309,7 @@ test('project-wide lock refuses another manifest and preserves a replaced unknow
   t.after(() => fs.rm(parent, { recursive: true }));
   const release = await claimChiefWebResidentLock(parent);
   await assert.rejects(claimChiefWebResidentLock(parent), { code: 'CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED' });
-  const releaseDaily = await claimChiefWebResidentLock(parent, DAILY_PROJECT);
-  await releaseDaily({ drained: true });
+  await assert.rejects(claimChiefWebResidentLock(parent, DAILY_PROJECT), { code: 'CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED' });
   const lock = path.join(parent, RESIDENT_PROJECT + '.supervisor.lock');
   await fs.rename(lock, path.join(parent, 'old-owner'));
   await fs.mkdir(lock, { mode: 0o700 });
