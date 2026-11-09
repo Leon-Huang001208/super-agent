@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
 export const RESIDENT_PROJECT = 'super-agent-chief-web-resident-rwb';
-export const RESIDENT_ORIGIN = 'http://127.0.0.1:8112';
+export const RESIDENT_ORIGIN = 'http://localhost:8112';
 export const RESIDENT_TARGETS = Object.freeze(['intake', 'recovery', 'status'].map(name =>
   'docs/super-agent/chief-resident-' + name + '.md'));
 const data = '/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0';
