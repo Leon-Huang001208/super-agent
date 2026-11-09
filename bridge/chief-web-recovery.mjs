@@ -91,7 +91,7 @@ export function createChiefWebRecovery({ repository, readGrant, readExecution, p
       if (claim || now() >= context.intent.expiresAt) fail('CHIEF_WEB_RECOVERY_CONFIRMATION_DENIED');
       await context.transaction.appendOperation({
         kind: claimKind, status: 'claimed', operationId: stepId, parentOperationId: context.intent.operationId,
-        taskId: scope.taskId, grantId: scope.grantId, scopeDigest: scope.scopeDigest, stage: 'confirm', eventId: null,
+        taskId: scope.taskId, grantId: scope.grantId, scopeDigest: scope.scopeDigest, scope, stage: 'confirm', eventId: null,
       });
     },
   });
@@ -182,6 +182,21 @@ export function createChiefWebRecovery({ repository, readGrant, readExecution, p
     });
   }
 
+  async function observePublication(operationId, request) {
+    try { return await publisher.observe(request); }
+    catch (error) {
+      if (typeof publisher.recoverHandoff !== 'function') throw error;
+      await locked(operationId, async context => {
+        const { claim, completion } = readStep(context.records, operationId, 'publish');
+        const scope = await verifiedScope({ ...context, stage: 'publish', mode: 'admit' });
+        if (!claim || completion || context.paused || now() >= context.intent.expiresAt ||
+            claim.scopeDigest !== scope.scopeDigest || scope.scopeDigest !== request.scopeDigest) throw error;
+      });
+      await publisher.recoverHandoff(request);
+      throw error;
+    }
+  }
+
   async function run(operationId, stage, eventId) {
     let selected = await reserve(operationId, stage, eventId);
     if (!selected.request) {
@@ -195,7 +210,7 @@ export function createChiefWebRecovery({ repository, readGrant, readExecution, p
       let result;
       try {
         if (stage === 'publish') {
-          result = reconcile ? await publisher.observe(request) : await publisher.update(request);
+          result = reconcile ? await observePublication(operationId, request) : await publisher.update(request);
         } else {
           if (stage === 'ci' && !reconcile) {
             const currentCi = validateCi(await publisher.readCi(request, eventId), request, eventId);
@@ -221,11 +236,50 @@ export function createChiefWebRecovery({ repository, readGrant, readExecution, p
         ? { operationId, status: error.status, code: error.code }
         : { operationId, status: 'unknown', code: 'CHIEF_WEB_RECOVERY_RESULT_UNKNOWN' };
     }
-    await log(outcome);
+    await log({ operationId, status: outcome.status, code: outcome.code });
     return outcome;
   }
 
+  async function inspect(operationId) {
+    const saved = await repository.transaction(async transaction => {
+      const task = await transaction.lockTask(CHIEF_WEB_PILOT.taskId);
+      if (task?.id !== CHIEF_WEB_PILOT.taskId) fail('CHIEF_WEB_RECOVERY_TASK_UNVERIFIED');
+      const records = await transaction.listTaskOperations(task.id);
+      const intent = readChiefWebIntents(records).find(row => row.operationId === operationId && row.action === 'confirm');
+      if (!validateChiefWebIntent(intent, operationId) || readChiefWebEffectHistory(records, intent).claim?.status !== 'claimed') {
+        fail('CHIEF_WEB_RECOVERY_CONFIRMATION_UNCLAIMED');
+      }
+      const confirmation = readStep(records, operationId, 'confirm').claim;
+      const scope = confirmation?.scope;
+      if (!scope || scope.scopeDigest !== confirmation.scopeDigest || !same(scope, {
+        confirmationOperationId: operationId, taskId: task.id, grantId: intent.grantId,
+        inputRevision: intent.expected.inputRevision, candidateSha: intent.expected.candidate,
+        previousHead: intent.expected.prHead, reviewDigest: intent.expected.reviewDigest,
+      })) fail('CHIEF_WEB_RECOVERY_SCOPE_CHANGED');
+      const stages = Object.fromEntries(Object.keys(stepStates).map(stage => [stage, readStep(records, operationId, stage)]));
+      if (Object.values(stages).some(step => step.claim && step.claim.scopeDigest !== scope.scopeDigest)) {
+        fail('CHIEF_WEB_RECOVERY_SCOPE_CHANGED');
+      }
+      return { scope, stages };
+    });
+    const observed = code => ({ status: 'observed', code, scope: saved.scope });
+    if (saved.stages.release.completion) return observed('CHIEF_WEB_RECOVERY_LEASE_RELEASED');
+    if (saved.stages.ci.completion) return observed('CHIEF_WEB_RECOVERY_CI_RECORDED');
+    if (saved.stages['wait-ci'].completion) return observed('CHIEF_WEB_RECOVERY_WAITING_CI');
+    const publication = saved.stages.publish;
+    if (publication.completion) return observed('CHIEF_WEB_RECOVERY_PUBLICATION_OBSERVED');
+    if (!publication.claim) return observed('CHIEF_WEB_RECOVERY_CONFIRMATION_CLAIMED');
+    const request = { ...saved.scope, operationId: publication.stepId };
+    const result = await publisher.observe(request);
+    if (result?.verified !== true || !same(result, { operationId: request.operationId, scopeDigest: request.scopeDigest,
+      state: stepStates.publish }) || !is(digest, result.evidenceDigest)) fail('CHIEF_WEB_RECOVERY_RESULT_UNKNOWN', 'unknown');
+    return observed('CHIEF_WEB_RECOVERY_PUBLICATION_OBSERVED');
+  }
+
   return Object.freeze({
+    inspect({ operationId } = {}) {
+      return execute(operationId, () => inspect(operationId));
+    },
     claim({ operationId } = {}) {
       return execute(operationId, async () => {
         const result = await authority.claim(operationId);

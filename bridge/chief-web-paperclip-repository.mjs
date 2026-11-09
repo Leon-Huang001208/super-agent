@@ -9,7 +9,7 @@ function fail(code) {
 
 /** A single-task view of Paperclip's issue locks and existing integration activity. */
 export function createChiefWebPaperclipRepository({ db, issueService, schema, orm } = {}) {
-  const { activityLog, issueComments, heartbeatRuns, agentWakeupRequests } = schema ?? {};
+  const { activityLog, issueComments, heartbeatRuns, agentWakeupRequests, companies, agents } = schema ?? {};
   if (typeof db?.transaction !== 'function' || typeof issueService !== 'function' ||
       !activityLog || !issueComments || !heartbeatRuns || !agentWakeupRequests ||
       !['eq', 'and', 'asc', 'sql'].every(key => typeof orm?.[key] === 'function')) {
@@ -28,6 +28,17 @@ export function createChiefWebPaperclipRepository({ db, issueService, schema, or
 
         function requireTask(taskId) {
           if (!task || task.id !== taskId || taskId !== CHIEF_WEB_PILOT.taskId) fail('CHIEF_WEB_NATIVE_TASK_DENIED');
+        }
+
+        async function insert(record) {
+          const records = await port.listTaskOperations(record.taskId);
+          const sequence = records.reduce((max, row) => Math.max(max, Number.isSafeInteger(row.sequence) ? row.sequence : 0), 0) + 1;
+          const details = { ...record, schemaVersion: 1, sequence };
+          await tx.insert(activityLog).values({
+            companyId: task.companyId, actorType: 'system', actorId: activityActor, action: activityAction,
+            entityType: 'issue', entityId: task.id, agentId: null, runId: null, details,
+          });
+          records.push(details);
         }
 
         const port = {
@@ -80,14 +91,44 @@ export function createChiefWebPaperclipRepository({ db, issueService, schema, or
                 fail('CHIEF_WEB_PAPERCLIP_WRITE_DENIED');
               }
             }
-            const sequence = history.reduce((max, row) => Math.max(max, Number.isSafeInteger(row.sequence) ? row.sequence : 0), 0) + 1;
-            const details = { ...record, schemaVersion: 1, sequence };
-            await tx.insert(activityLog).values({
-              companyId: task.companyId, actorType: 'system', actorId: activityActor, action: activityAction,
-              entityType: 'issue', entityId: task.id, agentId: null, runId: null,
-              details,
-            });
-            history.push(details);
+            await insert(record);
+          },
+          async recoveryIsDrained(taskId, chiefAgentId) {
+            requireTask(taskId);
+            if (!conversation || !companies || !agents || conversation.conversationAgentId !== chiefAgentId) return false;
+            const [company] = await tx.select({ status: companies.status }).from(companies)
+              .where(eq(companies.id, task.companyId)).limit(1);
+            if (company?.status !== 'paused') return false;
+            const team = await tx.select({ id: agents.id, status: agents.status, lifecycleState: agents.lifecycleState })
+              .from(agents).where(eq(agents.companyId, task.companyId)).limit(101);
+            if (!team.some(agent => agent.id === chiefAgentId) || team.length > 100 ||
+                team.some(agent => agent.status !== 'paused' || agent.lifecycleState !== 'paused')) return false;
+            const active = await tx.select({ id: heartbeatRuns.id }).from(heartbeatRuns).where(and(
+              eq(heartbeatRuns.companyId, task.companyId),
+              sql`${heartbeatRuns.status} not in ('succeeded', 'failed', 'cancelled', 'timed_out')`,
+            )).limit(1);
+            return active.length === 0;
+          },
+          async appendRecoveryContext({ record, stage, claimOperationId, scopeDigest, nativeStatus }) {
+            requireTask(record?.taskId);
+            const records = await port.listTaskOperations(task.id);
+            const claim = records.find(row => row.operationId === claimOperationId && row.kind === 'chief-web-recovery-claim');
+            if (!conversation || !claim || claim.status !== 'claimed' || claim.stage !== stage ||
+                claim.scopeDigest !== scopeDigest || claim.taskId !== task.id ||
+                record.kind !== 'execution-context' || record.status !== 'completed' ||
+                record.operationId !== 'chief-web-recovery:' + claimOperationId ||
+                records.some(row => row.operationId === record.operationId) ||
+                (nativeStatus !== undefined && (stage !== 'ci' || !['done', 'blocked'].includes(nativeStatus) ||
+                  task.status !== 'in_progress' || typeof issues.update !== 'function'))) {
+              fail('CHIEF_WEB_PAPERCLIP_WRITE_DENIED');
+            }
+            if (nativeStatus !== undefined) {
+              const publications = [], actions = [];
+              const updated = await issues.update(task.id, { status: nativeStatus, companyGuard: task.companyId,
+                actorAgentId: null, actorUserId: null, updatedByAgentId: null, updatedByUserId: null }, tx, publications, actions);
+              if (updated?.status !== nativeStatus || publications.length || actions.length) fail('CHIEF_WEB_PAPERCLIP_WRITE_DENIED');
+            }
+            await insert(record);
           },
           async readChiefEvidence({ binding, messageId, chiefAgentId }) {
             requireTask(binding.taskId);

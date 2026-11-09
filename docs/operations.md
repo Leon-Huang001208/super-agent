@@ -8,6 +8,12 @@
 
 模拟 CI 由同源已认证演练账户向 `/api/issues/<对话ID>/chief-web-evaluation/ci` 提交 `operationId`、`candidateSha` 和 `conclusion`，请求头 `X-Super-Agent-Eval-Token` 使用演练 token。重启仅针对 `paperclip` 服务，关闭入口后保留独立数据卷和回执。
 
+## #261 受控恢复
+
+Docker 内的操作员入口为 `node /opt/super-agent/bridge/chief-web-recovery-cli.mjs <inspect|claim|publish|record-ci|release> <确认操作ID> [CI事件ID]`。仅 root 且显式启用 `SUPER_AGENT_CHIEF_WEB_RECOVERY_ENABLED=1` 时可用。恢复读取原 Native 任务、对话和受控记录。`inspect` 可只读核对保留的原认领。应用仍需提供现有私有 Pilot 绑定、受控运行状态和原租约账本。
+
+发布使用私有宿主交接。Mac 侧适配器校验首轮固定的 RWB Git Safety 工具包，只允许更新 #261 现有分支，并要求部署侧提供独占分支发布护栏和可信回执存储。认领后的结果未知只核对该操作的宿主回执。基线、当前 head、候选或批准变化时返回阻塞。网页演练使用独立的测试账本、模拟 CI 和测试租约。
+
 ## 资产与身份
 
 Paperclip 评估项目名为 `super-agent-paperclip-eval`。专用数据根 `/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0`，底层为外置 SSD 的 APFS sparsebundle。Docker.raw 仍保持原位。数据库、订阅认证、workspace、日志和旧候选必须保留；本仓库不保存秘密。

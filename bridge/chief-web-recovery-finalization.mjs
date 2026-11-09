@@ -14,7 +14,7 @@ function binding(scope) {
  * writes use the supplied expected revisions and exact operation ID for CAS.
  */
 export function createChiefWebRecoveryFinalization({
-  readState, recordWait, recordCi, readConversationReceipt, readLease, releaseLease,
+  readState, recordWait, recordCi, readConversationReceipt, readLease, releaseLease, reconcileLease,
 } = {}) {
   if (![readState, recordWait, recordCi, readConversationReceipt, readLease, releaseLease]
     .every(fn => typeof fn === 'function')) fail('CHIEF_WEB_RECOVERY_NATIVE_UNAVAILABLE');
@@ -60,6 +60,13 @@ export function createChiefWebRecoveryFinalization({
 
   return Object.freeze({
     async observe(stage, scope) {
+      const state = await verifiedState(scope);
+      const observed = await observation(stage, scope, state);
+      if (observed || stage !== 'release' || typeof reconcileLease !== 'function') return observed;
+      const lease = await readLease(scope);
+      if (lease?.reconciliationRequired !== true || lease.leaseDigest !== scope.leaseDigest) return null;
+      await reconcileLease(Object.freeze({ ...scope, expectedNativeRevision: state.nativeRevision,
+        expectedContextRevision: state.contextRevision }));
       return observation(stage, scope, await verifiedState(scope));
     },
     async apply(stage, scope) {

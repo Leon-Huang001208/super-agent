@@ -12,7 +12,7 @@ const fail = code => { throw Object.assign(new Error(code), { code, status: 'blo
  * issues one prepared publish request and requires the original PR afterward.
  */
 export function createChiefWebRecoveryPublisher({
-  readPrepared, readRemote, readPublicationReceipt, publishExisting, readCiEvidence, now = Date.now,
+  readPrepared, readRemote, readPublicationReceipt, publishExisting, readCiEvidence, recoverRequest, now = Date.now,
 } = {}) {
   if (![readPrepared, readRemote, readPublicationReceipt, publishExisting, readCiEvidence, now]
     .every(fn => typeof fn === 'function')) fail('CHIEF_WEB_RECOVERY_PUBLISHER_UNAVAILABLE');
@@ -25,9 +25,7 @@ export function createChiefWebRecoveryPublisher({
 
   async function remote(scope, headSha, requireBase) {
     verifyScope(scope);
-    const evidence = await readRemote({
-      repository: scope.repository, pullRequest: scope.pullRequest, branch: scope.branch, candidateSha: scope.candidateSha,
-    });
+    const evidence = await readRemote(scope);
     if (!same(evidence, {
       verified: true, repository: scope.repository, pullRequest: scope.pullRequest, headRepository: scope.repository,
       headSha, headRef: scope.branch, baseRepository: scope.repository, baseRef: 'master', state: 'open',
@@ -74,6 +72,12 @@ export function createChiefWebRecoveryPublisher({
       await publishExisting(Object.freeze({ ...scope, deliveryReceiptDigest }));
       return observe(scope);
     },
+    ...(typeof recoverRequest === 'function' && {
+      async recoverHandoff(scope) {
+        const deliveryReceiptDigest = await verify(scope);
+        return recoverRequest(Object.freeze({ ...scope, deliveryReceiptDigest }));
+      },
+    }),
     observe,
     async readCi(scope, eventId) {
       await remote(scope, scope.candidateSha, false);

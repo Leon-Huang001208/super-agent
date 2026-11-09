@@ -192,6 +192,24 @@ test('an uncertain dispatch without a trusted postcondition stays unknown after 
   assert.equal(env.records.filter(row => row.stage === 'publish').length, 1);
 });
 
+test('reconciles an archived grant read-only after the conversation resets', async () => {
+  const env = fixture();
+  env.setLost({ publish: 'after' });
+  const initial = env.create();
+  await initial.claim(command);
+  assert.equal((await initial.publish(command)).status, 'unknown');
+  env.resetConversation();
+  const count = env.records.length;
+  const restored = env.create();
+  assert.equal((await restored.publish(command)).code, 'CHIEF_WEB_RECOVERY_GRANT_CHANGED');
+  const inspection = await restored.inspect(command);
+  assert.equal(inspection.code, 'CHIEF_WEB_RECOVERY_PUBLICATION_OBSERVED');
+  assert.equal(inspection.scope.candidateSha, candidateSha);
+  assert.match(inspection.scope.scopeDigest, /^[a-f0-9]{64}$/);
+  assert.equal(env.records.length, count);
+  assert.deepEqual(env.calls, ['publish']);
+});
+
 test('expired, reset, and changed lease confirmations cannot reach the publisher', async () => {
   for (const [invalidate, code] of [
     ['expire', 'CHIEF_WEB_RECOVERY_EXPIRED'],

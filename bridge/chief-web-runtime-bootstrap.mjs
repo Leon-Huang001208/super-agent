@@ -6,6 +6,12 @@ import { selectSkippedChiefWebMessage } from './chief-web-skipped-wake.mjs';
 import { createChiefWebCallAdmission } from './chief-web-call-admission.mjs';
 import { loadPinnedChiefWebPaperclipRuntime } from './chief-web-paperclip.mjs';
 import { readChiefWebPrivateJson } from './chief-web-private-file.mjs';
+import { bindChiefWebPaperclipRepository } from './chief-web-paperclip-repository.mjs';
+import { createChiefWebRecoveryEntry } from './chief-web-recovery-entry.mjs';
+import { createChiefWebRecoveryNative } from './chief-web-recovery-native.mjs';
+import { createChiefWebRecoveryLease } from './chief-web-recovery-lease.mjs';
+import { createChiefWebRecoveryHostHandoff } from './chief-web-recovery-io.mjs';
+import { createChiefWebProjection } from './chief-web-projection.mjs';
 
 const root = '/paperclip/control/chief-web';
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -104,6 +110,19 @@ export async function readExecutionEvidence({ task, context, binding, inputRevis
       refreshed.generation !== binding?.generation)) fail('CHIEF_WEB_EXECUTION_EVIDENCE_UNAVAILABLE');
   const evidence = refreshed ?? await read(path.join(directory, inputRevision + '.json'));
   if (evidence?.taskId !== task.id || evidence.inputRevision !== inputRevision) fail('CHIEF_WEB_EXECUTION_EVIDENCE_UNAVAILABLE');
+  const recovery = context.chiefWebRecovery;
+  if (recovery && context.pr.headSha === candidate && ['WAIT_CI', 'COMPLETED', 'BLOCKED'].includes(context.phase) &&
+      recovery.taskId === task.id && recovery.inputRevision === inputRevision && recovery.candidateSha === candidate &&
+      recovery.grantId === binding?.grantId && recovery.conversationId === binding?.conversationId &&
+      recovery.generation === binding?.generation && recovery.repository === CHIEF_WEB_PILOT.repository &&
+      recovery.pullRequest === CHIEF_WEB_PILOT.pullRequest && hash.test(recovery.publicationEvidenceDigest ?? '')) {
+    const result = { ...evidence, prHead: candidate, evidenceDigest: sha(JSON.stringify([evidence, recovery])) };
+    if (recovery.ci?.conclusion === 'success' && recovery.receipt?.conclusion === 'success' && task.status === 'done' &&
+        recovery.receipt.ciProofDigest === recovery.ci.evidenceDigest && hash.test(recovery.receipt.receiptDigest ?? '')) {
+      result.ci = { repository: recovery.repository, pullRequest: recovery.pullRequest, headSha: candidate, checksPassed: true };
+    }
+    return result;
+  }
   if (context.phase === 'WAIT_DECISION' && context.pr.headSha === CHIEF_WEB_PILOT.previousHead) {
     const block = await read(path.join(root, 'publication-blockers', inputRevision + '.json'));
     if (block?.schemaVersion === 1 && block.code === 'CHIEF_WEB_MASTER_ADVANCED' &&
@@ -343,4 +362,32 @@ export async function loadChiefWebRuntimeBootstrap({ log }) {
       writePermit, log,
     }),
   };
+}
+
+/** Fixed recovery operator path, outside the public/native browser endpoints. */
+export async function runChiefWebRecoveryCommand(args, { db, log } = {}) {
+  if (!Array.isArray(args) || args.length < 2 || args.length > 3 || typeof log !== 'function' ||
+      !['claim', 'publish', 'record-ci', 'release', 'inspect'].includes(args[0]) || !hash.test(args[1] ?? '') ||
+      (args[0] === 'record-ci' ? args.length !== 3 || !/^[A-Za-z0-9][A-Za-z0-9:_-]{0,95}$/.test(args[2]) : args.length !== 2)) {
+    fail('CHIEF_WEB_RECOVERY_COMMAND_INVALID');
+  }
+  const [action, operationId, eventId] = args;
+  const policy = await readPilotBinding();
+  const [{ issueService }, schema, orm] = await Promise.all([
+    import('/opt/paperclip/node_modules/@paperclipai/server/dist/services/issues.js'),
+    import('/opt/paperclip/node_modules/@paperclipai/db/dist/index.js'),
+    import('/opt/paperclip/node_modules/drizzle-orm/index.js'),
+  ]);
+  const bindings = bindChiefWebPaperclipRepository({ db, schema, orm, issueService,
+    chiefAgentId: policy.chiefAgentId, readApprovedGrant: readChiefWebApprovalBinding,
+    readProjection: createChiefWebProjection({ readExecutionEvidence }),
+    readChiefCallReceipt: ({ binding }) => readOptional(path.join(root, 'receipts', binding.grantId + '.json')),
+  });
+  const native = createChiefWebRecoveryNative({ bindings, readExecutionEvidence,
+    readRuntime: () => readOptional('/paperclip/integration-v1/runtime.json'),
+    readReviewCapability: inputRevision => hash.test(inputRevision) ? readOptional(path.join(root, 'review-refresh', inputRevision + '.json')) : null,
+    lease: createChiefWebRecoveryLease(),
+  });
+  const entry = createChiefWebRecoveryEntry({ bindings, ...native, hostPublication: createChiefWebRecoveryHostHandoff(), log });
+  return entry[action === 'record-ci' ? 'recordCi' : action]({ operationId, eventId });
 }

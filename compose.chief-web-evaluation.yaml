@@ -1,5 +1,9 @@
 name: super-agent-chief-web-rehearsal
 
+x-log: &log
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+
 x-app: &app
   image: "${SUPER_AGENT_RUNTIME_IMAGE:?select the content-addressed runtime image}"
   platform: linux/arm64
@@ -8,6 +12,8 @@ x-app: &app
   security_opt: [no-new-privileges:true]
   pids_limit: 256
   mem_limit: 1536m
+  cpus: 2.0
+  logging: *log
   tmpfs: ["/tmp:size=256m,mode=1777"]
 
 services:
@@ -22,6 +28,9 @@ services:
     platform: linux/arm64
     pull_policy: never
     mem_limit: 512m
+    pids_limit: 256
+    cpus: 1.0
+    logging: *log
     depends_on:
       bootstrap: {condition: service_completed_successfully}
     networks: [evaluation]
@@ -80,6 +89,9 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     mem_limit: 128m
+    pids_limit: 96
+    cpus: 0.5
+    logging: *log
     depends_on:
       paperclip: {condition: service_healthy}
     networks: [evaluation, ui]
