@@ -20,7 +20,7 @@ const repository = REAL_RWB_REPOSITORY, targetDoc = REAL_RWB_DOCUMENT;
 const url = 'https://github.com/' + repository + '/pull/321';
 const repo = 'repos/' + repository;
 
-function fixture(t, { failFirstResourceRecord = false } = {}) {
+function fixture(t, { failFirstResourceRecord = false, preflightErrors = {}, postProbeError = null, pauseOnWait = false } = {}) {
   const tmp = mkdtempSync(path.join(tmpdir(), 'sa-publisher-workspace-'));
   t.after(() => rmSync(tmp, { recursive: true, force: true }));
   const projectRoot = path.join(tmp, 'rwb'), worktreeRoot = path.join(tmp, 'worktrees');
@@ -31,13 +31,24 @@ function fixture(t, { failFirstResourceRecord = false } = {}) {
   const documents = new Map();
   const journalRows = new Map();
   const actions = [];
+  const actionInputs = [];
   const checks = [];
+  const waits = [];
+  const leases = [];
+  let clock = 1000;
+  let commits = 0;
+  let paused = false;
   let resourceAttempts = 0;
+  const raised = code => Object.assign(new Error(code), { code });
   const exit = (stdout = '', status = 0) => ({ stdout: Buffer.from(stdout), status });
   const workspace = createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitBinary: '/usr/bin/git',
     controller: { readDeliveryReceipt: () => managed },
     async runDelivery(input, options) {
+      const attempt = actions.filter(action => action === input.action).length;
       actions.push(input.action);
+      actionInputs.push(input);
+      const preflightError = preflightErrors[input.action]?.[attempt];
+      if (preflightError) throw raised(preflightError);
       if (input.action === 'start') {
         init(featureWorktree);
         managed = { taskId: deliveryTaskId, repositoryRoot: projectRoot, defaultBranch: 'master', remote: 'origin',
@@ -61,6 +72,7 @@ function fixture(t, { failFirstResourceRecord = false } = {}) {
         }
       }
       options.resourceRevalidationProbe({ repositoryRoot: projectRoot }, deliveryTaskId, 'record');
+      if (postProbeError?.action === input.action) throw raised(postProbeError.code);
       return managed;
     },
     github: { get(endpoint) {
@@ -88,9 +100,18 @@ function fixture(t, { failFirstResourceRecord = false } = {}) {
       return { status: 'passed', candidateSha: input.candidateSha, durationSeconds: 0, command: 'three RWB checks',
         checks: ['documentation-governance', 'project-constraints', 'python-file-index'].map(name => ({ name, exitCode: 0, durationMs: 1 })) };
     },
-    async assertWorkspaceLease() {},
+    async assertWorkspaceLease(subject) {
+      leases.push(subject.operationId ?? subject.slotId);
+      if (paused) throw raised('WORKSPACE_PAUSED');
+    },
     async readReview(input) { return { ...input, verified: true, approved: true, reviewerSessionId }; },
     async log() {},
+    now: () => clock,
+    async wait(ms) {
+      waits.push(ms);
+      clock += ms;
+      if (pauseOnWait) paused = true;
+    },
     run(_binary, args, { cwd }) {
       if (args[0] === 'remote') return exit(managed?.remoteUrl ?? 'git@github.com:' + repository + '.git');
       if (args[0] === 'ls-tree') return documents.has(args[2]) ? exit('100644 blob ' + args[2] + '\t' + targetDoc + '\0') : exit();
@@ -110,6 +131,7 @@ function fixture(t, { failFirstResourceRecord = false } = {}) {
       }
       if (args[0] === 'add') return exit();
       if (args[0] === 'commit') {
+        commits++;
         const content = readFileSync(path.join(cwd, targetDoc), 'utf8');
         if (cwd === featureWorktree) { featureHead = featureSha; documents.set(featureSha, content); }
         else { integrationHead = secondSha; documents.set(secondSha, content); }
@@ -122,7 +144,8 @@ function fixture(t, { failFirstResourceRecord = false } = {}) {
   const request = (revision, role = 'developer') => ({ taskId, repository, targetDoc, role, revision, slotId, operationId: slotId,
     inputRevision: revision === 1 ? first : second, pr: revision === 1 ? null : { number: 321, url, branch, headSha: firstSha, baseSha } });
   const artifact = (claim, workspace, content) => ({ claim, workspace, content, providerReceiptDigest: 'a'.repeat(64), developerSessionId });
-  return { workspace, request, artifact, actions, checks, resourceAttempts: () => resourceAttempts,
+  return { workspace, request, artifact, actions, actionInputs, checks, waits, leases, commits: () => commits,
+    resourceAttempts: () => resourceAttempts,
     setDirty: () => { dirty = true; }, moveBase: () => { remoteBase = movedBase; }, markFirstPublished() {
     managed = { ...managed, mode: 'pr', status: 'awaiting_ci', pullRequest: { number: 321, url }, remoteCommit: baseSha };
     remoteHead = firstSha;
@@ -158,6 +181,41 @@ test('first candidate and append-only repair share the managed RWB worktrees and
   sample.setDirty();
   await assert.rejects(sample.workspace.readPrepared({ ...sample.request(2, 'publish'), candidateSha: secondSha, baseSha,
     branch, previousHead: firstSha, reviewDigest }), { code: 'RWB_REAL_WORKSPACE_CHANGED' });
+});
+
+test('retries only pre-callback Git lock denial for start and prepare without writing the feature twice', async t => {
+  const sample = fixture(t, { preflightErrors: { start: ['NATIVE_LOCKED'], prepare: ['REPOSITORY_LOCKED', 'NATIVE_LOCKED'] } });
+  const request = sample.request(1);
+  const snapshot = await sample.workspace.read(request);
+  const candidate = await sample.workspace.prepare(sample.artifact(request, snapshot, '# Acceptance\n'));
+  assert.equal(candidate.candidateSha, firstSha);
+  assert.deepEqual(sample.actions, ['start', 'start', 'prepare', 'prepare', 'prepare']);
+  assert.deepEqual(sample.actionInputs[0], sample.actionInputs[1]);
+  assert.equal(sample.actionInputs[0].slug, 'chief-web');
+  assert.deepEqual(sample.actionInputs[2], sample.actionInputs[3]);
+  assert.deepEqual(sample.actionInputs[3], sample.actionInputs[4]);
+  assert.equal(Object.hasOwn(sample.actionInputs[2], 'slug'), false);
+  assert.deepEqual(sample.waits, [4000, 4000, 4000]);
+  assert.ok(sample.leases.length >= sample.actions.length);
+  assert.ok(sample.leases.every(operationId => operationId === slotId));
+  assert.equal(sample.commits(), 1);
+  assert.equal(sample.resourceAttempts(), 2);
+});
+
+test('lock waiting stops for pause, timeout, unknown errors or a lock code after resource entry', async t => {
+  const paused = fixture(t, { preflightErrors: { start: ['REPOSITORY_LOCKED'] }, pauseOnWait: true });
+  await assert.rejects(paused.workspace.read(paused.request(1)), { code: 'WORKSPACE_PAUSED' });
+  assert.deepEqual(paused.actions, ['start']);
+  const bounded = fixture(t, { preflightErrors: { start: Array(40).fill('REPOSITORY_LOCKED') } });
+  await assert.rejects(bounded.workspace.read(bounded.request(1)), { code: 'REPOSITORY_LOCKED' });
+  assert.equal(bounded.waits.reduce((sum, ms) => sum + ms, 0), 120_000);
+  assert.equal(bounded.actions.length, 30);
+  for (const options of [{ preflightErrors: { start: ['TASK_LOCKED'] } }, { postProbeError: { action: 'start', code: 'NATIVE_LOCKED' } }]) {
+    const sample = fixture(t, options);
+    await assert.rejects(sample.workspace.read(sample.request(1)));
+    assert.deepEqual(sample.actions, ['start']);
+    assert.deepEqual(sample.waits, []);
+  }
 });
 
 test('resumes resource registration from the exact started worktree without replaying managed start', async t => {
