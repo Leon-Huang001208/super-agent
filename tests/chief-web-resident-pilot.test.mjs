@@ -36,6 +36,7 @@ function fixture() {
   let clock = 100;
   let refuseDrain = false;
   let activateFailure = false;
+  let activateExpired = false;
   let inactiveComment = null;
   let expiryAfterStatus = null;
   const seen = [];
@@ -54,6 +55,7 @@ function fixture() {
       assert.equal(slot.targetDoc, binding.targetDoc);
       seen.push(['activate', slotIndex(slot)]);
       if (activateFailure) throw Error('ambiguous activation');
+      if (activateExpired) return false;
     },
     verifyActive(slot) { seen.push(['verify', slotIndex(slot)]); },
     verifyFreshComments(slot) {
@@ -75,6 +77,7 @@ function fixture() {
     setExpiry: () => { clock = manifest.expiresAt; },
     setLease: value => { refuseDrain = value; },
     activationFails: () => { activateFailure = true; },
+    activationExpires: () => { activateExpired = true; },
     rejectFreshSlot: index => { inactiveComment = index; },
     expireAfterStatus: index => { expiryAfterStatus = index; },
   };
@@ -164,6 +167,10 @@ test('expiry during Native reads prevents adoption and closes a newly configured
   assert.equal((await activated.make().step()).phase, 'expired');
   assert.deepEqual(activated.seen.filter(([event]) => ['activate', 'disable', 'start'].includes(event)),
     [['activate', 0], ['disable', 0]]);
+  const switching = fixture();
+  switching.activationExpires();
+  assert.equal((await switching.make().step()).phase, 'expired');
+  assert.deepEqual(switching.seen.filter(([event]) => ['activate', 'start'].includes(event)), [['activate', 0]]);
 });
 
 test('old head, ambiguous activation and nonempty lease never switch the app', async () => {

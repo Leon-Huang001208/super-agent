@@ -135,7 +135,7 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
     if (now() >= manifest.expiresAt) return commit(current, expired);
     await commit(current, { phase: 'activating', conversationId: slot.conversationId, code: null });
     if (now() >= manifest.expiresAt) return commit(current, expired);
-    await host.activate(slot, binding);
+    if (await host.activate(slot, binding) === false) return commit(current, expired);
     await host.verifyActive(slot, binding);
     try { await host.verifyFreshComments(slot, binding); }
     catch (error) {
@@ -208,6 +208,10 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
     }
     if (!localConsumer) {
       await host.drain();
+      if (now() >= manifest.expiresAt) {
+        await host.disable(slot, bindings[current.index]);
+        return commit(current, { phase: 'expired', code: null });
+      }
       localConsumer = true;
       await host.start(slot);
     }
@@ -466,8 +470,15 @@ async function createMacHost({ manifest, log }) {
       if (hash(JSON.stringify(await readPrivate(path.join(slot.scopeRoot, 'binding.json')))) !== hash(JSON.stringify(binding))) {
         fail('CHIEF_WEB_RESIDENT_BINDING_DRIFT');
       }
+      if (Date.now() >= manifest.expiresAt) return false;
       await dockerDo(['exec', '-i', app, 'node', '-e', replaceBinding], { input: JSON.stringify(binding) + '\n' });
+      if (Date.now() >= manifest.expiresAt) {
+        await compose(slot, false, ['up', '-d', '--wait', '--wait-timeout', '75', '--no-build', '--no-deps', '--force-recreate', 'paperclip'], { timeout: 90000 });
+        await stable(slot, false);
+        return false;
+      }
       await compose(slot, true, ['up', '-d', '--wait', '--wait-timeout', '75', '--no-build', '--no-deps', '--force-recreate', 'paperclip'], { timeout: 90000 });
+      return true;
     },
     async disable(slot, binding) {
       await verifyActive(slot, binding);
@@ -476,6 +487,7 @@ async function createMacHost({ manifest, log }) {
     },
     async start(slot) {
       if (child) fail('CHIEF_WEB_RESIDENT_CONSUMER_PRESENT');
+      if (Date.now() >= manifest.expiresAt) fail('CHIEF_WEB_RESIDENT_PERMIT_EXPIRED');
       const processChild = spawn(process.execPath, [runner, path.join(slot.scopeRoot, 'host-scope.json')], {
         cwd: manifest.sourceRoot, env: chiefWebResidentChildEnvironment(slot), stdio: 'ignore',
       });
