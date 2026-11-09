@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
-import { CHIEF_WEB_REAL_MODEL, chiefWebRealDigest, chiefWebRealRequestDigest,
+import { CHIEF_WEB_REAL_MODEL, CHIEF_WEB_REAL_TARGET, chiefWebRealDigest, chiefWebRealRequestDigest,
   chiefWebRealRequestIdentity, createChiefWebRealExecutor } from '../bridge/chief-web-real-executor.mjs';
 import { CHIEF_WEB_REAL_MODEL_FILE_LIMIT, createChiefWebRealFileProvider } from '../bridge/chief-web-real-executor-provider.mjs';
 
@@ -117,6 +117,7 @@ export function chiefWebRealDockerArguments({ imageId, network, dependenciesRoot
     '--mount', mount(modelSlot, workerRoot + '/' + slotId),
     '--mount', mount(credentialSlot, '/executor-sessions'),
     '--env', 'SUPER_AGENT_CHIEF_WEB_REAL_MODEL_ENABLED=1',
+    '--env', 'SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT=' + CHIEF_WEB_REAL_TARGET,
     ...(proxy ? ['--env', 'HTTP_PROXY=' + proxy, '--env', 'HTTPS_PROXY=' + proxy] : []),
     '--entrypoint', 'node', imageId, '/opt/super-agent/scripts/chief-web-real-executor.mjs', slotId];
 }

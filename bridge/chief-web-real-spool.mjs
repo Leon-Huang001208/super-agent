@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY, realDigest } from './chief-web-real-engine.mjs';
+import { REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY, assertChiefWebRealDocumentBinding, realDigest } from './chief-web-real-engine.mjs';
 
 const guid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const digest = /^[a-f0-9]{64}$/;
@@ -17,6 +17,7 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
   if (typeof root !== 'string' || !path.isAbsolute(root) || path.resolve(root) !== root ||
       !guid.test(config?.conversationId ?? '') || !Number.isSafeInteger(config.generation) ||
       !Number.isSafeInteger(config.expiresAt) || typeof log !== 'function') fail('CHIEF_WEB_REAL_SPOOL_CONFIGURATION_INVALID');
+  assertChiefWebRealDocumentBinding(config);
 
   const uid = process.getuid();
   const maxBytes = 48_000;

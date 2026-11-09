@@ -183,3 +183,31 @@ test('prelaunch recovery preserves the blocked original Native attempt', async (
   assert.equal(f.calls.filter(call => call.role === 'developer').length, 1);
   assert.equal(f.records.at(-1).recoveredOperationId, blocked.operationId);
 });
+
+test('packaged target requires a matching private binding and remains a single allowed document', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const configured = 'docs/super-agent/chief-browser-acceptance.md';
+  const name = 'SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT';
+  const probe = `
+    import assert from 'node:assert/strict';
+    import { REAL_RWB_DOCUMENT, assertChiefWebRealDocumentBinding } from './bridge/chief-web-real-engine.mjs';
+    import { CHIEF_WEB_REAL_TARGET } from './bridge/chief-web-real-executor.mjs';
+    import { chiefWebRealDockerArguments } from './scripts/chief-web-real-executor-host.mjs';
+    assert.equal(REAL_RWB_DOCUMENT, process.env.${name});
+    assert.equal(CHIEF_WEB_REAL_TARGET, REAL_RWB_DOCUMENT);
+    assertChiefWebRealDocumentBinding({ targetDoc: REAL_RWB_DOCUMENT });
+    assert.throws(() => assertChiefWebRealDocumentBinding({}), { code: 'CHIEF_WEB_REAL_DOCUMENT_BINDING_MISMATCH' });
+    const args = chiefWebRealDockerArguments({ imageId: 'sha256:' + '1'.repeat(64), network: 'super-agent-test_model',
+      dependenciesRoot: '/deps', logRoot: '/logs', modelSlot: '/model', credentialSlot: '/auth',
+      slotId: '10000000-0000-4000-8000-000000000001' });
+    assert.ok(args.includes('${name}=' + REAL_RWB_DOCUMENT));
+  `;
+  const run = value => spawnSync(process.execPath, ['--input-type=module', '--eval', probe], {
+    env: { ...process.env, [name]: value }, encoding: 'utf8',
+  });
+  const accepted = run(configured);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const denied = run('docs/super-agent/unrelated.md');
+  assert.notEqual(denied.status, 0);
+  assert.match(denied.stderr, /CHIEF_WEB_REAL_DOCUMENT_DENIED/);
+});
