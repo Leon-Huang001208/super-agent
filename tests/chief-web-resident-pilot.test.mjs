@@ -37,6 +37,7 @@ function fixture() {
   let refuseDrain = false;
   let activateFailure = false;
   let inactiveComment = null;
+  let expiryAfterStatus = null;
   const seen = [];
   const statuses = bindings.map((_binding, index) => ready(index));
   const slotIndex = slot => manifest.slots.indexOf(slot);
@@ -58,7 +59,12 @@ function fixture() {
     verifyFreshComments(slot) {
       if (inactiveComment === slotIndex(slot)) throw Object.assign(Error('inactive comment'), { code: 'CHIEF_WEB_RESIDENT_INACTIVE_OWNER_COMMENT' });
     },
-    status(slot) { seen.push(['status', slotIndex(slot)]); return statuses[slotIndex(slot)]; },
+    status(slot) {
+      const index = slotIndex(slot);
+      seen.push(['status', index]);
+      if (expiryAfterStatus === index) clock = manifest.expiresAt;
+      return statuses[index];
+    },
     start(slot) { seen.push(['start', slotIndex(slot)]); },
     stop() { seen.push(['stop']); },
     disable(slot) { seen.push(['disable', slotIndex(slot)]); },
@@ -70,6 +76,7 @@ function fixture() {
     setLease: value => { refuseDrain = value; },
     activationFails: () => { activateFailure = true; },
     rejectFreshSlot: index => { inactiveComment = index; },
+    expireAfterStatus: index => { expiryAfterStatus = index; },
   };
 }
 
@@ -137,8 +144,26 @@ test('adopts the original recovered terminal receipt only after a drain', async 
   assert.equal(env.current.phase, 'blocked');
   env.setLease(false);
   assert.equal((await restored.step()).index, 1);
+  assert.equal(env.current.code, null);
   assert.deepEqual(env.current.completed.map(item => item.prNumber), [1]);
   assert.deepEqual(env.seen.filter(([event]) => event === 'start'), [['start', 0], ['start', 1]]);
+});
+
+test('expiry during Native reads prevents adoption and closes a newly configured intake', async () => {
+  const recovered = fixture();
+  const pilot = recovered.make();
+  await pilot.step();
+  recovered.statuses[0] = { phase: 'blocked', generation: 0, revision: 1 };
+  await pilot.step();
+  recovered.statuses[0] = done(0);
+  recovered.expireAfterStatus(0);
+  assert.equal((await recovered.make().step()).phase, 'blocked');
+  assert.deepEqual(recovered.seen.filter(([event]) => event === 'activate'), [['activate', 0]]);
+  const activated = fixture();
+  activated.expireAfterStatus(0);
+  assert.equal((await activated.make().step()).phase, 'expired');
+  assert.deepEqual(activated.seen.filter(([event]) => ['activate', 'disable', 'start'].includes(event)),
+    [['activate', 0], ['disable', 0]]);
 });
 
 test('old head, ambiguous activation and nonempty lease never switch the app', async () => {

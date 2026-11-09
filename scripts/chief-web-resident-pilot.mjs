@@ -128,10 +128,13 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
     const slot = manifest.slots[current.index];
     const binding = bindings[current.index];
     const blocked = { phase: 'blocked', conversationId: slot.conversationId, code: 'CHIEF_WEB_RESIDENT_INACTIVE_OWNER_COMMENT' };
+    const expired = { phase: 'expired', conversationId: slot.conversationId, code: null };
     await host.drain();
     try { await host.verifyFreshComments(slot, binding); }
     catch (error) { if (error?.code === blocked.code) return commit(current, blocked); throw error; }
-    await commit(current, { phase: 'activating', conversationId: slot.conversationId });
+    if (now() >= manifest.expiresAt) return commit(current, expired);
+    await commit(current, { phase: 'activating', conversationId: slot.conversationId, code: null });
+    if (now() >= manifest.expiresAt) return commit(current, expired);
     await host.activate(slot, binding);
     await host.verifyActive(slot, binding);
     try { await host.verifyFreshComments(slot, binding); }
@@ -144,9 +147,14 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
     const status = await host.status(slot);
     if (status?.phase !== 'ready' || status.generation !== binding.generation || status.taskId ||
         status.revision !== 0 || status.operationId) fail('CHIEF_WEB_RESIDENT_INTAKE_NOT_EMPTY');
+    if (now() >= manifest.expiresAt) {
+      await host.drain();
+      await host.disable(slot, binding);
+      return commit(current, expired);
+    }
     localConsumer = true;
     await host.start(slot);
-    return commit(current, { phase: 'active', conversationId: slot.conversationId });
+    return commit(current, { phase: 'active', conversationId: slot.conversationId, code: null });
   }
 
   async function step() {
@@ -185,13 +193,16 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
         fail('CHIEF_WEB_RESIDENT_TERMINAL_UNVERIFIED');
       }
       const completed = [...current.completed, { conversationId: slot.conversationId, ...result }];
-      if (blocked) await host.drain();
+      if (blocked) {
+        await host.drain();
+        if (now() >= manifest.expiresAt) return current;
+      }
       await commit(current, { phase: 'draining' });
       await stop();
       await host.drain();
       if (current.index + 1 === manifest.slots.length) {
         await host.disable(slot, bindings[current.index]);
-        return commit(current, { phase: 'complete', completed });
+        return commit(current, { phase: 'complete', completed, code: null });
       }
       return activate({ ...current, index: current.index + 1, completed });
     }
