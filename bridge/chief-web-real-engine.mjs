@@ -2,10 +2,16 @@ import { createHash } from 'node:crypto';
 
 const defaultDocument = 'docs/super-agent/chief-task-verification.md';
 const packagedDocument = 'docs/super-agent/chief-browser-acceptance.md';
+const documentCaps = new Map([
+  [defaultDocument, 2],
+  [packagedDocument, 2],
+  ['docs/super-agent/chief-single-image-verification.md', 2],
+  ['docs/super-agent/chief-resident-intake.md', 1],
+  ['docs/super-agent/chief-resident-recovery.md', 1],
+  ['docs/super-agent/chief-resident-status.md', 1],
+]);
 export const REAL_RWB_DOCUMENT = process.env.SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT || defaultDocument;
-if (REAL_RWB_DOCUMENT !== defaultDocument && REAL_RWB_DOCUMENT !== packagedDocument) {
-  fail('CHIEF_WEB_REAL_DOCUMENT_DENIED');
-}
+if (!documentCaps.has(REAL_RWB_DOCUMENT)) fail('CHIEF_WEB_REAL_DOCUMENT_DENIED');
 export const REAL_RWB_REPOSITORY = 'Leon-Huang001208/ResearchWorkbench';
 
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -28,8 +34,16 @@ export function realDigest(fields) {
   return createHash('sha256').update(JSON.stringify(fields)).digest('hex');
 }
 
+export function resolveChiefWebRealScope(config = {}) {
+  const { targetDoc = defaultDocument, maxRevisions = 2 } = config;
+  if (documentCaps.get(targetDoc) !== maxRevisions) fail('CHIEF_WEB_REAL_SCOPE_CONFIGURATION_INVALID');
+  return Object.freeze({ targetDoc, maxRevisions });
+}
+
 export function assertChiefWebRealDocumentBinding(config) {
-  if ((config.targetDoc ?? defaultDocument) !== REAL_RWB_DOCUMENT) fail('CHIEF_WEB_REAL_DOCUMENT_BINDING_MISMATCH');
+  const scope = resolveChiefWebRealScope(config);
+  if (scope.targetDoc !== REAL_RWB_DOCUMENT) fail('CHIEF_WEB_REAL_DOCUMENT_BINDING_MISMATCH');
+  return scope;
 }
 
 function operationId(fields) {
@@ -50,6 +64,7 @@ function publicView(state) {
   const { taskId, identifier, phase, generation, inputRevision, revision, paused, contextRevision, candidate, review, pr, ci, code, attempt } = state;
   return {
     taskId, identifier, phase, generation, inputRevision, revision, paused, contextRevision, pr, ci, code,
+    targetDoc: state.targetDoc, maxRevisions: state.maxRevisions,
     ...(candidate && { candidateSha: candidate.candidateSha, baseSha: candidate.baseSha,
       previousHead: candidate.previousHead, reviewDigest: review?.reviewDigest }),
     ...(attempt && { operationId: attempt.id, operationKind: attempt.role }),
@@ -62,25 +77,29 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
     publisher?.publish, publisher?.observePublication, publisher?.readCi, log, now].every(fn => typeof fn === 'function') ||
     !uuid.test(config?.conversationId ?? '') || !Number.isSafeInteger(config.generation) ||
     !Number.isSafeInteger(config.expiresAt)) fail('CHIEF_WEB_REAL_CONFIGURATION_INVALID');
-  assertChiefWebRealDocumentBinding(config);
+  const scope = assertChiefWebRealDocumentBinding(config);
+  const { targetDoc, maxRevisions } = scope;
   let running;
 
   const first = {
     phase: 'ready', sequence: 0, generation: config.generation, revision: 0, messages: [], results: [],
-    controls: [], publications: [], taskId: null, pr: null, paused: false,
-    ...(REAL_RWB_DOCUMENT !== defaultDocument && { targetDoc: REAL_RWB_DOCUMENT }),
+    controls: [], publications: [], taskId: null, pr: null, paused: false, ...scope,
   };
 
   function stateFrom(value) {
     const state = value ?? first;
     if (state.generation !== config.generation) fail('CHIEF_WEB_REAL_GENERATION_CHANGED');
-    assertChiefWebRealDocumentBinding(state);
-    return { ...state, contextRevision: realDigest([config.conversationId, state.generation, state.sequence]) };
+    const legacy = state.maxRevisions === undefined &&
+      ((targetDoc === defaultDocument && state.targetDoc === undefined) ||
+        (targetDoc === packagedDocument && state.targetDoc === packagedDocument));
+    if ((!legacy && !same(state, scope)) || !Number.isSafeInteger(state.revision) ||
+        state.revision < 0 || state.revision > maxRevisions) fail('CHIEF_WEB_REAL_SCOPE_CHANGED');
+    return { ...state, ...scope, contextRevision: realDigest([config.conversationId, state.generation, state.sequence]) };
   }
 
   function messageRevision(generation, inputs, text) {
     const fields = [config.conversationId, generation, inputs, realDigest(text)];
-    if (REAL_RWB_DOCUMENT !== defaultDocument) fields.push(REAL_RWB_DOCUMENT);
+    if (targetDoc !== defaultDocument) fields.push(targetDoc);
     return realDigest(fields);
   }
 
@@ -133,7 +152,8 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
     return repository.transaction(async tx => {
       let state = stateFrom(await tx.readState());
       if (terminal.has(state.phase)) return prelaunchUnknown(state) ? { state, fresh: false, messages } : null;
-      const mayAdmit = !state.paused && now() < config.expiresAt && (!state.attempt || state.attempt.role === 'ci') &&
+      const mayAdmit = state.revision < maxRevisions && !state.paused && now() < config.expiresAt &&
+        (!state.attempt || state.attempt.role === 'ci') &&
         (state.phase === 'ready' ||
         (['waiting_ci', 'awaiting_supplement'].includes(state.phase) && state.revision === 1));
       const message = mayAdmit && messages.find(row => uuid.test(row.id) && row.generation === state.generation &&
@@ -173,7 +193,7 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
     }
     return {
       taskId, conversationId: config.conversationId, generation: config.generation, inputRevision, revision,
-      role: attempt.role, slotId: attempt.id, operationId: attempt.id, targetDoc: REAL_RWB_DOCUMENT,
+      role: attempt.role, slotId: attempt.id, operationId: attempt.id, targetDoc,
       repository: REAL_RWB_REPOSITORY, text: attempt.role === 'chief' ? text : undefined,
       requirements, taskDescription: requirements, pr, confirmation,
       candidateSha: candidate?.candidateSha, baseSha: candidate?.baseSha,
@@ -189,7 +209,7 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
     const result = reply.result;
     if (!result || typeof result !== 'object') fail('CHIEF_WEB_REAL_RECEIPT_MISMATCH');
     if (role === 'chief') {
-      if (result.accepted !== true || result.targetDoc !== REAL_RWB_DOCUMENT || typeof result.requirements !== 'string' ||
+      if (result.accepted !== true || result.targetDoc !== targetDoc || typeof result.requirements !== 'string' ||
           !result.requirements.trim() || result.requirements.length > 4000) fail('CHIEF_WEB_REAL_INTENT_DENIED');
     } else if (role === 'developer') {
       if (!commit.test(result.candidateSha ?? '') || !commit.test(result.baseSha ?? '') ||
@@ -234,7 +254,7 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
           { role, inputRevision: state.inputRevision, operationId: state.attempt.id, evidenceDigest: reply.evidenceDigest }] };
         if (role === 'chief') {
           const requirements = state.requirements ? state.requirements + '\n\n补充：' + result.requirements : result.requirements;
-          const description = '目标文档：' + REAL_RWB_DOCUMENT + '\n\n' + requirements;
+          const description = '目标文档：' + targetDoc + '\n\n' + requirements;
           if (!state.taskId) {
             const task = await tx.createTask({ title: '验证 Chief 真实任务交付', description });
             if (!uuid.test(task?.id ?? '') || typeof task.identifier !== 'string') fail('CHIEF_WEB_REAL_NATIVE_TASK_UNAVAILABLE');
@@ -253,7 +273,7 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
             publications: [...state.publications, { ...result, inputRevision: state.inputRevision }] });
           await tx.setTask({ taskId: state.taskId, status: 'in_review' });
         } else {
-          const phase = result.conclusion === 'failure' ? 'blocked' : state.revision === 2 ? 'done' : 'awaiting_supplement';
+          const phase = result.conclusion === 'failure' ? 'blocked' : state.revision === maxRevisions ? 'done' : 'awaiting_supplement';
           Object.assign(patch, { phase, ci: result, code: phase === 'blocked' ? 'CHIEF_WEB_REAL_CI_FAILED' : null });
           if (terminal.has(phase)) await tx.setTask({ taskId: state.taskId, status: phase });
         }
