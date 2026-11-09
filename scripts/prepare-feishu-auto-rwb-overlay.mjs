@@ -9,6 +9,8 @@ const pins = {
   'app/bridge/unified-runtime/gateway.mjs': 'a73bd54946dbe1a205db6d2b415e8aee366da48527ebbceb6dca7faba8d1c18a',
   'app/bridge/unified-main.mjs': '3c014da8b3e8dfdba66be4ed5e17a01ead24495be42018ea805e6638b7ed6282',
   'app/bridge/integration-native/index.mjs': 'de7332f0798e7bc696868d8a14d2e0f9482f087959c90f0f6f1f136be01c8dc0',
+  'app/bridge/unified-controller.mjs': '9df76877509dc42496dadcb221f3d32e1c33be1e96247bd6b2b4ece42b7b0b4c',
+  'app/bridge/unified-feishu.mjs': 'aa3633dde3b8591e14da5ef862a86086e1b19a5bb90fd1e8fcaaf824f3bc4b7b',
   'feishu/bridge/unified-feishu.mjs': 'aa3633dde3b8591e14da5ef862a86086e1b19a5bb90fd1e8fcaaf824f3bc4b7b',
 };
 
@@ -20,18 +22,26 @@ function replaceOnce(source, anchor, replacement) {
 function patchGateway(source) {
   source = "import { maybeRegisterFeishuAutoRwb } from '../feishu-auto-rwb-gateway.mjs';\n" +
     "import { codePathsFromGoal } from '../task-identity.mjs';\n" + source;
-  source = replaceOnce(source, 'ownerOpenId, log, onAccepted } = {})', 'ownerOpenId, log, onAccepted, autoAdmission } = {})');
+  source = replaceOnce(source, 'ownerOpenId, log, onAccepted } = {})', 'ownerOpenId, log, onAccepted, autoAdmission, readAutoTaskContext } = {})');
   const marker = '    const match = new RegExp(';
   return replaceOnce(source, marker,
-    '    const scoped = await maybeRegisterFeishuAutoRwb({ admission: autoAdmission, native, text, operationId, externalRef, sourceEventKey, ownerOpenId, onAccepted, codePathsFromGoal, log });\n' +
+    '    const scoped = await maybeRegisterFeishuAutoRwb({ admission: autoAdmission, native, text, operationId, externalRef, sourceEventKey, ownerOpenId, onAccepted, codePathsFromGoal, log, readTaskContext: readAutoTaskContext });\n' +
     '    if (scoped !== null) return scoped;\n' + marker);
 }
 
 function patchMain(source) {
   source = "import { createFeishuAutoRwbAdmission } from './feishu-auto-rwb-admission.mjs';\n" + source;
   const runtimeState = '  let loaded, gateway, epoch, closing, stopped = false, refreshPending, drainFailed = false, fatalCode;';
-  source = replaceOnce(source, runtimeState, runtimeState +
-    '\n  const autoAdmission = createFeishuAutoRwbAdmission({ root, now: clock, readTaskContext: taskId => loaded.native.getTaskContext({ taskId }) });');
+  source = replaceOnce(source, runtimeState, runtimeState + '\n' + [
+    '  const readAutoTaskContext = async ({ taskId }) => {',
+    '    const context = await loaded.native.getTaskContext({ taskId });',
+    "    if (context?.status !== 'done') return context;",
+    '    const state = await loaded.contextStore.read({ taskId });',
+    '    const proof = await createReadTerminal({ root, clock, log })({ taskId, context, state });',
+    '    return { ...context, finalized: proof?.finalized === true && proof.inputRevision === context.inputRevision };',
+    '  };',
+    '  const autoAdmission = createFeishuAutoRwbAdmission({ root, now: clock, readTaskContext: taskId => readAutoTaskContext({ taskId }) });',
+  ].join('\n'));
   source = replaceOnce(source, 'try { next = validateUnifiedConfig(await readConfig()); }',
     'try { next = validateUnifiedConfig(await autoAdmission.runtimeConfig(validateUnifiedConfig(await readConfig()))); }');
   const taskPolicy = '      now: clock, readTaskPolicy: createRootTaskPolicy({ identity: loaded.identity, config: next, clock }), readOutboundReceipt,';
@@ -45,7 +55,7 @@ function patchMain(source) {
     '      }, readOutboundReceipt,',
   ].join('\n'));
   const marker = '    gateway = createGateway({ native: loaded.native, ownerOpenId: loaded.ownerOpenId, token, log,';
-  return replaceOnce(source, marker, marker + ' autoAdmission,');
+  return replaceOnce(source, marker, marker + ' autoAdmission, readAutoTaskContext,');
 }
 
 function patchNative(source) {
@@ -57,9 +67,52 @@ function patchNative(source) {
   ].join('\n'));
 }
 
+function patchController(source) {
+  source = "import { createFeishuAutoRwbAdmission } from './feishu-auto-rwb-admission.mjs';\n" +
+    "import { requireFeishuAutoRwbChecks } from './feishu-auto-rwb-gateway.mjs';\n" + source;
+  const fence = '    async function fence() {\n      const value = await context(taskId); if (value.inputRevision !== inputRevision) fail(\'UC_INPUT_CHANGED\');';
+  source = replaceOnce(source, fence, [
+    '    const scopedAdmission = createFeishuAutoRwbAdmission({ root, now });',
+    '    function scopedDeadline() {',
+    '      const scope = scopedAdmission.lookup(taskId);',
+    '      if (!scope) return Infinity;',
+    '      const deadline = scopedAdmission.deadline();',
+    "      if (!deadline || scope.inputRevision !== inputRevision) fail('UC_TASK_POLICY_DENIED');",
+    '      return deadline;',
+    '    }',
+    fence,
+    '      scopedDeadline();',
+  ].join('\n'));
+  source = replaceOnce(source, '        expiresAt: new Date(now() + 59 * 60000).toISOString(), maxRequests:',
+    '        expiresAt: new Date(Math.min(now() + 59 * 60000, scopedDeadline())).toISOString(), maxRequests:');
+  source = replaceOnce(source, '        await clientFor(w).enqueue({ requestId: request.requestId, action, params });',
+    '        scopedDeadline();\n        await clientFor(w).enqueue({ requestId: request.requestId, action, params });');
+  const marker = '      if(receipt.status===\'completed\'&&receipt.action===\'validate\'&&receipt.result?.status===\'failed\'){const recovered=await validationRecovery.resolve(operation);if(recovered)return recovered;}';
+  return replaceOnce(source, marker, [
+    '      const verifyScopedChecks = result => {',
+    "        if (!['validate', 'repairValidate'].includes(receipt.action)) return result;",
+    '        const scope = scopedAdmission.lookup(taskId);',
+    '        return requireFeishuAutoRwbChecks(scope, { inputRevision, candidateSha: operation.request.params.candidateSha, result });',
+    '      };',
+    "      if (receipt.status === 'completed' && receipt.action === 'validate' && receipt.result?.status === 'failed') {",
+    '        const recovered = await validationRecovery.resolve(operation);',
+    '        if (recovered) { verifyScopedChecks(recovered.result); return recovered; }',
+    '      }',
+    "      if (receipt.status === 'completed') verifyScopedChecks(receipt.result);",
+  ].join('\n'));
+}
+
 function patchFeishu(source) {
   source = "import { createFeishuAutoRwbAdmission } from './feishu-auto-rwb-admission.mjs';\n" +
-    "import { describeFeishuAutoRwbBlocked } from './feishu-auto-rwb-gateway.mjs';\n" + source;
+    "import { appendScopedCompletion, describeFeishuAutoRwbBlocked, scopedCompletionReceipt } from './feishu-auto-rwb-gateway.mjs';\n" + source;
+  source = replaceOnce(source, "    const text = request.kind === 'completed' ?", "    let text = request.kind === 'completed' ?");
+  const receiptCheck = "    if (receipt?.operationId !== operationId || receipt.status !== 'completed' || !id(receipt.messageId) ||";
+  source = replaceOnce(source, receiptCheck, [
+    "    const scoped = request.kind === 'completed' ? scopedCompletionReceipt(createFeishuAutoRwbAdmission({ root }).lookup(request.taskId), request.headSha) : null;",
+    '    if (scoped && (payload?.autoVersion !== scoped.autoVersion || payload?.autoInputRevision !== scoped.autoInputRevision)) return unknown;',
+    '    text = appendScopedCompletion(text, scoped);',
+    receiptCheck,
+  ].join('\n'));
   const register = '    const result = await native.registerFeishu(copied); active();';
   source = replaceOnce(source, register, [
     "    const blockedAck = 'auto-blocked:' + hash([event.message.chat_id, event.message.message_id]);",
@@ -84,17 +137,22 @@ function patchFeishu(source) {
     "    }",
   ].join('\n'));
   const completion = '      resultKey = hash([request.taskId, request.headSha]);';
-  return replaceOnce(source, completion, [
+  source = replaceOnce(source, '    let text, resultKey;', '    let text, resultKey, autoReceipt;');
+  source = replaceOnce(source, completion, [
     '      const scope = await createFeishuAutoRwbAdmission({ root }).lookup(request.taskId);',
     "      if (scope) {",
     "        if (scope.ownerOpenId !== expectedOwner || scope.inputRevision !== context.inputRevision) throw fail('UF_COMPLETION_UNVERIFIED');",
-    "        text += '\\n输入版本：' + scope.version + '\\nCI：通过';",
+    '        autoReceipt = scopedCompletionReceipt(scope, request.headSha);',
+    '        if (autoReceipt.autoInputRevision !== context.inputRevision) throw fail(\'UF_COMPLETION_UNVERIFIED\');',
+    '        text = appendScopedCompletion(text, autoReceipt);',
     '      }',
     completion,
   ].join('\n'));
+  return replaceOnce(source, "ownerOpenId: expectedOwner, textHash: hash(text), ...(request.kind==='attention'?",
+    "ownerOpenId: expectedOwner, textHash: hash(text), ...autoReceipt, ...(request.kind==='attention'?");
 }
 
-const transforms = [patchGateway, patchMain, patchNative, patchFeishu];
+const transforms = [patchGateway, patchMain, patchNative, patchController, patchFeishu, patchFeishu];
 const added = ['feishu-auto-rwb-policy.mjs', 'feishu-auto-rwb-admission.mjs', 'feishu-auto-rwb-gateway.mjs'];
 
 function readRegular(filename) {

@@ -7,16 +7,20 @@ const blocked = (operationId, code) => ({ type: 'scoped_blocked', status: 'block
 /** Runs only after the Native Feishu gateway has authenticated the owner and message envelope. */
 export async function maybeRegisterFeishuAutoRwb({
   admission, native, text, operationId, externalRef, sourceEventKey, ownerOpenId,
-  onAccepted, codePathsFromGoal, log,
+  onAccepted, codePathsFromGoal, log, readTaskContext = input => native.getTaskContext(input),
 }) {
-  if (!admission || !await admission.enabled()) return null;
+  if (!admission) return null;
   const request = parseFeishuAutoRwbIntake(text);
+  if (!await admission.enabled()) {
+    return admission.operation?.(operationId) || request.kind === 'supplement' && admission.lookup?.(request.taskId)
+      ? blocked(operationId, 'FRA_POLICY_DISABLED') : null;
+  }
   if (request.kind === 'ignored') return { status: 'ignored', created: false, type: 'ignored' };
   if (request.kind === 'invalid') return blocked(operationId, request.code);
   let reservation, previousContext;
   try {
     if (request.kind === 'supplement') {
-      previousContext = await native.getTaskContext({ taskId: request.taskId });
+      previousContext = await readTaskContext({ taskId: request.taskId });
     }
     reservation = await admission.reserve({ operationId, chatId: externalRef.chatId, ownerOpenId, request, previousContext });
   } catch (error) {
@@ -65,6 +69,27 @@ export async function maybeRegisterFeishuAutoRwb({
     await log({ code, operationId });
     return blocked(operationId, code);
   }
+}
+
+export function requireFeishuAutoRwbChecks(scope, { inputRevision, candidateSha, result }) {
+  if (!scope || result?.status !== 'passed') return result;
+  if (scope.inputRevision !== inputRevision || result.candidateSha !== candidateSha || !Array.isArray(result.checks) ||
+      scope.checks.some(name => result.checks.filter(check => check.name === name && check.exitCode === 0).length !== 1)) {
+    throw Object.assign(new Error('FRA_VALIDATION_SCOPE_CHANGED'), { code: 'FRA_VALIDATION_SCOPE_CHANGED' });
+  }
+  return result;
+}
+
+export function scopedCompletionReceipt(scope, headSha) {
+  if (!scope) return null;
+  if (scope.version === 2 && scope.previousHead === headSha) {
+    return { autoVersion: 1, autoInputRevision: scope.previousInputRevision };
+  }
+  return { autoVersion: scope.version, autoInputRevision: scope.inputRevision };
+}
+
+export function appendScopedCompletion(text, scopeReceipt) {
+  return scopeReceipt ? text + '\n输入版本：' + scopeReceipt.autoVersion + '\nCI：通过' : text;
 }
 
 export function describeFeishuAutoRwbBlocked(code) {

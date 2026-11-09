@@ -214,7 +214,7 @@ export function createFeishuAutoRwbAdmission({ root, now = Date.now, readTaskCon
       if (!first || first.chatId !== chatId || first.ownerOpenId !== ownerOpenId) deny('FRA_SUPPLEMENT_OWNER_DENIED');
       if (records.some(item => item.version === 2 && item.taskId === first.taskId)) deny('FRA_SUPPLEMENT_ALREADY_RESERVED');
       const previousHead = previousContext?.pr?.headSha ?? previousContext?.pr?.head;
-      if (previousContext?.taskId !== first.taskId || previousContext?.status !== 'done' ||
+      if (previousContext?.taskId !== first.taskId || previousContext?.status !== 'done' || previousContext.finalized !== true ||
           previousContext?.inputRevision !== first.inputRevision || !matches(previousContext.revision, digest) ||
           !matches(previousHead, commit)) deny('FRA_SUPPLEMENT_CONTEXT_CHANGED');
       const validation = validateFeishuAutoRwbSupplement(request.text, first.pathsJson);
@@ -223,14 +223,16 @@ export function createFeishuAutoRwbAdmission({ root, now = Date.now, readTaskCon
         taskId: first.taskId, previousRevision: previousContext.revision, previousInputRevision: first.inputRevision, previousHead });
     }
     // The Native controller restarts its epoch when the approved task IDs change.
-    // Keep another admission out until existing tasks have finished their bound revision.
+    // Native done is written before notification and release. Require terminal proof
+    // before admitting another task or a supplement into the controller.
     if (records.some(item => item.inputRevision === null)) deny('FRA_BUSY');
     for (const taskId of new Set(records.map(item => item.taskId))) {
       if (taskId === binding.taskId) continue;
       const latest = records.findLast(item => item.taskId === taskId);
       let context;
       try { context = await readTaskContext?.(taskId); } catch { deny('FRA_BUSY'); }
-      if (context?.taskId !== taskId || context?.status !== 'done' || context.inputRevision !== latest.inputRevision) deny('FRA_BUSY');
+      if (context?.taskId !== taskId || context?.status !== 'done' || context.finalized !== true ||
+          context.inputRevision !== latest.inputRevision) deny('FRA_BUSY');
     }
     const stillActive = activePolicy();
     if (!stillActive) deny('FRA_POLICY_DISABLED');
@@ -273,5 +275,11 @@ export function createFeishuAutoRwbAdmission({ root, now = Date.now, readTaskCon
     const latest = state?.reservations.findLast(item => item.taskId === taskId && item.inputRevision !== null);
     return latest ? receipt(latest) : null;
   }
-  return Object.freeze({ enabled: () => Boolean(activePolicy()), reserve, bind, runtimeConfig, lookup });
+  function operation(operationId) {
+    if (!matches(operationId, uuid)) return null;
+    const record = readState()?.reservations.find(item => item.operationId === operationId);
+    return record ? receipt(record) : null;
+  }
+  return Object.freeze({ enabled: () => Boolean(activePolicy()), deadline: () => activePolicy()?.expiresAt ?? null,
+    reserve, bind, runtimeConfig, lookup, operation });
 }

@@ -49,7 +49,8 @@ function initial(operationId = operation, requestedPaths = paths) {
 
 function supplement(operationId = supplementOperation, text = '说明如何复核最新 CI') {
   return { operationId, chatId, ownerOpenId, request: { kind: 'supplement', taskId: task, text },
-    previousContext: { taskId: task, revision: contextRevision, inputRevision: revision, status: 'done', pr: { headSha: previousHead } } };
+    previousContext: { taskId: task, revision: contextRevision, inputRevision: revision, status: 'done', finalized: true,
+      pr: { headSha: previousHead } } };
 }
 
 test('an absent or inactive policy grants no execution', async t => {
@@ -98,6 +99,20 @@ test('binding the exact Native receipt is required for controlled execution and 
   assert.equal(open().runtimeConfig(base), base);
 });
 
+test('an expired window can bind a reserved Native receipt but cannot authorize execution', async t => {
+  const { open, enable, setTime } = setup(t);
+  enable();
+  const admission = open();
+  const reserved = await admission.reserve(initial());
+  setTime(30);
+  const bind = { operationId: operation, taskId: task, inputRevision: revision, pathsJson: reserved.pathsJson };
+  const bound = open().bind(bind);
+  assert.deepEqual(open().bind(bind), bound);
+  assert.deepEqual(await open().reserve(initial()), bound);
+  assert.equal(open().runtimeConfig(base), base);
+  await assert.rejects(open().reserve(initial(secondOperation, codePaths)), { code: 'FRA_POLICY_DISABLED' });
+});
+
 test('a sibling scope waits for its predecessor and concurrent reservations do not both consume a slot', async t => {
   const { open, enable, contexts } = setup(t);
   enable();
@@ -109,9 +124,11 @@ test('a sibling scope waits for its predecessor and concurrent reservations do n
   admission.bind({ operationId: operation, taskId: task, inputRevision: revision, pathsJson: JSON.stringify(paths) });
   contexts.set(task, { taskId: task, inputRevision: revision, status: 'in_progress' });
   await assert.rejects(admission.reserve(initial(secondOperation, codePaths)), { code: 'FRA_BUSY' });
-  contexts.set(task, { taskId: task, inputRevision: nextRevision, status: 'done' });
+  contexts.set(task, { taskId: task, inputRevision: nextRevision, status: 'done', finalized: true });
   await assert.rejects(admission.reserve(initial(secondOperation, codePaths)), { code: 'FRA_BUSY' });
   contexts.set(task, { taskId: task, inputRevision: revision, status: 'done' });
+  await assert.rejects(admission.reserve(initial(secondOperation, codePaths)), { code: 'FRA_BUSY' });
+  contexts.set(task, { taskId: task, inputRevision: revision, status: 'done', finalized: true });
   assert.deepEqual((await admission.reserve(initial(secondOperation, codePaths))).checks, codeChecks);
   admission.bind({ operationId: secondOperation, taskId: secondTask, inputRevision: revision, pathsJson: JSON.stringify(codePaths) });
   assert.deepEqual(admission.runtimeConfig(base).allowedTaskIds, [task, secondTask]);
@@ -128,6 +145,8 @@ test('one supplement preserves the same owner, chat, task, original paths and ol
   await assert.rejects(admission.reserve({ ...supplement(), ownerOpenId: 'ou_someoneelse' }), { code: 'FRA_SUPPLEMENT_OWNER_DENIED' });
   await assert.rejects(admission.reserve({ ...supplement(), chatId: 'oc_different' }), { code: 'FRA_SUPPLEMENT_OWNER_DENIED' });
   await assert.rejects(admission.reserve({ ...supplement(), previousContext: { ...supplement().previousContext, inputRevision: nextRevision } }),
+    { code: 'FRA_SUPPLEMENT_CONTEXT_CHANGED' });
+  await assert.rejects(admission.reserve({ ...supplement(), previousContext: { ...supplement().previousContext, finalized: false } }),
     { code: 'FRA_SUPPLEMENT_CONTEXT_CHANGED' });
   await assert.rejects(admission.reserve(supplement(supplementOperation, '修改 docs/super-agent/outside.md')), { code: 'FRA_SUPPLEMENT_SCOPE_DENIED' });
   const reserved = await admission.reserve(supplement());

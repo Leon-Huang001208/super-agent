@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const project = 'super-agent-paperclip-eval';
 const root = '/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0';
@@ -12,6 +13,19 @@ const envMap = values => Object.fromEntries(values.map(entry => {
   return [entry.slice(0, index), entry.slice(index + 1)];
 }));
 const sorted = values => JSON.stringify([...values].sort());
+const keys = value => sorted(Object.keys(value ?? {}));
+const canonical = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
+  ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+
+function securityOptions(values, cwd) {
+  return sorted((values ?? []).map(value => {
+    const seccomp = /^seccomp[=:](.+)$/.exec(value);
+    if (!seccomp) return value.replace('=', ':');
+    if (seccomp[1] === 'unconfined') return 'seccomp:unconfined';
+    const profile = seccomp[1].startsWith('{') ? seccomp[1] : fs.readFileSync(path.resolve(cwd, seccomp[1]), 'utf8');
+    return 'seccomp:' + canonical(JSON.parse(profile));
+  }));
+}
 
 export function checkFeishuAutoRwbCompose(overlay, name) {
   if (!['paperclip', 'feishu-connection'].includes(name) || !path.isAbsolute(overlay)) fail('argument');
@@ -21,10 +35,25 @@ export function checkFeishuAutoRwbCompose(overlay, name) {
   const cwd = labels['com.docker.compose.project.working_dir'];
   if (labels['com.docker.compose.project'] !== project || labels['com.docker.compose.service'] !== name ||
       !path.isAbsolute(cwd) || !originals.length || originals.some(file => !path.isAbsolute(file) || !fs.existsSync(file))) fail('identity');
-  const overlayServices = JSON.parse(fs.readFileSync(overlay, 'utf8')).services;
+  const overlayDocument = JSON.parse(fs.readFileSync(overlay, 'utf8'));
+  const overlayServices = overlayDocument.services;
   const additions = overlayServices?.[name]?.volumes;
-  if (Object.keys(overlayServices ?? {}).length !== 1 || !Array.isArray(additions) || !additions.length ||
-      additions.some(volume => volume.type !== 'bind' || !volume.read_only || volume.bind?.create_host_path !== false)) fail('overlay');
+  if (keys(overlayDocument) !== sorted(['services']) || keys(overlayServices) !== sorted([name]) ||
+      keys(overlayServices[name]) !== sorted(['volumes']) || !Array.isArray(additions) || !additions.length ||
+      additions.some(volume => keys(volume) !== sorted(['type', 'source', 'target', 'read_only', 'bind']) ||
+        volume.type !== 'bind' || volume.read_only !== true || keys(volume.bind) !== sorted(['create_host_path']) ||
+        volume.bind?.create_host_path !== false)) fail('overlay');
+  const overlayRoot = path.dirname(overlay);
+  const { files } = JSON.parse(fs.readFileSync(path.join(overlayRoot, 'manifest.json'), 'utf8'));
+  const namespace = name === 'paperclip' ? 'app/' : 'feishu/';
+  const baseline = files.filter(entry => entry.file.startsWith(namespace) && entry.baseSha256 !== null);
+  if (!baseline.length || baseline.some(entry => !/^[a-f0-9]{64}$/.test(entry.baseSha256))) fail('source-manifest');
+  const targets = baseline.map(entry => additions.find(volume => volume.source === path.join(overlayRoot, entry.file))?.target);
+  if (targets.some(target => typeof target !== 'string' || !target.startsWith('/'))) fail('source-target');
+  const readback = docker(['exec', running.Id, 'sha256sum', ...targets]).trim().split('\n');
+  if (readback.length !== baseline.length || readback.some((line, index) => line !== baseline[index].baseSha256 + '  ' + targets[index])) {
+    fail('source-digest');
+  }
   const args = ['compose', '--profile', '*', '--env-file', '/dev/null', '--project-name', project,
     '--project-directory', cwd, ...originals.flatMap(file => ['-f', file]), '-f', overlay];
   const resolved = JSON.parse(docker([...args, 'config', '--format', 'json'], { env, cwd }));
@@ -51,12 +80,20 @@ export function checkFeishuAutoRwbCompose(overlay, name) {
   if (JSON.stringify(service.command ?? image.Config.Cmd) !== JSON.stringify(running.Config.Cmd) ||
       JSON.stringify(service.entrypoint ?? image.Config.Entrypoint) !== JSON.stringify(running.Config.Entrypoint)) fail('entrypoint');
   const networks = Object.keys(service.networks ?? {}).map(network => resolved.networks?.[network]?.name ?? network);
+  const host = running.HostConfig;
   if (sorted(networks) !== sorted(Object.keys(running.NetworkSettings.Networks)) ||
-      Boolean(service.read_only) !== running.HostConfig.ReadonlyRootfs) fail('isolation');
+      Boolean(service.read_only) !== host.ReadonlyRootfs || Boolean(service.privileged) !== host.Privileged ||
+      (service.user ?? image.Config.User ?? '') !== running.Config.User ||
+      (service.pid ?? '') !== host.PidMode || (service.ipc ?? 'private') !== host.IpcMode ||
+      sorted(service.cap_add ?? []) !== sorted(host.CapAdd ?? []) || sorted(service.cap_drop ?? []) !== sorted(host.CapDrop ?? []) ||
+      securityOptions(service.security_opt, cwd) !== securityOptions(host.SecurityOpt, cwd) ||
+      (service.ports?.length ?? 0) !== Object.keys(host.PortBindings ?? {}).length ||
+      (service.devices?.length ?? 0) !== (host.Devices?.length ?? 0) ||
+      (service.device_requests?.length ?? 0) !== (host.DeviceRequests?.length ?? 0)) fail('isolation');
   return { args, cwd, containerId: running.Id, imageId: image.Id };
 }
 
-if (process.argv[1]?.endsWith('/check-feishu-auto-rwb-compose.mjs') || process.argv[1] === 'scripts/check-feishu-auto-rwb-compose.mjs') {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const result = checkFeishuAutoRwbCompose(process.argv[2], process.argv[3]);
     console.log(JSON.stringify(result));
