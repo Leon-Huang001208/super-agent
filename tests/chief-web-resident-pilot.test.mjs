@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { test } from 'node:test';
 import {
-  RESIDENT_TARGETS, validateChiefWebResidentBindings, validateChiefWebResidentManifest, createChiefWebResidentPilot,
+  RESIDENT_PROJECT, RESIDENT_OWNER_TRANSPORT, RESIDENT_TARGETS, validateChiefWebResidentBindings,
+  validateChiefWebResidentManifest, createChiefWebResidentPilot, verifyChiefWebResidentFreshComments,
+  chiefWebResidentChildEnvironment, claimChiefWebResidentLock,
 } from '../scripts/chief-web-resident-pilot.mjs';
 
 const id = n => '00000000-0000-0000-0000-' + String(n).padStart(12, '0');
@@ -32,6 +36,7 @@ function fixture() {
   let clock = 100;
   let refuseDrain = false;
   let activateFailure = false;
+  let inactiveComment = null;
   const seen = [];
   const statuses = bindings.map((_binding, index) => ready(index));
   const slotIndex = slot => manifest.slots.indexOf(slot);
@@ -50,6 +55,9 @@ function fixture() {
       if (activateFailure) throw Error('ambiguous activation');
     },
     verifyActive(slot) { seen.push(['verify', slotIndex(slot)]); },
+    verifyFreshComments(slot) {
+      if (inactiveComment === slotIndex(slot)) throw Object.assign(Error('inactive comment'), { code: 'CHIEF_WEB_RESIDENT_INACTIVE_OWNER_COMMENT' });
+    },
     status(slot) { seen.push(['status', slotIndex(slot)]); return statuses[slotIndex(slot)]; },
     start(slot) { seen.push(['start', slotIndex(slot)]); },
     stop() { seen.push(['stop']); },
@@ -61,6 +69,7 @@ function fixture() {
     setExpiry: () => { clock = manifest.expiresAt; },
     setLease: value => { refuseDrain = value; },
     activationFails: () => { activateFailure = true; },
+    rejectFreshSlot: index => { inactiveComment = index; },
   };
 }
 
@@ -137,4 +146,49 @@ test('restarts only the same observed active slot and expiry disables after a fr
   env.setExpiry();
   assert.equal((await restored.step()).phase, 'expired');
   assert.deepEqual(env.seen.slice(-4), [['stop'], ['drain'], ['disable', 0], ['write', 'expired', 0]]);
+});
+
+test('inactive owner input blocks the next slot and stays blocked after restart', async () => {
+  const env = fixture();
+  const pilot = env.make();
+  await pilot.step();
+  env.statuses[0] = done(0);
+  env.rejectFreshSlot(1);
+  const blocked = await pilot.step();
+  assert.deepEqual([blocked.phase, blocked.index, blocked.completed[0].prNumber], ['blocked', 1, 1]);
+  assert.equal(blocked.code, 'CHIEF_WEB_RESIDENT_INACTIVE_OWNER_COMMENT');
+  assert.deepEqual(await env.make().step(), blocked);
+  assert.deepEqual(env.seen.filter(([type]) => type === 'activate'), [['activate', 0]]);
+});
+
+test('comment gate verifies exact conversation metadata and rejects a truncated list', () => {
+  const binding = bindings[0];
+  const old = { id: id(22), issueId: binding.conversationId, companyId: binding.companyId,
+    authorUserId: binding.userId, deletedAt: null, createdAt: new Date(binding.intakeFrom).toISOString() };
+  const recent = { ...old, createdAt: new Date(binding.intakeFrom + 1).toISOString() };
+  verifyChiefWebResidentFreshComments([old, { ...recent, authorUserId: null }], binding);
+  assert.throws(() => verifyChiefWebResidentFreshComments([recent], binding), { code: 'CHIEF_WEB_RESIDENT_INACTIVE_OWNER_COMMENT' });
+  assert.throws(() => verifyChiefWebResidentFreshComments([{ ...recent, issueId: id(99) }], binding), { code: 'CHIEF_WEB_RESIDENT_COMMENTS_UNVERIFIED' });
+  assert.throws(() => verifyChiefWebResidentFreshComments(Array(65).fill(old), binding), { code: 'CHIEF_WEB_RESIDENT_COMMENTS_UNVERIFIED' });
+});
+
+test('child receives only the fixed selected document and owner transport is numeric loopback', () => {
+  for (const slot of manifest.slots) {
+    const env = chiefWebResidentChildEnvironment(slot);
+    assert.equal(env.SUPER_AGENT_CHIEF_WEB_REAL_BROKER_ENABLED, '1');
+    assert.equal(env.SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT, slot.targetDoc);
+  }
+  assert.equal(RESIDENT_OWNER_TRANSPORT, 'http://127.0.0.1:8112');
+});
+
+test('project-wide lock refuses another manifest and preserves a replaced unknown owner', async t => {
+  const parent = await fs.realpath(await fs.mkdtemp('/tmp/sa-resident-lock-'));
+  t.after(() => fs.rm(parent, { recursive: true }));
+  const release = await claimChiefWebResidentLock(parent);
+  await assert.rejects(claimChiefWebResidentLock(parent), { code: 'CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED' });
+  const lock = path.join(parent, RESIDENT_PROJECT + '.supervisor.lock');
+  await fs.rename(lock, path.join(parent, 'old-owner'));
+  await fs.mkdir(lock, { mode: 0o700 });
+  await assert.rejects(release({ drained: true }), { code: 'CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED' });
+  assert.equal((await fs.lstat(lock)).isDirectory(), true);
 });

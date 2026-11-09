@@ -9,6 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 export const RESIDENT_PROJECT = 'super-agent-chief-web-resident-rwb';
 export const RESIDENT_ORIGIN = 'http://localhost:8112';
+export const RESIDENT_OWNER_TRANSPORT = 'http://127.0.0.1:8112';
 export const RESIDENT_TARGETS = Object.freeze(['intake', 'recovery', 'status'].map(name =>
   'docs/super-agent/chief-resident-' + name + '.md'));
 const data = '/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0';
@@ -62,6 +63,21 @@ export function validateChiefWebResidentBindings(manifest, records) {
   });
 }
 
+export function verifyChiefWebResidentFreshComments(comments, binding) {
+  if (!Array.isArray(comments) || comments.length >= 65) fail('CHIEF_WEB_RESIDENT_COMMENTS_UNVERIFIED');
+  for (const row of comments) {
+    const created = typeof row?.createdAt === 'string' ? Date.parse(row.createdAt) : NaN;
+    if (!matches(row, { issueId: binding.conversationId, companyId: binding.companyId }) ||
+        !uuid.test(row?.id ?? '') || !Number.isFinite(created) ||
+        !Object.hasOwn(row, 'authorUserId') || !Object.hasOwn(row, 'deletedAt')) {
+      fail('CHIEF_WEB_RESIDENT_COMMENTS_UNVERIFIED');
+    }
+    if (created > binding.intakeFrom && row.authorUserId === binding.userId && row.deletedAt === null) {
+      fail('CHIEF_WEB_RESIDENT_INACTIVE_OWNER_COMMENT');
+    }
+  }
+}
+
 function terminalReceipt(status, binding) {
   if (status?.phase !== 'done' || status.generation !== binding.generation || status.revision !== 1 ||
       !uuid.test(status.taskId ?? '') || !digest.test(status.inputRevision ?? '') || status.operationId ||
@@ -74,7 +90,7 @@ function terminalReceipt(status, binding) {
 }
 
 export function createChiefWebResidentPilot({ manifest, bindings, store, host, now = Date.now } = {}) {
-  if (![store?.read, store?.write, host?.drain, host?.activate, host?.verifyActive, host?.status,
+  if (![store?.read, store?.write, host?.drain, host?.activate, host?.verifyActive, host?.status, host?.verifyFreshComments,
     host?.start, host?.stop, host?.disable, now].every(fn => typeof fn === 'function')) fail('CHIEF_WEB_RESIDENT_CONFIGURATION_INVALID');
   let localConsumer = false;
   const initial = { phase: 'ready', index: 0, completed: [] };
@@ -107,12 +123,23 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
 
   async function activate(current) {
     const slot = manifest.slots[current.index];
+    const binding = bindings[current.index];
+    const blocked = { phase: 'blocked', conversationId: slot.conversationId, code: 'CHIEF_WEB_RESIDENT_INACTIVE_OWNER_COMMENT' };
     await host.drain();
+    try { await host.verifyFreshComments(slot, binding); }
+    catch (error) { if (error?.code === blocked.code) return commit(current, blocked); throw error; }
     await commit(current, { phase: 'activating', conversationId: slot.conversationId });
-    await host.activate(slot, bindings[current.index]);
-    await host.verifyActive(slot, bindings[current.index]);
+    await host.activate(slot, binding);
+    await host.verifyActive(slot, binding);
+    try { await host.verifyFreshComments(slot, binding); }
+    catch (error) {
+      if (error?.code !== blocked.code) throw error;
+      await host.drain();
+      await host.disable(slot, binding);
+      return commit(current, blocked);
+    }
     const status = await host.status(slot);
-    if (status?.phase !== 'ready' || status.generation !== bindings[current.index].generation || status.taskId ||
+    if (status?.phase !== 'ready' || status.generation !== binding.generation || status.taskId ||
         status.revision !== 0 || status.operationId) fail('CHIEF_WEB_RESIDENT_INTAKE_NOT_EMPTY');
     localConsumer = true;
     await host.start(slot);
@@ -204,6 +231,27 @@ async function syncDirectory(directory) {
   try { await fd.sync(); } finally { await fd.close(); }
 }
 
+export async function claimChiefWebResidentLock(directory) {
+  await privateDirectory(directory);
+  const lock = path.join(directory, RESIDENT_PROJECT + '.supervisor.lock');
+  try { await fs.mkdir(lock, { mode: 0o700 }); }
+  catch (error) { if (error?.code === 'EEXIST') fail('CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED'); throw error; }
+  const handle = await fs.open(lock, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  const owned = await handle.stat();
+  await syncDirectory(directory);
+  return async ({ drained }) => {
+    try {
+      if (!drained) return;
+      const current = await fs.lstat(lock);
+      if (!current.isDirectory() || current.dev !== owned.dev || current.ino !== owned.ino || current.uid !== owned.uid) {
+        fail('CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED');
+      }
+      await fs.rmdir(lock);
+      await syncDirectory(directory);
+    } finally { await handle.close(); }
+  };
+}
+
 async function writeProgress(filename, state) {
   const directory = path.dirname(filename);
   const temporary = path.join(directory, '.progress-' + randomUUID());
@@ -217,6 +265,12 @@ async function writeProgress(filename, state) {
 function hostEnvironment() {
   const names = ['PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR', 'LANG', 'LC_ALL', 'XDG_CONFIG_HOME', 'DOCKER_CONFIG'];
   return Object.fromEntries(names.filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]]));
+}
+
+export function chiefWebResidentChildEnvironment(slot) {
+  if (!RESIDENT_TARGETS.includes(slot?.targetDoc)) fail('CHIEF_WEB_RESIDENT_BINDING_INVALID');
+  return { ...hostEnvironment(), SUPER_AGENT_CHIEF_WEB_REAL_BROKER_ENABLED: '1',
+    SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT: slot.targetDoc };
 }
 
 function command(binary, args, { input, env = hostEnvironment(), timeout = 15000 } = {}) {
@@ -289,17 +343,19 @@ async function createMacHost({ manifest, log }) {
 
   async function stable(slot, enabled) {
     const document = slot?.targetDoc ?? '';
-    const [appImage, appVolume, broker, feature, configuredDoc] = await inspect(app, 'paperclip',
+    const [appImage, appVolume, broker, feature, configuredDoc, dependencies] = await inspect(app, 'paperclip',
       '{{.Image}}|{{range .Mounts}}{{if eq .Destination "/paperclip"}}{{.Name}}{{end}}{{end}}|' +
       '{{range .Mounts}}{{if eq .Destination "/chief-real-broker"}}{{.Source}}{{end}}{{end}}|' +
       '{{range .Config.Env}}{{if eq . "SUPER_AGENT_CHIEF_WEB_REAL_ENABLED=true"}}true{{end}}' +
       '{{if eq . "SUPER_AGENT_CHIEF_WEB_REAL_ENABLED=false"}}false{{end}}{{end}}|' +
-      '{{range .Config.Env}}{{if eq . "SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT=' + document + '"}}matched{{end}}{{end}}');
+      '{{range .Config.Env}}{{if eq . "SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT=' + document + '"}}matched{{end}}{{end}}|' +
+      '{{range .Mounts}}{{if eq .Destination "/opt/paperclip"}}{{.Type}}:{{.Source}}:{{.RW}}{{end}}{{end}}');
     const [dbVolume] = await inspect(db, 'db',
       '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}');
     await inspect(gateway, 'gateway', '');
     const port = await dockerDo(['port', gateway, '3100/tcp']);
     if (appImage !== manifest.imageId || appVolume !== RESIDENT_PROJECT + '_state' ||
+        dependencies !== 'bind:' + manifest.dependenciesRoot + ':false' ||
         dbVolume !== RESIDENT_PROJECT + '_database' || port !== '127.0.0.1:8112' ||
         (enabled !== undefined && feature !== String(enabled)) || (slot && configuredDoc !== 'matched') ||
         (slot && broker !== path.join(slot.scopeRoot, 'broker')) ||
@@ -332,14 +388,15 @@ async function createMacHost({ manifest, log }) {
     fail('CHIEF_WEB_RESIDENT_LEASE_PRESENT');
   }
 
-  async function status(slot) {
+  async function ownerGet(slot, resource) {
     const cookie = (await privateText(manifest.ownerSessionFile, 4096)).trim();
     if (!cookie || /[^\x20-\x7e]/.test(cookie) || !cookie.includes('=')) fail('CHIEF_WEB_RESIDENT_OWNER_SESSION_DENIED');
     for (let attempt = 0; attempt < 8; attempt++) {
       let response;
       try {
-        response = await fetch(RESIDENT_ORIGIN + '/api/issues/' + slot.conversationId + '/chief-web-real', {
-          headers: { cookie, accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(5000),
+        response = await fetch(RESIDENT_OWNER_TRANSPORT + '/api/issues/' + slot.conversationId + '/' + resource, {
+          headers: { cookie, accept: 'application/json', host: 'localhost:8112', origin: RESIDENT_ORIGIN },
+          redirect: 'error', signal: AbortSignal.timeout(5000),
         });
       } catch {
         if (attempt === 7) fail('CHIEF_WEB_RESIDENT_NATIVE_STATUS_UNAVAILABLE');
@@ -364,7 +421,7 @@ async function createMacHost({ manifest, log }) {
           const { done, value } = await reader.read();
           if (done) break;
           bytes += value.byteLength;
-          if (bytes > 32768) fail('CHIEF_WEB_RESIDENT_NATIVE_STATUS_UNVERIFIED');
+          if (bytes > (resource === 'chief-web-real' ? 32768 : 524288)) fail('CHIEF_WEB_RESIDENT_NATIVE_STATUS_UNVERIFIED');
           chunks.push(Buffer.from(value));
         }
       } finally { await reader.cancel(); }
@@ -380,7 +437,10 @@ async function createMacHost({ manifest, log }) {
   }
 
   return {
-    drain, status, verifyActive,
+    drain, status: slot => ownerGet(slot, 'chief-web-real'), verifyActive,
+    async verifyFreshComments(slot, binding) {
+      verifyChiefWebResidentFreshComments(await ownerGet(slot, 'comments?limit=65&order=desc'), binding);
+    },
     async activate(slot, binding) {
       await stable();
       if (hash(JSON.stringify(await readPrivate(path.join(slot.scopeRoot, 'binding.json')))) !== hash(JSON.stringify(binding))) {
@@ -397,7 +457,7 @@ async function createMacHost({ manifest, log }) {
     async start(slot) {
       if (child) fail('CHIEF_WEB_RESIDENT_CONSUMER_PRESENT');
       const processChild = spawn(process.execPath, [runner, path.join(slot.scopeRoot, 'host-scope.json')], {
-        cwd: manifest.sourceRoot, env: { ...hostEnvironment(), SUPER_AGENT_CHIEF_WEB_REAL_BROKER_ENABLED: '1' }, stdio: 'ignore',
+        cwd: manifest.sourceRoot, env: chiefWebResidentChildEnvironment(slot), stdio: 'ignore',
       });
       child = processChild;
       childExit = new Promise(resolve => {
@@ -462,10 +522,7 @@ async function runCli(mode, filename) {
     if (scope.imageId !== manifest.imageId || scope.dependenciesRoot !== manifest.dependenciesRoot) fail('CHIEF_WEB_RESIDENT_SCOPE_DRIFT');
     return readPrivate(path.join(slot.scopeRoot, 'binding.json'));
   })));
-  const lock = path.join(directory, 'supervisor.lock');
-  try { await fs.mkdir(lock, { mode: 0o700 }); }
-  catch (error) { if (error?.code === 'EEXIST') fail('CHIEF_WEB_RESIDENT_SUPERVISOR_OWNED'); throw error; }
-  await syncDirectory(directory);
+  const releaseLock = await claimChiefWebResidentLock(logs);
   const log = async event => {
     const file = await fs.open(path.join(directory, 'supervisor.jsonl'),
       constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);
@@ -508,10 +565,7 @@ async function runCli(mode, filename) {
       if (pilot) await pilot.stop();
       childDrained = true;
     } finally {
-      if (childDrained) {
-        await fs.rmdir(lock);
-        await syncDirectory(directory);
-      }
+      await releaseLock({ drained: childDrained });
     }
   }
 }
