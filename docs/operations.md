@@ -8,6 +8,8 @@
 
 宿主资源包包含已固定 RWB 提交中的 `research_workbench_entrypoint` 和 `.agents/resource-closeout.json`。如果开发停在初始资源登记，操作员可以在停掉原宿主消费者后，对同一操作核对原 Native 认领、共享租约、已创建的受管工作树，以及物理请求、调用和运行容器均不存在。通过后登记一次私有恢复证明，保留原失败回执，继续同一操作。无法证明调用从未启动时保持阻塞。
 
+首次发布若在推送前因共享仓库锁等原因中断，先停原宿主消费者。只有原确认仍有效、原认领及受管候选一致、原推送证明缺失且 GitHub 上的目标分支和 PR 都不存在，才登记一次私有恢复证明。恢复沿用原操作 ID，单独写入恢复认领和推送证明，保留原记录。已有恢复认领时只能对账。
+
 ## 独立 Chief 网页演练
 
 使用 `compose.chief-web-evaluation.yaml`，项目名为 `super-agent-chief-web-rehearsal`，网页绑定 `127.0.0.1:8107`。设置 `SUPER_AGENT_RUNTIME_IMAGE` 为按构建输入复用的确切镜像，设置 `SUPER_AGENT_VERIFIED_DEPENDENCIES` 为与候选锁文件一致的只读安装目录。应用与数据库位于内部网络，网关仅将网页转发到本机端口。

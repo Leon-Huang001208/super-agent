@@ -40,13 +40,19 @@ function setup() {
       { status: 'pending' };
   };
   const config = { conversationId, generation: 0, expiresAt: 9_000_000 };
+  let failPublication = false, recoverPublication = false;
+  const publishReceipt = request => receipt(request, { headSha: request.candidateSha, baseSha, branch, number: 123,
+    url: 'https://github.com/' + REAL_RWB_REPOSITORY + '/pull/123' });
   const publisher = {
     async publish(request) {
       publications.push(request);
-      return receipt(request, { headSha: request.candidateSha, baseSha, branch, number: 123,
-        url: 'https://github.com/' + REAL_RWB_REPOSITORY + '/pull/123' });
+      return failPublication ? { status: 'unknown', code: 'RWB_REAL_PUBLICATION_UNKNOWN' } : publishReceipt(request);
     },
-    async observePublication() { assert.fail('unrequested publication replay'); },
+    async observePublication(request) {
+      if (!failPublication) assert.fail('unrequested publication replay');
+      return recoverPublication ? { ...publishReceipt(request), recoveryVerified: true } :
+        { status: 'unknown', code: 'RWB_REAL_PUBLICATION_UNKNOWN' };
+    },
     async readCi(request) {
       if (request.revision === 1) return { status: 'pending' };
       return receipt(request, { number: 123, headSha: staleCi ? firstHead : secondHead, conclusion: 'success',
@@ -65,6 +71,7 @@ function setup() {
     advanceClock: value => { clock += value; }, answerReview: value => { respondToReview = value; },
     correctCi: () => { staleCi = false; },
     failDev: () => { failDeveloper = true; }, recoverDev: () => { recoverDeveloper = true; },
+    failPublish: () => { failPublication = true; }, recoverPublish: () => { recoverPublication = true; },
   };
 }
 
@@ -210,4 +217,23 @@ test('packaged target requires a matching private binding and remains a single a
   const denied = run('docs/super-agent/unrelated.md');
   assert.notEqual(denied.status, 0);
   assert.match(denied.stderr, /CHIEF_WEB_REAL_DOCUMENT_DENIED/);
+});
+
+test('publication recovery observes the original confirmation operation', async () => {
+  const f = setup();
+  f.failPublish();
+  const original = f.engine();
+  f.newMessage('创建验收文档');
+  await original.control(approval(await until(original, 'awaiting_confirmation')));
+  const blocked = await until(original, 'blocked');
+  assert.equal(blocked.operationKind, 'publish');
+  await original.tick();
+  assert.equal((await original.status()).phase, 'blocked');
+  f.recoverPublish();
+  const recovered = await until(f.engine(), 'waiting_ci');
+  assert.equal(recovered.taskId, blocked.taskId);
+  assert.equal(recovered.pr.number, 123);
+  assert.equal(f.records.at(-1).recoveredOperationId, blocked.operationId);
+  assert.equal(f.publications.length, 1);
+  assert.equal(f.calls.length, 3);
 });

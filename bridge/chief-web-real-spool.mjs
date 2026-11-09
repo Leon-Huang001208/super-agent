@@ -120,11 +120,17 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
       fail('CHIEF_WEB_REAL_SPOOL_RESPONSE_MISMATCH');
     }
     if (!resolution) return { receipt: original, recoveryVerified: false };
-    if (envelope.request.role !== 'developer' || resolution.schemaVersion !== 1 ||
+    const request = envelope.request;
+    const isDeveloper = request.role === 'developer' && resolution.physicalLaunchAbsent === true &&
+      original?.reply?.code === 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN';
+    const isPublication = request.role === 'publish' && resolution.proofType === 'publication_before_push' &&
+      request.revision === 1 && request.previousHead === null && resolution.prePushProofAbsent === true &&
+      resolution.remoteAbsent === true && resolution.candidateSha === request.candidateSha &&
+      original?.reply?.code === 'RWB_REAL_PUBLICATION_UNKNOWN';
+    if ((!isDeveloper && !isPublication) || resolution.schemaVersion !== 1 ||
         resolution.requestDigest !== envelope.requestDigest || resolution.operationId !== envelope.request.operationId ||
         resolution.taskId !== envelope.request.taskId || resolution.inputRevision !== envelope.request.inputRevision ||
-        resolution.physicalLaunchAbsent !== true || !digest.test(resolution.preflightDigest ?? '') ||
-        original?.reply?.status !== 'unknown' || original.reply.code !== 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN') {
+        !digest.test(resolution.preflightDigest ?? '') || original?.reply?.status !== 'unknown') {
       fail('CHIEF_WEB_REAL_SPOOL_RECOVERY_MISMATCH');
     }
     const receipt = await read(directory, 'reconciled-response.json');
@@ -233,6 +239,12 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
       const directory = await slot(operationId);
       const envelope = directory && await verifyRequest(operationId, directory);
       return Boolean(envelope && await dispatchFor(directory, envelope));
+    },
+    async readRecovery(operationId) {
+      const directory = await slot(operationId);
+      const envelope = directory && await verifyRequest(operationId, directory);
+      if (!envelope) return null;
+      return (await recoverableResponse(directory, envelope)).resolution ?? null;
     },
     async rejectUnclaimed(operationId, code) {
       const directory = await slot(operationId);

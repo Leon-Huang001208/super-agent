@@ -6,10 +6,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createChiefWebRealSpool } from '../bridge/chief-web-real-spool.mjs';
+import { REAL_RWB_REPOSITORY, realDigest } from '../bridge/chief-web-real-engine.mjs';
 import { createChiefWebRealBroker } from './chief-web-real-broker.mjs';
 import { createChiefWebRealAdmission } from './chief-web-real-admission.mjs';
 import { createChiefWebRealDockerExecutor } from './chief-web-real-executor-host.mjs';
 import { loadChiefWebRealRwbHost } from './chief-web-real-publisher-host.mjs';
+import { createChiefWebRealGitHub } from './chief-web-real-publisher-github.mjs';
 import { createHostStorageReceipt } from './host-storage.mjs';
 
 const mount = '/Volumes/SuperAgentDockerData';
@@ -183,10 +185,21 @@ export async function runChiefWebRealBroker(filename, recoverOperationId) {
   const rwb = await loadChiefWebRealRwbHost({
     ...options,
     verifyResourceSource: value => value === options.resourceSource && treeDigest(value) === options.resourceSourceDigest,
-    verifyPush: scope => same(readOptional(path.join(root, 'push-' + scope.operationId, 'verified.json')), {
+    verifyPush: (scope, mode) => same(readOptional(path.join(root,
+      (mode === 'recovery' ? 'push-recovery-' : 'push-') + scope.operationId, 'verified.json')), {
       branch: scope.branch, previousHead: scope.previousHead, candidateSha: scope.candidateSha,
       baseSha: scope.baseSha, scopeDigest: scope.scopeDigest, operationId: scope.operationId,
     }),
+    verifyRecovery(scope, recovery, lease) {
+      const directory = path.join(root, 'push-' + scope.operationId);
+      const policy = readPrivate(path.join(directory, 'policy.json'));
+      const resolution = readPrivate(path.join(root, 'broker', scope.operationId, 'prelaunch-recovery.json'));
+      return exactLease(lease) && realDigest(resolution.recovery) === realDigest(recovery) &&
+        realDigest(policy) === recovery.originalHookPolicyDigest &&
+        !fs.existsSync(path.join(directory, 'verified.json')) &&
+        same(policy, { scopeDigest: scope.scopeDigest, operationId: scope.operationId, branch: scope.branch,
+          previousHead: null, baseSha: scope.baseSha, candidateSha: scope.candidateSha });
+    },
     log, assertWorkspaceLease, readReview,
     workspaceJournal: {
       read: (taskId, revision, name) => readOptional(journalFile('workspace', taskId, workspaceField(revision, name))),
@@ -195,10 +208,12 @@ export async function runChiefWebRealBroker(filename, recoverOperationId) {
     publicationJournal: {
       read: id => readOptional(journalFile('publication', id)),
       createExclusive: (id, value) => record(journalFile('publication', id), value),
+      readRecovery: id => readOptional(journalFile('publication-recovery', id)),
+      createRecoveryExclusive: (id, value) => record(journalFile('publication-recovery', id), value),
     },
-    async withExclusiveBranch(scope, lease, work) {
+    async withExclusiveBranch(scope, lease, work, recovery) {
       if (!exactLease(lease) || !legacyDrained() || await spool.isPaused()) fail('CHIEF_WEB_REAL_PUBLICATION_FENCE_DENIED');
-      const directory = path.join(root, 'push-' + scope.operationId);
+      const directory = path.join(root, (recovery ? 'push-recovery-' : 'push-') + scope.operationId);
       fs.mkdirSync(directory, { mode: 0o700 });
       const existingHook = fs.realpathSync(path.join(options.projectRoot, '.git/hooks/pre-push'));
       const configured = execFileSync(git, ['-C', options.projectRoot, 'rev-parse', '--git-path', 'hooks/pre-push'], { encoding: 'utf8' }).trim();
@@ -273,13 +288,60 @@ export async function runChiefWebRealBroker(filename, recoverOperationId) {
       const request = envelope?.request;
       const reply = await spool.observe(recoverOperationId);
       const lease = readLease(recoverOperationId);
-      if (request?.role !== 'developer' || request.revision !== 1 || !exactLease(lease) ||
+      if (request?.revision !== 1 || !exactLease(lease) ||
           !same(lease, { taskId: request.taskId, inputRevision: request.inputRevision, released: false }) ||
-          !same(reply, { status: 'unknown', code: 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN' }) ||
+          reply?.status !== 'unknown' ||
           !await spool.isClaimed(recoverOperationId) || await spool.isPaused() ||
           Date.now() >= config.expiresAt || treeDigest(options.resourceSource) !== options.resourceSourceDigest) {
         fail('CHIEF_WEB_REAL_RECOVERY_SCOPE_DENIED');
       }
+      if (request.role === 'publish') {
+        const expectedBranch = 'codex/integrate-super-agent-' + request.taskId;
+        if (reply.code !== 'RWB_REAL_PUBLICATION_UNKNOWN' || request.previousHead !== null ||
+            request.branch !== expectedBranch || Date.now() >= (request.confirmation?.expiresAt ?? 0) ||
+            !same(request.confirmation, { candidateSha: request.candidateSha, baseSha: request.baseSha,
+              reviewDigest: request.reviewDigest, previousHead: null }) || !uuid.test(request.confirmation.requestId ?? '') ||
+            fs.existsSync(path.join(options.projectRoot, '.git/leon-engineering/git-safety/repository.lock'))) {
+          fail('CHIEF_WEB_REAL_RECOVERY_PUBLICATION_UNCERTAIN');
+        }
+        const initial = path.join(root, 'push-' + recoverOperationId);
+        safeDirectory(initial);
+        const policy = readPrivate(path.join(initial, 'policy.json'));
+        const claim = readPrivate(journalFile('publication', recoverOperationId));
+        if (!same(policy, { operationId: recoverOperationId, branch: expectedBranch, candidateSha: request.candidateSha,
+          baseSha: request.baseSha, previousHead: null, expiresAt: request.confirmation.expiresAt, scopeDigest: claim.scopeDigest }) ||
+            claim.operationId !== recoverOperationId || fs.existsSync(path.join(initial, 'verified.json')) ||
+            !fs.lstatSync(path.join(initial, 'pre-push')).isFile()) fail('CHIEF_WEB_REAL_RECOVERY_PUBLICATION_UNCERTAIN');
+        const prepared = await rwb.workspace.readPrepared(request);
+        if (!same(prepared, { verified: true, taskId: request.taskId, inputRevision: request.inputRevision,
+          candidateSha: request.candidateSha, baseSha: request.baseSha, branch: expectedBranch, reviewDigest: request.reviewDigest }) ||
+            !hex.test(prepared.managedReceiptDigest ?? '')) fail('CHIEF_WEB_REAL_RECOVERY_PUBLICATION_UNCERTAIN');
+        const github = createChiefWebRealGitHub({ ghBinary: options.ghBinary, projectRoot: options.projectRoot });
+        const endpoint = 'repos/' + REAL_RWB_REPOSITORY;
+        const owner = REAL_RWB_REPOSITORY.split('/')[0];
+        const base = github.get(endpoint + '/git/ref/heads/master');
+        const remote = github.get(endpoint + '/git/ref/heads/' + expectedBranch);
+        const pullRequests = github.get(endpoint + '/pulls?state=all&head=' + encodeURIComponent(owner + ':' + expectedBranch) + '&base=master&per_page=2');
+        if (base?.object?.sha !== request.baseSha || remote !== null || !Array.isArray(pullRequests) || pullRequests.length !== 0 ||
+            Date.now() >= request.confirmation.expiresAt) fail('CHIEF_WEB_REAL_RECOVERY_PUBLICATION_UNCERTAIN');
+        const evidenceDigest = realDigest([claim, policy, prepared.managedReceiptDigest, base.object.sha, remote, pullRequests]);
+        record(path.join(root, 'broker', recoverOperationId, 'prelaunch-recovery.json'), {
+          schemaVersion: 1, proofType: 'publication_before_push', operationId: recoverOperationId, requestDigest: envelope.requestDigest,
+          taskId: request.taskId, inputRevision: request.inputRevision, candidateSha: request.candidateSha,
+          prePushProofAbsent: true, remoteAbsent: true, preflightDigest: evidenceDigest,
+          recovery: {
+            schemaVersion: 1, action: 'recover_pre_push_lock_denial', taskId: request.taskId, operationId: recoverOperationId,
+            inputRevision: request.inputRevision, branch: expectedBranch, candidateSha: request.candidateSha,
+            baseSha: request.baseSha, previousHead: null, reviewDigest: request.reviewDigest, confirmationId: request.confirmation.requestId,
+            originalClaimDigest: realDigest(claim), managedReceiptDigest: prepared.managedReceiptDigest,
+            originalHookPolicyDigest: realDigest(policy), leaseDigest: realDigest([lease.taskId, lease.projectId, lease.inputRevision, lease.nonce]),
+            evidenceDigest,
+          },
+        });
+        log({ code: 'CHIEF_WEB_REAL_PUBLICATION_PRE_PUSH_RECOVERY_READY', operationId: recoverOperationId });
+        return;
+      }
+      if (request.role !== 'developer' || reply.code !== 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN') fail('CHIEF_WEB_REAL_RECOVERY_SCOPE_DENIED');
       const model = path.join(root, 'model', recoverOperationId);
       safeDirectory(model);
       const reservation = readPrivate(path.join(model, 'reservation.json'));
