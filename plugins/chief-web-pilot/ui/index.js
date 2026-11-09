@@ -216,6 +216,114 @@ function ChiefWebEvaluation({ issueId }) {
     }, '新建演练任务') : null);
 }
 
+export function createChiefWebRealClient(issueId, fetcher = globalThis.fetch) {
+  const request = createChiefWebRequest(issueId, 'chief-web-real', fetcher);
+  return { status: signal => request(null, signal), control: (command, signal) => request(command, signal) };
+}
+
+const realLabels = {
+  ready: '在 Chief 对话中输入任务要求',
+  understanding: 'Chief 正在理解本次要求',
+  developing: '测试与文档修改进行中',
+  reviewing: '候选正在接受独立评审',
+  awaiting_confirmation: '候选已就绪，等待你确认',
+  approved: '已确认，正在发布本次候选',
+  waiting_ci: '等待当前 PR head 的 CI',
+  awaiting_supplement: '当前 head 的 CI 已通过，可以在原对话补充一次要求',
+  done: '任务完成，最新 PR head 的 CI 已通过',
+  blocked: '任务受阻，请查看本次回执',
+};
+
+function ChiefWebRealTask({ issueId }) {
+  const { react } = globalThis.__paperclipPluginBridge__;
+  const { createElement: el, useEffect, useRef, useState } = react;
+  const [view, setView] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const live = useRef(null);
+
+  useEffect(() => {
+    const client = createChiefWebRealClient(issueId);
+    const controller = new AbortController();
+    const current = { busy: false, revision: 0, retry: null };
+    live.current = current;
+    let timer;
+
+    current.refresh = async () => {
+      const revision = current.revision;
+      try {
+        const next = await client.status(controller.signal);
+        if (controller.signal.aborted || revision !== current.revision) return undefined;
+        setView(next);
+        return next;
+      } catch (cause) {
+        if (!controller.signal.aborted && revision === current.revision) setError(safeCode(cause?.message));
+        return undefined;
+      }
+    };
+
+    async function poll() {
+      const next = current.busy ? undefined : await current.refresh();
+      if (!controller.signal.aborted && next !== null && !['done', 'blocked'].includes(next?.phase)) {
+        timer = globalThis.setTimeout(poll, 2500);
+      }
+    }
+
+    current.control = async command => {
+      if (current.busy || controller.signal.aborted) return;
+      const key = JSON.stringify(command);
+      if (current.retry?.key !== key) current.retry = { key, id: globalThis.crypto.randomUUID() };
+      current.busy = true;
+      current.revision++;
+      setBusy(true);
+      setError(null);
+      try {
+        const next = await client.control({ ...command, requestId: current.retry.id }, controller.signal);
+        if (!controller.signal.aborted) setView(next);
+      } catch (cause) {
+        if (!controller.signal.aborted) setError(safeCode(cause?.message));
+      } finally {
+        if (!controller.signal.aborted) {
+          current.busy = false;
+          setBusy(false);
+        }
+      }
+    };
+    void poll();
+    return () => {
+      controller.abort();
+      globalThis.clearTimeout(timer);
+      if (live.current === current) live.current = null;
+    };
+  }, [issueId]);
+
+  if (!view) return null;
+  const { phase, paused, taskId, identifier, generation, contextRevision, candidateSha, reviewDigest, previousHead, baseSha, pr, ci } = view;
+  const prUrl = typeof pr?.url === 'string' && /^https:\/\/github\.com\/Leon-Huang001208\/ResearchWorkbench\/pull\/[1-9][0-9]*$/.test(pr.url) ? pr.url : null;
+  const canControl = !['done', 'blocked'].includes(phase);
+  const buttonClass = 'rounded-md border border-border px-3 py-1.5 text-sm cursor-pointer';
+
+  function send(action) {
+    void live.current?.control({ action, generation, expectedRevision: contextRevision,
+      ...(action === 'confirm' && { candidateSha, reviewDigest, previousHead, baseSha }) });
+  }
+
+  return el('section', { 'aria-label': 'Chief 真实 RWB 任务', className: 'space-y-2 p-2' },
+    el('p', { role: 'status' }, paused ? '任务已暂停' : (realLabels[phase] ?? '任务处理中')),
+    taskId ? el('p', null, 'Paperclip 任务 ' + identifier + ' · ' + taskId) : null,
+    view.inputRevision ? el('p', null, '输入版本 ' + view.revision + ' · ' + view.inputRevision) : null,
+    prUrl ? el('p', null, el('a', { href: prUrl }, 'RWB PR #' + pr.number), ' · ' + pr.headSha) : null,
+    ci ? el('p', null, 'CI ' + ci.conclusion + ' · ' + ci.headSha) : null,
+    view.canConfirm ? el('p', null, '待确认候选 ' + candidateSha) : null,
+    error || view.code ? el('p', { role: 'alert' }, error ?? safeCode(view.code)) : null,
+    el('div', { className: 'flex flex-wrap gap-2' },
+      el('button', { type: 'button', className: buttonClass, disabled: busy, onClick: () => void live.current?.refresh() }, '刷新状态'),
+      canControl ? el('button', { type: 'button', className: buttonClass, disabled: busy,
+        onClick: () => send(paused ? 'resume' : 'pause') }, paused ? '继续任务' : '暂停任务') : null,
+      view.canConfirm ? el('button', { type: 'button', className: buttonClass, disabled: busy,
+        onClick: () => send('confirm') }, prUrl ? '确认更新同一 PR' : '确认创建 PR') : null));
+}
+
 export function ChiefWebPilotPanel() {
   const { react, sdkUi } = globalThis.__paperclipPluginBridge__;
   const { createElement: el, Fragment } = react;
@@ -225,5 +333,6 @@ export function ChiefWebPilotPanel() {
   if (typeof issueId !== 'string' || !uuid.test(issueId)) return null;
   return el(Fragment, null,
     el(ChiefWebContinuation, { key: `pilot:${issueId}`, issueId }),
-    el(ChiefWebEvaluation, { key: `evaluation:${issueId}`, issueId }));
+    el(ChiefWebEvaluation, { key: `evaluation:${issueId}`, issueId }),
+    el(ChiefWebRealTask, { key: `real:${issueId}`, issueId }));
 }

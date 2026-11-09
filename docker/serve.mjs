@@ -3,8 +3,13 @@ import{loadServer}from'./server-entry.mjs';
 async function chiefWebOptions() {
   const pilot = process.env.SUPER_AGENT_CHIEF_WEB_ENABLED === 'true';
   const evaluation = process.env.SUPER_AGENT_CHIEF_WEB_EVALUATION_ENABLED === 'true';
-  if (pilot && evaluation) throw new Error('CHIEF_WEB_MODE_CONFLICT');
+  const real = process.env.SUPER_AGENT_CHIEF_WEB_REAL_ENABLED === 'true';
+  if ([pilot, evaluation, real].filter(Boolean).length > 1) throw new Error('CHIEF_WEB_MODE_CONFLICT');
   const log = event => console.log(JSON.stringify(event));
+  if (real) {
+    const { loadChiefWebRealRuntime } = await import('./bridge/chief-web-real-runtime.mjs');
+    return loadChiefWebRealRuntime({ log });
+  }
   if (pilot) {
     const { loadChiefWebRuntimeBootstrap } = await import('./bridge/chief-web-runtime-bootstrap.mjs');
     return loadChiefWebRuntimeBootstrap({ log });
