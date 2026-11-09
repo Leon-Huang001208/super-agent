@@ -1,0 +1,241 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
+const digest = data => createHash('sha256').update(data).digest('hex');
+const pins = {
+  'app/bridge/unified-runtime/gateway.mjs': 'a73bd54946dbe1a205db6d2b415e8aee366da48527ebbceb6dca7faba8d1c18a',
+  'app/bridge/unified-main.mjs': '3c014da8b3e8dfdba66be4ed5e17a01ead24495be42018ea805e6638b7ed6282',
+  'app/bridge/integration-native/index.mjs': 'de7332f0798e7bc696868d8a14d2e0f9482f087959c90f0f6f1f136be01c8dc0',
+  'app/bridge/unified-controller.mjs': '9df76877509dc42496dadcb221f3d32e1c33be1e96247bd6b2b4ece42b7b0b4c',
+  'app/bridge/unified-feishu.mjs': 'aa3633dde3b8591e14da5ef862a86086e1b19a5bb90fd1e8fcaaf824f3bc4b7b',
+  'feishu/bridge/unified-feishu.mjs': 'aa3633dde3b8591e14da5ef862a86086e1b19a5bb90fd1e8fcaaf824f3bc4b7b',
+};
+
+function replaceOnce(source, anchor, replacement) {
+  if (!source.includes(anchor) || source.indexOf(anchor) !== source.lastIndexOf(anchor)) throw new Error('FRA_OVERLAY_ANCHOR_MISMATCH');
+  return source.replace(anchor, () => replacement);
+}
+
+function patchGateway(source) {
+  source = "import { maybeRegisterFeishuAutoRwb } from '../feishu-auto-rwb-gateway.mjs';\n" +
+    "import { codePathsFromGoal } from '../task-identity.mjs';\n" + source;
+  source = replaceOnce(source, 'ownerOpenId, log, onAccepted } = {})', 'ownerOpenId, log, onAccepted, autoAdmission, readAutoTaskContext, projectAdapters } = {})');
+  source = replaceOnce(source, "if (!text.startsWith('/rwb ')) return",
+    "if (!text.startsWith('/rwb ') && !text.startsWith('/任务 ')) return");
+  const marker = '    const match = new RegExp(';
+  return replaceOnce(source, marker,
+    '    const scoped = await maybeRegisterFeishuAutoRwb({ admission: autoAdmission, native, text, operationId, externalRef, sourceEventKey, ownerOpenId, onAccepted, codePathsFromGoal, log, readTaskContext: readAutoTaskContext, projectAdapters });\n' +
+    '    if (scoped !== null) return scoped;\n' + marker);
+}
+
+function patchMain(source) {
+  source = "import { createFeishuAutoRwbAdmission } from './feishu-auto-rwb-admission.mjs';\n" + source;
+  source = replaceOnce(source, '  controllerOptions = {}, watchdogOptions = {}, onFatal = () => {},',
+    '  controllerOptions = {}, watchdogOptions = {}, projectAdapters = {}, onFatal = () => {},');
+  const runtimeState = '  let loaded, gateway, epoch, closing, stopped = false, refreshPending, drainFailed = false, fatalCode;';
+  source = replaceOnce(source, runtimeState, runtimeState + '\n' + [
+    '  const readAutoTaskContext = async ({ taskId }) => {',
+    '    const context = await loaded.native.getTaskContext({ taskId });',
+    "    if (context?.status !== 'done') return context;",
+    '    const state = await loaded.contextStore.read({ taskId });',
+    '    const proof = await createReadTerminal({ root, clock, log })({ taskId, context, state });',
+    '    return { ...context, finalized: proof?.finalized === true && proof.inputRevision === context.inputRevision };',
+    '  };',
+    '  const autoAdmission = createFeishuAutoRwbAdmission({ root, now: clock, readTaskContext: taskId => readAutoTaskContext({ taskId }) });',
+  ].join('\n'));
+  source = replaceOnce(source, 'try { next = validateUnifiedConfig(await readConfig()); }',
+    'try { next = validateUnifiedConfig(await autoAdmission.runtimeConfig(validateUnifiedConfig(await readConfig()))); }');
+  const taskPolicy = '      now: clock, readTaskPolicy: createRootTaskPolicy({ identity: loaded.identity, config: next, clock }), readOutboundReceipt,';
+  source = replaceOnce(source, taskPolicy, [
+    '      now: clock, async readTaskPolicy(input) {',
+    '        const scope = autoAdmission.lookup(input.task?.taskId);',
+    '        if (scope && (!autoAdmission.enabled() || scope.inputRevision !== input.context?.inputRevision ||',
+    "            input.context.fullTaskInput?.taskKind !== 'code_patch' ||",
+    "            scope.pathsJson !== input.context.fullTaskInput.codeAllowedPathsJson)) fail('US_TASK_POLICY_DENIED');",
+    '        return createRootTaskPolicy({ identity: loaded.identity, config: next, clock })(input);',
+    '      }, readOutboundReceipt,',
+  ].join('\n'));
+  const marker = '    gateway = createGateway({ native: loaded.native, ownerOpenId: loaded.ownerOpenId, token, log,';
+  return replaceOnce(source, marker, marker + ' autoAdmission, readAutoTaskContext, projectAdapters,');
+}
+
+function patchNative(source) {
+  return replaceOnce(source, '    const targetDoc = target(input);', [
+    '    const scoped = input.autoScopePathsJson;',
+    "    if (scoped !== undefined && (input.source !== 'feishu' || input.targetDoc !== undefined ||",
+    "        typeof scoped !== 'string' || scoped !== codePathsFromGoal(goal))) fail('IN_CODE_TARGET_PROTECTED');",
+    '    const targetDoc = scoped === undefined ? target(input) : null;',
+  ].join('\n'));
+}
+
+function patchController(source) {
+  source = "import { createFeishuAutoRwbAdmission } from './feishu-auto-rwb-admission.mjs';\n" +
+    "import { requireFeishuAutoRwbChecks } from './feishu-auto-rwb-gateway.mjs';\n" + source;
+  const fence = '    async function fence() {\n      const value = await context(taskId); if (value.inputRevision !== inputRevision) fail(\'UC_INPUT_CHANGED\');';
+  source = replaceOnce(source, fence, [
+    '    const scopedAdmission = createFeishuAutoRwbAdmission({ root, now });',
+    '    function scopedDeadline() {',
+    '      const scope = scopedAdmission.lookup(taskId);',
+    '      if (!scope) return Infinity;',
+    '      const deadline = scopedAdmission.deadline();',
+    "      if (!deadline || scope.inputRevision !== inputRevision) fail('UC_TASK_POLICY_DENIED');",
+    '      return deadline;',
+    '    }',
+    fence,
+    '      scopedDeadline();',
+  ].join('\n'));
+  source = replaceOnce(source, '        expiresAt: new Date(now() + 59 * 60000).toISOString(), maxRequests:',
+    '        expiresAt: new Date(Math.min(now() + 59 * 60000, scopedDeadline())).toISOString(), maxRequests:');
+  source = replaceOnce(source, '        await clientFor(w).enqueue({ requestId: request.requestId, action, params });',
+    '        scopedDeadline();\n        await clientFor(w).enqueue({ requestId: request.requestId, action, params });');
+  const marker = '      if(receipt.status===\'completed\'&&receipt.action===\'validate\'&&receipt.result?.status===\'failed\'){const recovered=await validationRecovery.resolve(operation);if(recovered)return recovered;}';
+  return replaceOnce(source, marker, [
+    '      const verifyScopedChecks = result => {',
+    "        if (!['validate', 'repairValidate'].includes(receipt.action)) return result;",
+    '        const scope = scopedAdmission.lookup(taskId);',
+    '        return requireFeishuAutoRwbChecks(scope, { inputRevision, candidateSha: operation.request.params.candidateSha, result });',
+    '      };',
+    "      if (receipt.status === 'completed' && receipt.action === 'validate' && receipt.result?.status === 'failed') {",
+    '        const recovered = await validationRecovery.resolve(operation);',
+    '        if (recovered) { verifyScopedChecks(recovered.result); return recovered; }',
+    '      }',
+    "      if (receipt.status === 'completed') verifyScopedChecks(receipt.result);",
+  ].join('\n'));
+}
+
+function patchFeishu(source) {
+  source = "import { createFeishuAutoRwbAdmission } from './feishu-auto-rwb-admission.mjs';\n" +
+    "import { appendScopedCompletion, describeFeishuAutoRwbBlocked, scopedCompletionReceipt } from './feishu-auto-rwb-gateway.mjs';\n" + source;
+  source = replaceOnce(source, "    const text = request.kind === 'completed' ?", "    let text = request.kind === 'completed' ?");
+  const receiptCheck = "    if (receipt?.operationId !== operationId || receipt.status !== 'completed' || !id(receipt.messageId) ||";
+  source = replaceOnce(source, receiptCheck, [
+    "    const scoped = request.kind === 'completed' ? scopedCompletionReceipt(createFeishuAutoRwbAdmission({ root }).lookup(request.taskId), request.headSha) : null;",
+    '    if (scoped && (payload?.autoVersion !== scoped.autoVersion || payload?.autoInputRevision !== scoped.autoInputRevision)) return unknown;',
+    '    text = appendScopedCompletion(text, scoped);',
+    receiptCheck,
+  ].join('\n'));
+  const register = '    const result = await native.registerFeishu(copied); active();';
+  source = replaceOnce(source, register, [
+    "    const blockedAck = 'auto-blocked:' + hash([event.message.chat_id, event.message.message_id]);",
+    "    if (db.prepare('SELECT operation_id FROM deliveries WHERE operation_id=?').get(blockedAck)) return { type: 'ignored', ignored: true };",
+    register,
+  ].join('\n'));
+  const ignored = "    if (result?.type === 'ignored' || result?.ignored === true) return { ...result, ignored: true };";
+  source = replaceOnce(source, ignored, ignored + '\n' + [
+    "    if (result?.type === 'scoped_blocked' && result.status === 'blocked' && id(result.operationId) && typeof result.code === 'string') {",
+    '      const operationId = blockedAck;',
+    "      const text = describeFeishuAutoRwbBlocked(result.code);",
+    "      const input = { messageId: event.message.message_id, ownerOpenId: expectedOwner, type: result.type, textHash: hash(text) };",
+    "      if (await owner() !== expectedOwner) throw fail('UF_OWNER_REQUIRED');",
+    "      if (claim(operationId, input)) {",
+    "        try {",
+    "          const response = await sdkClient.im.message.reply({ path: { message_id: event.message.message_id },",
+    "            data: { msg_type: 'text', content: JSON.stringify({ text }), uuid: uuidFor(operationId) } });",
+    "          settle(operationId, response);",
+    "        } catch { emit('UF_ACK_UNKNOWN'); }",
+    "      }",
+    "      return result;",
+    "    }",
+  ].join('\n'));
+  const completion = '      resultKey = hash([request.taskId, request.headSha]);';
+  source = replaceOnce(source, '    let text, resultKey;', '    let text, resultKey, autoReceipt;');
+  source = replaceOnce(source, "    const text = result.type === 'registered' ? `已登记RWB任务${result.taskId}，已进入受控队列` : `RWB任务${result.taskId}补充已收存，按原任务规则处理`;", [
+    "    const label = /^[a-z][a-z0-9-]{0,47}$/.test(result.projectKey ?? '') ? result.projectKey : 'RWB';",
+    "    const text = result.type === 'registered' ? '已登记' + label + '任务' + result.taskId + '，已进入受控队列'",
+    "      : label + '任务' + result.taskId + '补充已收存，按原任务规则处理';",
+  ].join('\n'));
+  source = replaceOnce(source, completion, [
+    '      const scope = await createFeishuAutoRwbAdmission({ root }).lookup(request.taskId);',
+    "      if (scope) {",
+    "        if (scope.ownerOpenId !== expectedOwner || scope.inputRevision !== context.inputRevision) throw fail('UF_COMPLETION_UNVERIFIED');",
+    '        autoReceipt = scopedCompletionReceipt(scope, request.headSha);',
+    '        if (autoReceipt.autoInputRevision !== context.inputRevision) throw fail(\'UF_COMPLETION_UNVERIFIED\');',
+    '        text = appendScopedCompletion(text, autoReceipt);',
+    '      }',
+    completion,
+  ].join('\n'));
+  return replaceOnce(source, "ownerOpenId: expectedOwner, textHash: hash(text), ...(request.kind==='attention'?",
+    "ownerOpenId: expectedOwner, textHash: hash(text), ...autoReceipt, ...(request.kind==='attention'?");
+}
+
+const transforms = [patchGateway, patchMain, patchNative, patchController, patchFeishu, patchFeishu];
+const added = ['feishu-auto-rwb-policy.mjs', 'feishu-auto-rwb-admission.mjs', 'feishu-auto-rwb-gateway.mjs',
+  'feishu-project-delivery-policy.mjs', 'feishu-project-delivery.mjs'];
+
+function readRegular(filename) {
+  const stat = fs.lstatSync(filename);
+  if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync(filename) !== filename) throw new Error('FRA_OVERLAY_INPUT_UNSAFE');
+  return fs.readFileSync(filename);
+}
+
+function collectBridgeFiles(directory, root = directory) {
+  const files = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...collectBridgeFiles(full, root));
+    else files.push(['feishu/bridge/' + path.relative(root, full), readRegular(full)]);
+  }
+  return files;
+}
+
+export function prepareFeishuAutoRwbOverlay(appRoot, feishuRoot, output) {
+  for (const root of [appRoot, feishuRoot]) {
+    if (path.resolve(root) !== root || fs.realpathSync(root) !== root) throw new Error('FRA_OVERLAY_ROOT_INVALID');
+  }
+  if (!path.isAbsolute(output) || fs.existsSync(output)) throw new Error('FRA_OVERLAY_OUTPUT_INVALID');
+  const files = new Map();
+  const baseDigests = new Map(Object.entries(pins));
+  for (const [index, [filename, expected]] of Object.entries(pins).entries()) {
+    const slash = filename.indexOf('/');
+    const root = filename.startsWith('app/') ? appRoot : feishuRoot;
+    const input = readRegular(path.join(root, filename.slice(slash + 1)));
+    if (digest(input) !== expected) throw new Error('FRA_OVERLAY_BASE_MISMATCH:' + filename);
+    files.set(filename, transforms[index](input.toString('utf8')));
+  }
+  for (const filename of added) {
+    const data = readRegular(path.join(sourceRoot, 'bridge', filename));
+    files.set('app/bridge/' + filename, data);
+    files.set('feishu/bridge/' + filename, data);
+  }
+  // A nested bind cannot introduce files into a read-only /integration bind.
+  // Rebuild that one source directory while preserving every untouched byte.
+  for (const [filename, data] of collectBridgeFiles(path.join(feishuRoot, 'bridge'))) {
+    if (!baseDigests.has(filename)) baseDigests.set(filename, digest(data));
+    if (!files.has(filename)) files.set(filename, data);
+  }
+  fs.mkdirSync(output, { mode: 0o700 });
+  for (const [filename, data] of files) {
+    const destination = path.join(output, filename);
+    fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o755 });
+    fs.writeFileSync(destination, data, { flag: 'wx', mode: 0o644 });
+  }
+  for (const [role, service, mountRoot] of [['app', 'paperclip', '/opt/super-agent/task'], ['feishu', 'feishu-connection', '/integration']]) {
+    const mounts = role === 'feishu' ? ['feishu/bridge'] : [...files.keys()].filter(file => file.startsWith('app/'));
+    const volumes = mounts.map(file => ({
+      type: 'bind',
+      source: path.join(output, file),
+      target: role === 'feishu' ? mountRoot : mountRoot + '/' + file.slice('app/'.length),
+      read_only: true,
+      bind: { create_host_path: false },
+    }));
+    fs.writeFileSync(path.join(output, role + '.compose.json'), JSON.stringify({ services: { [service]: { volumes } } }) + '\n',
+      { flag: 'wx', mode: 0o600 });
+  }
+  const receipt = { schemaVersion: 1, files: [...files].map(([file, data]) => ({ file, baseSha256: baseDigests.get(file) ?? null, sha256: digest(data) })) };
+  fs.writeFileSync(path.join(output, 'manifest.json'), JSON.stringify(receipt) + '\n', { flag: 'wx', mode: 0o600 });
+  return receipt;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    if (process.argv.length !== 5) throw new Error('FRA_OVERLAY_ARGUMENT_INVALID');
+    const receipt = prepareFeishuAutoRwbOverlay(...process.argv.slice(2));
+    console.log(JSON.stringify({ code: 'FRA_OVERLAY_PREPARED', files: receipt.files.length }));
+  } catch (error) {
+    console.error(JSON.stringify({ code: /^FRA_[A-Z_:a-z/.-]+$/.test(error?.message ?? '') ? error.message : 'FRA_OVERLAY_FAILED' }));
+    process.exitCode = 1;
+  }
+}
