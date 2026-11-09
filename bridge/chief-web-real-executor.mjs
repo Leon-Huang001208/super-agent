@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
+import { REAL_RWB_DOCUMENT } from './chief-web-real-engine.mjs';
 
-export const CHIEF_WEB_REAL_TARGET = 'docs/super-agent/chief-task-verification.md';
+export const CHIEF_WEB_REAL_TARGET = REAL_RWB_DOCUMENT;
 export const CHIEF_WEB_REAL_MODEL = Object.freeze({ model: 'gpt-6.1-sol', reasoningEffort: 'low', apiFallback: false });
 export const CHIEF_WEB_REAL_REPOSITORY = 'Leon-Huang001208/ResearchWorkbench';
 export const CHIEF_WEB_REAL_ROLE = Object.freeze(['chief', 'developer', 'reviewer']);
@@ -31,7 +32,8 @@ export function chiefWebRealRequestIdentity(request) {
 export function chiefWebRealRequestDigest(request) {
   const identity = chiefWebRealRequestIdentity(request);
   const instruction = identity.role === 'chief' ? request.text : request.taskDescription;
-  if (!bytes(instruction, 4096) || (identity.role === 'reviewer' && !sha.test(request.candidateSha ?? ''))) {
+  if ((request.targetDoc !== undefined && request.targetDoc !== CHIEF_WEB_REAL_TARGET) ||
+      !bytes(instruction, 4096) || (identity.role === 'reviewer' && !sha.test(request.candidateSha ?? ''))) {
     fail('CHIEF_WEB_REAL_EXECUTION_INPUT_DENIED');
   }
   return chiefWebRealDigest(JSON.stringify([identity, instruction, request.candidateSha ?? null]));

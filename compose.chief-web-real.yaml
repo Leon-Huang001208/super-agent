@@ -68,6 +68,7 @@ services:
       HEARTBEAT_SCHEDULER_ENABLED: "false"
       SERVE_UI: "true"
       SUPER_AGENT_CHIEF_WEB_REAL_ENABLED: "${SUPER_AGENT_CHIEF_WEB_REAL_ENABLED:-false}"
+      SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT: "${SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT:-}"
     volumes:
       - state:/paperclip
       - type: bind
