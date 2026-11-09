@@ -151,7 +151,9 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
 
   async function step() {
     const current = state(await store.read());
-    if (['blocked', 'complete', 'expired'].includes(current.phase)) return current;
+    const blocked = current.phase === 'blocked';
+    if (['complete', 'expired'].includes(current.phase) ||
+        (blocked && (current.code !== 'CHIEF_WEB_RESIDENT_TASK_BLOCKED' || now() >= manifest.expiresAt))) return current;
     if (['activating', 'draining'].includes(current.phase)) fail('CHIEF_WEB_RESIDENT_TRANSITION_UNKNOWN');
     const slot = manifest.slots[current.index];
     if (now() >= manifest.expiresAt) {
@@ -169,6 +171,9 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
     const status = await host.status(slot);
     if (!nativePhases.has(status?.phase) || status.generation !== bindings[current.index].generation || !Number.isSafeInteger(status.revision) ||
         status.revision < 0 || status.revision > 1) fail('CHIEF_WEB_RESIDENT_NATIVE_STATUS_UNVERIFIED');
+    // The operator may have reconciled the original Native operation while the supervisor was stopped.
+    // Only adopt a terminal receipt. The supervisor must never start an executor for a blocked slot.
+    if (blocked && status.phase !== 'done') return current;
     if (status.phase === 'blocked') {
       await commit(current, { phase: 'draining' });
       await stop();
@@ -180,6 +185,7 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
         fail('CHIEF_WEB_RESIDENT_TERMINAL_UNVERIFIED');
       }
       const completed = [...current.completed, { conversationId: slot.conversationId, ...result }];
+      if (blocked) await host.drain();
       await commit(current, { phase: 'draining' });
       await stop();
       await host.drain();

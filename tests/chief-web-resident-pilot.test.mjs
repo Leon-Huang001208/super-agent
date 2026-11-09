@@ -122,6 +122,25 @@ test('blocked task stops the local child and preserves the same slot', async () 
   assert.deepEqual(env.seen.filter(([type]) => ['activate', 'stop', 'disable'].includes(type)), [['activate', 0], ['stop']]);
 });
 
+test('adopts the original recovered terminal receipt only after a drain', async () => {
+  const env = fixture();
+  const pilot = env.make();
+  await pilot.step();
+  env.statuses[0] = { phase: 'blocked', generation: 0, revision: 1 };
+  await pilot.step();
+  const restored = env.make();
+  env.statuses[0] = { phase: 'waiting_ci', generation: 0, revision: 1 };
+  assert.equal((await restored.step()).phase, 'blocked');
+  env.statuses[0] = done(0);
+  env.setLease(true);
+  await assert.rejects(restored.step(), { code: 'CHIEF_WEB_RESIDENT_LEASE_PRESENT' });
+  assert.equal(env.current.phase, 'blocked');
+  env.setLease(false);
+  assert.equal((await restored.step()).index, 1);
+  assert.deepEqual(env.current.completed.map(item => item.prNumber), [1]);
+  assert.deepEqual(env.seen.filter(([event]) => event === 'start'), [['start', 0], ['start', 1]]);
+});
+
 test('old head, ambiguous activation and nonempty lease never switch the app', async () => {
   const oldHead = fixture();
   const pilot = oldHead.make();
