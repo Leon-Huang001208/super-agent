@@ -280,6 +280,12 @@ export function createFeishuAutoRwbAdmission({ root, now = Date.now, readTaskCon
     const record = readState()?.reservations.find(item => item.operationId === operationId);
     return record ? receipt(record) : null;
   }
-  return Object.freeze({ enabled: () => Boolean(activePolicy()), deadline: () => activePolicy()?.expiresAt ?? null,
+  function deadline() {
+    const policy = activePolicy();
+    if (!policy) return null;
+    readState(policy);
+    return policy.expiresAt;
+  }
+  return Object.freeze({ enabled: () => Boolean(activePolicy()), deadline,
     reserve, bind, runtimeConfig, lookup, operation });
 }

@@ -175,6 +175,7 @@ test('policy changes and unsafe private files fail closed', async t => {
   await admission.reserve(initial());
   writeFileSync(policyFile, JSON.stringify({ ...policy, expiresAt: 31 }));
   assert.throws(() => admission.runtimeConfig(base), { code: 'FRA_POLICY_CHANGED' });
+  assert.throws(() => admission.deadline(), { code: 'FRA_POLICY_CHANGED' });
   const state = path.join(directory, 'admission.json');
   const backup = path.join(directory, 'unexpected-link-target.json');
   writeFileSync(backup, readFileSync(state), { mode: 0o600 });
