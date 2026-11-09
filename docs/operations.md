@@ -2,6 +2,10 @@
 
 ## 独立 Chief 真实 RWB 试点
 
+单镜像复验使用 `docs/super-agent/chief-single-image-verification.md`。应用、独立模型容器和宿主发布器绑定同一个构建候选，复验中重启应用前后核对镜像 ID。
+
+小范围常驻使用 `compose.chief-web-real.yaml` 叠加 `compose.chief-web-resident.yaml`，监听 `localhost:8112`。宿主监督器按私有清单顺序开放 `chief-resident-intake.md`、`chief-resident-recovery.md` 和 `chief-resident-status.md`。每个文件绑定独立 Chief 对话和一轮输入，共用专用实例的数据库和登录。只在前一条确认完成、原消费者已退出、共享租约为空后切换当前绑定。每次发布仍需网页确认。
+
 完整镜像复验可在部署时选择 `docs/super-agent/chief-browser-acceptance.md`。同一专用实例、宿主和模型容器使用相同的 `SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT`，私有会话绑定记录中的 `targetDoc` 必须匹配。缺省沿用首轮限定文档，输入版本和发布护栏仍绑定当次唯一目标。
 
 使用 `compose.chief-web-real.yaml`，网页绑定 `127.0.0.1:8108`，入口默认关闭。先配置专用原生对话、项目及账户，关闭该 Chief 的计划、按需唤醒和快速响应。设置受控实例绑定与私有交接目录。Mac 宿主只在核对旧实例排空、共享准入、固定工具链及资源来源后启动本次运行。实际写入前，Git 钩子核对远端通告的原 head、当前候选和唯一目标分支，并执行项目原有钩子。
