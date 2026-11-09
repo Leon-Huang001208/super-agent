@@ -10,15 +10,15 @@ import {
 
 const id = n => '00000000-0000-0000-0000-' + String(n).padStart(12, '0');
 const manifestInput = () => ({
-  schemaVersion: 1, sourceRoot: '/tmp/work', sourceSha: 'a'.repeat(40), imageId: 'sha256:' + 'b'.repeat(64),
+  schemaVersion: 2, sourceRoot: '/tmp/work', sourceSha: 'a'.repeat(40), imageId: 'sha256:' + 'b'.repeat(64),
   dependenciesRoot: '/tmp/deps', expiresAt: 900, ownerSessionFile: '/tmp/session',
-  slots: [1, 2, 3].map(n => ({ conversationId: id(n),
+  slots: [1, 2, 3].map(n => ({ conversationId: id(n), chiefAgentId: id(n + 10),
     scopeRoot: '/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0/logs/chief-web-real-rwb.fixture' + n })),
 });
 const manifest = validateChiefWebResidentManifest(manifestInput());
 const expectedBindings = () => manifest.slots.map((slot, n) => ({
   conversationId: slot.conversationId, maxRevisions: 1, targetDoc: slot.targetDoc,
-  expiresAt: manifest.expiresAt, userId: 'owner', companyId: id(8), chiefAgentId: id(9), projectId: id(10),
+  expiresAt: manifest.expiresAt, userId: 'owner', companyId: id(8), chiefAgentId: slot.chiefAgentId, projectId: id(10),
   generation: n, intakeFrom: 20,
 }));
 const bindings = validateChiefWebResidentBindings(manifest, expectedBindings());
@@ -78,6 +78,12 @@ test('private manifest fixes ordered documents and a single Native owner scope',
   const repeated = manifestInput();
   repeated.slots[1].scopeRoot = repeated.slots[0].scopeRoot;
   assert.throws(() => validateChiefWebResidentManifest(repeated), { code: 'CHIEF_WEB_RESIDENT_MANIFEST_INVALID' });
+  const repeatedChief = manifestInput();
+  repeatedChief.slots[1].chiefAgentId = repeatedChief.slots[0].chiefAgentId;
+  assert.throws(() => validateChiefWebResidentManifest(repeatedChief), { code: 'CHIEF_WEB_RESIDENT_MANIFEST_INVALID' });
+  const swapped = expectedBindings();
+  [swapped[0].chiefAgentId, swapped[1].chiefAgentId] = [swapped[1].chiefAgentId, swapped[0].chiefAgentId];
+  assert.throws(() => validateChiefWebResidentBindings(manifest, swapped), { code: 'CHIEF_WEB_RESIDENT_BINDING_INVALID' });
   const foreign = expectedBindings();
   foreign[2].userId = 'foreign';
   assert.throws(() => validateChiefWebResidentBindings(manifest, foreign), { code: 'CHIEF_WEB_RESIDENT_BINDING_INVALID' });

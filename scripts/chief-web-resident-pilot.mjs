@@ -36,12 +36,14 @@ function absolute(value) {
 export function validateChiefWebResidentManifest(value) {
   const keys = ['schemaVersion', 'sourceRoot', 'sourceSha', 'imageId', 'dependenciesRoot', 'expiresAt', 'ownerSessionFile', 'slots'];
   if (!value || Object.keys(value).length !== keys.length || !keys.every(key => Object.hasOwn(value, key)) ||
-      value.schemaVersion !== 1 || !absolute(value.sourceRoot) || !absolute(value.dependenciesRoot) ||
+      value.schemaVersion !== 2 || !absolute(value.sourceRoot) || !absolute(value.dependenciesRoot) ||
       !absolute(value.ownerSessionFile) || !sha.test(value.sourceSha ?? '') || !/^sha256:[a-f0-9]{64}$/.test(value.imageId ?? '') ||
       !Number.isSafeInteger(value.expiresAt) || value.expiresAt <= 0 || !Array.isArray(value.slots) ||
-      value.slots.length !== RESIDENT_TARGETS.length || value.slots.some(slot => !slot || Object.keys(slot).length !== 2 ||
-        !hostDirectory.test(slot.scopeRoot ?? '') || !uuid.test(slot.conversationId ?? '')) ||
+      value.slots.length !== RESIDENT_TARGETS.length || value.slots.some(slot => !slot || Object.keys(slot).length !== 3 ||
+        !hostDirectory.test(slot.scopeRoot ?? '') || !uuid.test(slot.conversationId ?? '') ||
+        !uuid.test(slot.chiefAgentId ?? '')) ||
       new Set(value.slots.map(slot => slot.conversationId)).size !== value.slots.length ||
+      new Set(value.slots.map(slot => slot.chiefAgentId)).size !== value.slots.length ||
       new Set(value.slots.map(slot => slot.scopeRoot)).size !== value.slots.length) fail('CHIEF_WEB_RESIDENT_MANIFEST_INVALID');
   return Object.freeze({ ...value, slots: Object.freeze(value.slots.map((slot, index) =>
     Object.freeze({ ...slot, targetDoc: RESIDENT_TARGETS[index] }))) });
@@ -50,12 +52,13 @@ export function validateChiefWebResidentManifest(value) {
 export function validateChiefWebResidentBindings(manifest, records) {
   const first = records?.[0];
   if (!Array.isArray(records) || records.length !== manifest.slots.length ||
-      ![first?.chiefAgentId, first?.companyId, first?.projectId].every(value => uuid.test(value ?? '')) ||
+      ![first?.companyId, first?.projectId].every(value => uuid.test(value ?? '')) ||
       typeof first?.userId !== 'string' || !first.userId) fail('CHIEF_WEB_RESIDENT_BINDING_INVALID');
   return records.map((binding, index) => {
-    if (!matches(binding, { ...Object.fromEntries(['chiefAgentId', 'companyId', 'projectId', 'userId'].map(key => [key, first[key]])),
-      conversationId: manifest.slots[index].conversationId, expiresAt: manifest.expiresAt,
-      targetDoc: manifest.slots[index].targetDoc, maxRevisions: 1 }) ||
+    const slot = manifest.slots[index];
+    if (!matches(binding, { companyId: first.companyId, projectId: first.projectId, userId: first.userId,
+      chiefAgentId: slot.chiefAgentId, conversationId: slot.conversationId, expiresAt: manifest.expiresAt,
+      targetDoc: slot.targetDoc, maxRevisions: 1 }) ||
       !Number.isSafeInteger(binding.generation) || binding.generation < 0 ||
       !Number.isSafeInteger(binding.intakeFrom) || binding.intakeFrom >= binding.expiresAt ||
       !uuid.test(binding.conversationId)) fail('CHIEF_WEB_RESIDENT_BINDING_INVALID');
