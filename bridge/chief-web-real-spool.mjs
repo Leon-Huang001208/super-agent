@@ -112,6 +112,26 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
     return envelope;
   }
 
+  async function recoverableResponse(directory, envelope) {
+    const original = await read(directory, 'response.json');
+    const resolution = await read(directory, 'prelaunch-recovery.json');
+    if (original && (original.schemaVersion !== 1 || original.requestDigest !== envelope.requestDigest)) {
+      fail('CHIEF_WEB_REAL_SPOOL_RESPONSE_MISMATCH');
+    }
+    if (!resolution) return { receipt: original, recoveryVerified: false };
+    if (envelope.request.role !== 'developer' || resolution.schemaVersion !== 1 ||
+        resolution.requestDigest !== envelope.requestDigest || resolution.operationId !== envelope.request.operationId ||
+        resolution.taskId !== envelope.request.taskId || resolution.inputRevision !== envelope.request.inputRevision ||
+        resolution.physicalLaunchAbsent !== true || !digest.test(resolution.preflightDigest ?? '') ||
+        original?.reply?.status !== 'unknown' || original.reply.code !== 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN') {
+      fail('CHIEF_WEB_REAL_SPOOL_RECOVERY_MISMATCH');
+    }
+    const receipt = await read(directory, 'reconciled-response.json');
+    if (receipt && (receipt.schemaVersion !== 1 || receipt.requestDigest !== envelope.requestDigest ||
+        receipt.recoveryDigest !== realDigest(resolution))) fail('CHIEF_WEB_REAL_SPOOL_RECOVERY_MISMATCH');
+    return { receipt, recoveryVerified: true, resolution };
+  }
+
   async function submit(request) {
     if (!scoped(request)) fail('CHIEF_WEB_REAL_SPOOL_SCOPE_DENIED');
     const payload = JSON.parse(JSON.stringify(request));
@@ -124,10 +144,8 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
     }
     const envelope = await verifyRequest(request.operationId, directory);
     if (envelope?.requestDigest !== hash) fail('CHIEF_WEB_REAL_SPOOL_REQUEST_MISMATCH');
-    const receipt = await read(directory, 'response.json');
-    if (!receipt) return { status: 'pending' };
-    if (receipt.schemaVersion !== 1 || receipt.requestDigest !== hash) fail('CHIEF_WEB_REAL_SPOOL_RESPONSE_MISMATCH');
-    return receipt.reply;
+    const { receipt, recoveryVerified } = await recoverableResponse(directory, envelope);
+    return { ...(receipt?.reply ?? { status: 'pending' }), ...(recoveryVerified && { recoveryVerified: true }) };
   }
 
   async function withNamedFence(kind, work) {
@@ -196,8 +214,7 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
       if (!directory) return null;
       const request = await verifyRequest(operationId, directory);
       if (!request) return null;
-      const receipt = await read(directory, 'response.json');
-      if (receipt && receipt.requestDigest !== request.requestDigest) fail('CHIEF_WEB_REAL_SPOOL_RESPONSE_MISMATCH');
+      const { receipt } = await recoverableResponse(directory, request);
       return receipt?.reply ?? null;
     },
     async claim(operationId) {
@@ -231,9 +248,12 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
       if (!envelope || (envelope.request.role !== 'ci' &&
         (await read(directory, 'dispatch.json'))?.requestDigest !== envelope.requestDigest)) fail('CHIEF_WEB_REAL_SPOOL_CLAIM_MISSING');
       if (!['completed', 'blocked', 'unknown'].includes(reply?.status)) fail('CHIEF_WEB_REAL_SPOOL_RESPONSE_MISMATCH');
-      const receipt = { schemaVersion: 1, requestDigest: envelope.requestDigest, reply };
-      if (!await write(directory, 'response.json', receipt) &&
-          realDigest(await read(directory, 'response.json')) !== realDigest(receipt)) fail('CHIEF_WEB_REAL_SPOOL_RESPONSE_MISMATCH');
+      const { resolution } = await recoverableResponse(directory, envelope);
+      const name = resolution ? 'reconciled-response.json' : 'response.json';
+      const receipt = { schemaVersion: 1, requestDigest: envelope.requestDigest, reply,
+        ...(resolution && { recoveryDigest: realDigest(resolution) }) };
+      if (!await write(directory, name, receipt) &&
+          realDigest(await read(directory, name)) !== realDigest(receipt)) fail('CHIEF_WEB_REAL_SPOOL_RESPONSE_MISMATCH');
       await log({ code: 'CHIEF_WEB_REAL_SPOOL_RESPONSE', operationId, status: reply.status });
     },
     executor: Object.freeze({ execute: submit, observe: submit }),

@@ -91,11 +91,11 @@ function pinnedStorage() {
 
 export { treeDigest };
 
-export async function runChiefWebRealBroker(filename) {
+export async function runChiefWebRealBroker(filename, recoverOperationId) {
   const root = path.dirname(filename);
   safeDirectory(root);
   if (process.platform !== 'darwin' || !root.startsWith(mount + '/paperclip-v2026.1023.0/logs/chief-web-real-rwb.') ||
-      path.basename(filename) !== 'host-scope.json') fail('CHIEF_WEB_REAL_OPERATOR_PATH_DENIED');
+      !['host-scope.json', 'host-scope-recovery.json'].includes(path.basename(filename))) fail('CHIEF_WEB_REAL_OPERATOR_PATH_DENIED');
   const options = readPrivate(filename);
   const config = readPrivate(path.join(root, 'binding.json'));
   if (!uuid.test(config.conversationId ?? '') || !uuid.test(options.credentialGrantId ?? '') ||
@@ -264,6 +264,41 @@ export async function runChiefWebRealBroker(filename) {
   let stopped = false;
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { stopped = true; });
   if (!legacyDrained() || !pinnedStorage().allowed) fail('CHIEF_WEB_REAL_OPERATOR_PREFLIGHT_FAILED');
+  if (recoverOperationId !== undefined) {
+    if (!uuid.test(recoverOperationId) || path.basename(filename) !== 'host-scope-recovery.json') {
+      fail('CHIEF_WEB_REAL_RECOVERY_SCOPE_DENIED');
+    }
+    await spool.withFence(async () => {
+      const envelope = await spool.readRequest(recoverOperationId);
+      const request = envelope?.request;
+      const reply = await spool.observe(recoverOperationId);
+      const lease = readLease(recoverOperationId);
+      if (request?.role !== 'developer' || request.revision !== 1 || !exactLease(lease) ||
+          !same(lease, { taskId: request.taskId, inputRevision: request.inputRevision, released: false }) ||
+          !same(reply, { status: 'unknown', code: 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN' }) ||
+          !await spool.isClaimed(recoverOperationId) || await spool.isPaused() ||
+          Date.now() >= config.expiresAt || treeDigest(options.resourceSource) !== options.resourceSourceDigest) {
+        fail('CHIEF_WEB_REAL_RECOVERY_SCOPE_DENIED');
+      }
+      const model = path.join(root, 'model', recoverOperationId);
+      safeDirectory(model);
+      const reservation = readPrivate(path.join(model, 'reservation.json'));
+      const start = readPrivate(journalFile('workspace', request.taskId, workspaceField(request.inputRevision, 'start')));
+      const workers = execFileSync(options.dockerBinary, ['ps', '-aq', '--filter', 'label=io.super-agent.chief-model-slot=' + recoverOperationId],
+        { encoding: 'utf8', timeout: 12000, maxBuffer: 65536 }).trim();
+      if (workers || fs.readdirSync(model).some(name => name !== 'reservation.json') ||
+          !same(reservation, { taskId: request.taskId, role: 'developer', slotId: recoverOperationId, inputRevision: request.inputRevision }) ||
+          !same(start, { taskId: request.taskId, inputRevision: request.inputRevision, revision: 1 })) {
+        fail('CHIEF_WEB_REAL_RECOVERY_LAUNCH_UNCERTAIN');
+      }
+      const preflightDigest = digest(JSON.stringify([start, reservation, options.resourceSourceDigest]));
+      record(path.join(root, 'broker', recoverOperationId, 'prelaunch-recovery.json'), {
+        schemaVersion: 1, operationId: recoverOperationId, requestDigest: envelope.requestDigest,
+        taskId: request.taskId, inputRevision: request.inputRevision, physicalLaunchAbsent: true, preflightDigest,
+      });
+      log({ code: 'CHIEF_WEB_REAL_PRELAUNCH_RECOVERY_READY', operationId: recoverOperationId });
+    });
+  }
   log({ code: 'CHIEF_WEB_REAL_OPERATOR_READY' });
   while (!stopped && Date.now() < config.expiresAt) {
     await broker.tick();
@@ -274,8 +309,8 @@ export async function runChiefWebRealBroker(filename) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    if (process.argv.length !== 3 || process.env.SUPER_AGENT_CHIEF_WEB_REAL_BROKER_ENABLED !== '1') fail('CHIEF_WEB_REAL_OPERATOR_DISABLED');
-    await runChiefWebRealBroker(process.argv[2]);
+    if (![3, 4].includes(process.argv.length) || process.env.SUPER_AGENT_CHIEF_WEB_REAL_BROKER_ENABLED !== '1') fail('CHIEF_WEB_REAL_OPERATOR_DISABLED');
+    await runChiefWebRealBroker(process.argv[2], process.argv[3]);
   } catch (error) {
     const code = /^(CHIEF_WEB_REAL|RWB_REAL)_[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'CHIEF_WEB_REAL_OPERATOR_FAILED';
     console.error(JSON.stringify({ code }));

@@ -4,6 +4,8 @@
 
 使用 `compose.chief-web-real.yaml`，网页绑定 `127.0.0.1:8108`，入口默认关闭。先配置专用原生对话、项目及账户，关闭该 Chief 的计划、按需唤醒和快速响应。设置受控实例绑定与私有交接目录。Mac 宿主只在核对旧实例排空、共享准入、固定工具链及资源来源后启动本次运行。实际写入前，Git 钩子核对远端通告的原 head、当前候选和唯一目标分支，并执行项目原有钩子。
 
+宿主资源包包含已固定 RWB 提交中的 `research_workbench_entrypoint` 和 `.agents/resource-closeout.json`。如果开发停在初始资源登记，操作员可以在停掉原宿主消费者后，对同一操作核对原 Native 认领、共享租约、已创建的受管工作树，以及物理请求、调用和运行容器均不存在。通过后登记一次私有恢复证明，保留原失败回执，继续同一操作。无法证明调用从未启动时保持阻塞。
+
 ## 独立 Chief 网页演练
 
 使用 `compose.chief-web-evaluation.yaml`，项目名为 `super-agent-chief-web-rehearsal`，网页绑定 `127.0.0.1:8107`。设置 `SUPER_AGENT_RUNTIME_IMAGE` 为按构建输入复用的确切镜像，设置 `SUPER_AGENT_VERIFIED_DEPENDENCIES` 为与候选锁文件一致的只读安装目录。应用与数据库位于内部网络，网关仅将网页转发到本机端口。

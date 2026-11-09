@@ -172,10 +172,26 @@ export function createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitB
       if (current.revision === 2 && (!sha.test(previousHead ?? '') || pr?.branch !== current.branch)) fail('WORKSPACE_SCOPE_DENIED');
       const baseSha = remote(current, previousHead, pr?.number);
       if (current.revision === 1) {
-        // A durable start intent prevents a blind second provisioning after a process failure.
-        await journal.createExclusive(current.taskId, current.inputRevision, 'start', { ...current, baseSha });
-        const started = await managed(current, 'start');
-        if (!same(started, { status: 'started', baseCommit: baseSha, featureCommit: baseSha, mode: null, pullRequest: null })) fail('WORKSPACE_RECEIPT_UNVERIFIED');
+        const start = await journal.read(current.taskId, current.inputRevision, 'start');
+        let started;
+        if (start === null) {
+          // Record intent before provisioning. Recovery can only adopt the exact started worktree.
+          await journal.createExclusive(current.taskId, current.inputRevision, 'start', { ...current, baseSha });
+          started = await managed(current, 'start');
+        } else {
+          if (!same(start, { ...current, baseSha })) fail('WORKSPACE_START_CLAIM_CHANGED');
+          started = receipt(current);
+        }
+        if (!same(started, { status: 'started', baseCommit: baseSha, featureCommit: baseSha,
+          mode: null, pullRequest: null, integrationWorktree: null })) fail('WORKSPACE_RECEIPT_UNVERIFIED');
+        clean(started.featureWorktree, started.featureBranch, baseSha);
+        if (start !== null) {
+          if (document(projectRoot, baseSha).exists) fail('DOCUMENT_ALREADY_PRESENT');
+          await assertWorkspaceLease(request);
+          if (remote(current, null, null) !== baseSha) fail('REMOTE_BASE_CHANGED');
+          resourceProbe(current, { repositoryRoot: projectRoot }, current.deliveryTaskId, 'record');
+          await log({ code: 'RWB_REAL_STARTED_WORKTREE_RECOVERED', operationId: request.operationId });
+        }
       } else {
         const prior = receipt(current);
         if (!same(prior, { mode: 'pr', status: 'awaiting_ci', integrationCommit: previousHead }) ||

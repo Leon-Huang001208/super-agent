@@ -20,7 +20,7 @@ const repository = REAL_RWB_REPOSITORY, targetDoc = REAL_RWB_DOCUMENT;
 const url = 'https://github.com/' + repository + '/pull/321';
 const repo = 'repos/' + repository;
 
-function fixture(t) {
+function fixture(t, { failFirstResourceRecord = false } = {}) {
   const tmp = mkdtempSync(path.join(tmpdir(), 'sa-publisher-workspace-'));
   t.after(() => rmSync(tmp, { recursive: true, force: true }));
   const projectRoot = path.join(tmp, 'rwb'), worktreeRoot = path.join(tmp, 'worktrees');
@@ -32,6 +32,7 @@ function fixture(t) {
   const journalRows = new Map();
   const actions = [];
   const checks = [];
+  let resourceAttempts = 0;
   const exit = (stdout = '', status = 0) => ({ stdout: Buffer.from(stdout), status });
   const workspace = createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitBinary: '/usr/bin/git',
     controller: { readDeliveryReceipt: () => managed },
@@ -77,7 +78,11 @@ function fixture(t) {
         if (journalRows.has(key)) throw Object.assign(new Error(), { code: 'EEXIST' });
         journalRows.set(key, value);
       } },
-    recordResources: record => ({ ...record, verified: true }),
+    recordResources(record) {
+      resourceAttempts++;
+      if (failFirstResourceRecord && resourceAttempts === 1) throw new Error('first resource registration failed');
+      return { ...record, verified: true };
+    },
     verifyCandidate(input) {
       checks.push(input.candidateSha);
       return { status: 'passed', candidateSha: input.candidateSha, durationSeconds: 0, command: 'three RWB checks',
@@ -117,7 +122,8 @@ function fixture(t) {
   const request = (revision, role = 'developer') => ({ taskId, repository, targetDoc, role, revision, slotId, operationId: slotId,
     inputRevision: revision === 1 ? first : second, pr: revision === 1 ? null : { number: 321, url, branch, headSha: firstSha, baseSha } });
   const artifact = (claim, workspace, content) => ({ claim, workspace, content, providerReceiptDigest: 'a'.repeat(64), developerSessionId });
-  return { workspace, request, artifact, actions, checks, setDirty: () => { dirty = true; }, moveBase: () => { remoteBase = movedBase; }, markFirstPublished() {
+  return { workspace, request, artifact, actions, checks, resourceAttempts: () => resourceAttempts,
+    setDirty: () => { dirty = true; }, moveBase: () => { remoteBase = movedBase; }, markFirstPublished() {
     managed = { ...managed, mode: 'pr', status: 'awaiting_ci', pullRequest: { number: 321, url }, remoteCommit: baseSha };
     remoteHead = firstSha;
   } };
@@ -152,6 +158,34 @@ test('first candidate and append-only repair share the managed RWB worktrees and
   sample.setDirty();
   await assert.rejects(sample.workspace.readPrepared({ ...sample.request(2, 'publish'), candidateSha: secondSha, baseSha,
     branch, previousHead: firstSha, reviewDigest }), { code: 'RWB_REAL_WORKSPACE_CHANGED' });
+});
+
+test('resumes resource registration from the exact started worktree without replaying managed start', async t => {
+  const sample = fixture(t, { failFirstResourceRecord: true });
+  const request = sample.request(1);
+  await assert.rejects(sample.workspace.read(request), /first resource registration failed/);
+  assert.deepEqual(sample.actions, ['start']);
+  const snapshot = await sample.workspace.read(request);
+  assert.equal(snapshot.currentHead, baseSha);
+  assert.equal(snapshot.document.exists, false);
+  assert.deepEqual(await sample.workspace.read(request), snapshot);
+  assert.deepEqual(sample.actions, ['start']);
+  assert.equal(sample.resourceAttempts(), 2);
+});
+
+test('denies started worktree recovery after the base or worktree changed', async t => {
+  const moved = fixture(t, { failFirstResourceRecord: true });
+  await assert.rejects(moved.workspace.read(moved.request(1)), /first resource registration failed/);
+  moved.moveBase();
+  await assert.rejects(moved.workspace.read(moved.request(1)), { code: 'RWB_REAL_WORKSPACE_START_CLAIM_CHANGED' });
+  const dirty = fixture(t, { failFirstResourceRecord: true });
+  await assert.rejects(dirty.workspace.read(dirty.request(1)), /first resource registration failed/);
+  dirty.setDirty();
+  await assert.rejects(dirty.workspace.read(dirty.request(1)), { code: 'RWB_REAL_WORKSPACE_CHANGED' });
+  for (const sample of [moved, dirty]) {
+    assert.deepEqual(sample.actions, ['start']);
+    assert.equal(sample.resourceAttempts(), 1);
+  }
 });
 
 test('a moved master uses formal RWB prepare while preserving the existing PR and integration branch', async t => {
