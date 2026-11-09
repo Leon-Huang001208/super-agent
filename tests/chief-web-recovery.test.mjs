@@ -46,6 +46,7 @@ function fixture() {
   let published;
   let released;
   let lost = {};
+  let absenceProof = true;
   let preflight;
   const bindings = {
     repository: {
@@ -94,18 +95,21 @@ function fixture() {
     },
   };
   const nativeFinalization = {
-    readState() {
+    readState(scope) {
       return { ...proof, verified: true, noExecutionInFlight: true, nativeRevision: '5'.repeat(64), contextRevision: '6'.repeat(64),
         phase, nativeStatus, prHead: nativeHead, waitOperationId: wait?.operationId,
-        publicationEvidenceDigest: wait?.publicationEvidenceDigest, ciEventId: ci?.ci.eventId, ciProofDigest: ci?.ci.evidenceDigest };
+        publicationEvidenceDigest: wait?.publicationEvidenceDigest, ciEventId: ci?.ci.eventId, ciProofDigest: ci?.ci.evidenceDigest,
+        operationAbsent: absenceProof && ![wait?.operationId, ci?.operationId].includes(scope.operationId) };
     },
     recordWait(scope) {
+      if (lost.wait === 'before') throw Error('before Native commit');
       calls.push('wait');
       wait = scope;
       phase = 'WAIT_CI';
       nativeHead = candidateSha;
     },
     recordCi(scope) {
+      if (lost.ci === 'before') throw Error('before Native commit');
       calls.push('ci');
       ci = scope;
       nativeStatus = 'done';
@@ -121,6 +125,7 @@ function fixture() {
       return { verified: true, taskId, active: true, archived: false, leaseDigest };
     },
     releaseLease(scope) {
+      if (lost.release === 'before') throw Error('before release intent');
       calls.push('release');
       released = { ...scope, verified: true, active: false, archived: true, archiveDigest: '8'.repeat(64) };
       if (lost.release) throw Error('lease result lost');
@@ -131,6 +136,7 @@ function fixture() {
       bindings, hostPublication, nativeFinalization, readExecution: () => execution, log: () => {}, now: () => now,
     }),
     setLost: value => { lost = value; },
+    denyAbsenceProof: () => { absenceProof = false; },
     setCiHead: value => { observedCiHead = value; },
     setBase: value => { baseSha = value; },
     setPreflight: callback => { preflight = callback; },
@@ -190,6 +196,43 @@ test('an uncertain dispatch without a trusted postcondition stays unknown after 
   assert.equal((await env.create().publish(command)).status, 'unknown');
   assert.deepEqual(env.calls, ['publish']);
   assert.equal(env.records.filter(row => row.stage === 'publish').length, 1);
+});
+
+test('claimed Native stages resume before their first commit and retain the original operation IDs', async () => {
+  const env = fixture();
+  const initial = env.create();
+  await initial.claim(command);
+  env.setLost({ wait: 'before' });
+  assert.equal((await initial.publish(command)).status, 'unknown');
+  env.setLost({});
+  assert.equal((await env.create().publish(command)).status, 'waiting_ci');
+  env.setLost({ ci: 'before' });
+  assert.equal((await env.create().recordCi(ciCommand)).status, 'unknown');
+  env.setLost({});
+  env.setCiHead(previousHead);
+  assert.equal((await env.create().recordCi(ciCommand)).status, 'unknown');
+  env.setCiHead(candidateSha);
+  assert.equal((await env.create().recordCi(ciCommand)).status, 'recorded');
+  env.setLost({ release: 'before' });
+  assert.equal((await env.create().release(command)).status, 'unknown');
+  env.setLost({});
+  assert.equal((await env.create().release(command)).status, 'released');
+  assert.deepEqual(env.calls, ['publish', 'wait', 'ci', 'release']);
+  for (const stage of ['wait-ci', 'ci', 'release']) {
+    assert.equal(env.records.filter(row => row.stage === stage && row.status === 'claimed').length, 1);
+  }
+});
+
+test('a claimed Native stage with no authoritative negative evidence remains unknown', async () => {
+  const env = fixture();
+  const entry = env.create();
+  await entry.claim(command);
+  env.setLost({ wait: 'before' });
+  assert.equal((await entry.publish(command)).status, 'unknown');
+  env.setLost({});
+  env.denyAbsenceProof();
+  assert.equal((await env.create().publish(command)).status, 'unknown');
+  assert.deepEqual(env.calls, ['publish']);
 });
 
 test('reconciles an archived grant read-only after the conversation resets', async () => {

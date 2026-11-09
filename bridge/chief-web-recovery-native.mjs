@@ -121,8 +121,12 @@ export function createChiefWebRecoveryNative({ bindings, readExecutionEvidence, 
     return locked(scope, state => {
       requireRevision(state, scope);
       const marker = state.context.chiefWebRecovery;
+      const claims = state.records.filter(row => row.operationId === scope.operationId);
       if (!matches(marker, binding(scope)) || marker.ci?.eventId !== scope.ciEventId ||
           marker.ci?.conclusion !== scope.ciConclusion || !marker.receipt ||
+          claims.length !== 1 || !matches(claims[0], { kind: 'chief-web-recovery-claim', status: 'claimed',
+            stage: 'release', taskId: scope.taskId, grantId: scope.grantId, scopeDigest: scope.scopeDigest,
+            parentOperationId: scope.confirmationOperationId }) ||
           state.task.status !== (scope.ciConclusion === 'success' ? 'done' : 'blocked')) {
         fail('CHIEF_WEB_RECOVERY_NATIVE_STATE_CHANGED');
       }
@@ -134,7 +138,7 @@ export function createChiefWebRecoveryNative({ bindings, readExecutionEvidence, 
     readExecution,
     nativeFinalization: Object.freeze({
       readState(scope) {
-        return locked(scope, ({ task, context, nativeRevision, contextRevision }) => {
+        return locked(scope, ({ task, context, nativeRevision, contextRevision, records }) => {
           const marker = context.chiefWebRecovery;
           const current = matches(marker, binding(scope)) ? marker : {};
           return {
@@ -142,6 +146,7 @@ export function createChiefWebRecoveryNative({ bindings, readExecutionEvidence, 
             nativeStatus: task.status, phase: context.phase, prHead: context.pr.headSha,
             waitOperationId: current.waitOperationId, publicationEvidenceDigest: current.publicationEvidenceDigest,
             ciEventId: current.ci?.eventId, ciProofDigest: current.ci?.evidenceDigest,
+            operationAbsent: !records.some(row => row.operationId === 'chief-web-recovery:' + scope.operationId),
           };
         });
       },

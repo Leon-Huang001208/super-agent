@@ -58,6 +58,33 @@ export function createChiefWebRecoveryFinalization({
       evidenceDigest: createHash('sha256').update(JSON.stringify([stage, scope.scopeDigest, evidence])).digest('hex') };
   }
 
+  async function applyWithState(stage, scope, state, resume) {
+    const expected = Object.freeze({ ...scope, expectedNativeRevision: state.nativeRevision,
+      expectedContextRevision: state.contextRevision });
+    if (stage === 'wait-ci') {
+      if (!same(state, { phase: 'WAIT_DECISION', nativeStatus: 'in_progress', prHead: scope.previousHead })) {
+        fail('CHIEF_WEB_RECOVERY_NATIVE_STATE_CHANGED');
+      }
+      if (resume && state.operationAbsent !== true) return null;
+      await recordWait(expected);
+    } else if (stage === 'ci') {
+      if (!same(state, { phase: 'WAIT_CI', nativeStatus: 'in_progress', prHead: scope.candidateSha })) {
+        fail('CHIEF_WEB_RECOVERY_NATIVE_STATE_CHANGED');
+      }
+      if (resume && state.operationAbsent !== true) return null;
+      await recordCi(expected);
+    } else if (stage === 'release') {
+      const terminalStatus = scope.ciConclusion === 'success' ? 'done' : 'blocked';
+      const lease = await readLease(scope);
+      if (!same(state, { nativeStatus: terminalStatus, prHead: scope.candidateSha, ciEventId: scope.ciEventId }) ||
+          !same(lease, { verified: true, active: true, archived: false, taskId: scope.taskId, leaseDigest: scope.leaseDigest })) {
+        fail('CHIEF_WEB_RECOVERY_LEASE_UNVERIFIED');
+      }
+      await releaseLease(expected);
+    }
+    return observation(stage, scope, await verifiedState(scope));
+  }
+
   return Object.freeze({
     async observe(stage, scope) {
       const state = await verifiedState(scope);
@@ -72,29 +99,12 @@ export function createChiefWebRecoveryFinalization({
     async apply(stage, scope) {
       const state = await verifiedState(scope);
       const observed = await observation(stage, scope, state);
-      if (observed) return observed;
-      const expected = Object.freeze({ ...scope, expectedNativeRevision: state.nativeRevision,
-        expectedContextRevision: state.contextRevision });
-      if (stage === 'wait-ci') {
-        if (!same(state, { phase: 'WAIT_DECISION', nativeStatus: 'in_progress', prHead: scope.previousHead })) {
-          fail('CHIEF_WEB_RECOVERY_NATIVE_STATE_CHANGED');
-        }
-        await recordWait(expected);
-      } else if (stage === 'ci') {
-        if (!same(state, { phase: 'WAIT_CI', nativeStatus: 'in_progress', prHead: scope.candidateSha })) {
-          fail('CHIEF_WEB_RECOVERY_NATIVE_STATE_CHANGED');
-        }
-        await recordCi(expected);
-      } else if (stage === 'release') {
-        const terminalStatus = scope.ciConclusion === 'success' ? 'done' : 'blocked';
-        const lease = await readLease(scope);
-        if (!same(state, { nativeStatus: terminalStatus, prHead: scope.candidateSha, ciEventId: scope.ciEventId }) ||
-            !same(lease, { verified: true, active: true, archived: false, taskId: scope.taskId, leaseDigest: scope.leaseDigest })) {
-          fail('CHIEF_WEB_RECOVERY_LEASE_UNVERIFIED');
-        }
-        await releaseLease(expected);
-      }
-      return observation(stage, scope, await verifiedState(scope));
+      return observed ?? applyWithState(stage, scope, state, false);
+    },
+    async resumeUnstarted(stage, scope) {
+      const state = await verifiedState(scope);
+      const observed = await observation(stage, scope, state);
+      return observed ?? applyWithState(stage, scope, state, true);
     },
   });
 }

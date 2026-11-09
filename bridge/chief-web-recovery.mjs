@@ -212,11 +212,15 @@ export function createChiefWebRecovery({ repository, readGrant, readExecution, p
         if (stage === 'publish') {
           result = reconcile ? await observePublication(operationId, request) : await publisher.update(request);
         } else {
-          if (stage === 'ci' && !reconcile) {
+          if (reconcile) result = await finalization.observe(stage, request);
+          if (!result && stage === 'ci') {
             const currentCi = validateCi(await publisher.readCi(request, eventId), request, eventId);
             if (!same(currentCi, request.ci)) fail('CHIEF_WEB_RECOVERY_CI_EVENT_CHANGED');
           }
-          result = reconcile ? await finalization.observe(stage, request) : await finalization.apply(stage, request);
+          if (!reconcile) result = await finalization.apply(stage, request);
+          else if (!result && typeof finalization.resumeUnstarted === 'function') {
+            result = await finalization.resumeUnstarted(stage, request);
+          }
         }
       } catch {
         fail('CHIEF_WEB_RECOVERY_RESULT_UNKNOWN', 'unknown');
