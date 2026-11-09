@@ -54,7 +54,7 @@ test('disabled scoped admission leaves the legacy path available', async () => {
 test('Native scope encoding drift blocks before creating a task', async () => {
   const { events, ports } = setup({ encode: () => null });
   assert.equal((await maybeRegisterFeishuAutoRwb(ports)).code, 'FRA_SCOPE_ENCODING_MISMATCH');
-  assert.deepEqual(events.map(([kind]) => kind), ['reserve']);
+  assert.deepEqual(events.map(([kind]) => kind), ['reserve', 'log']);
 });
 
 test('unknown Native outcome keeps the original operation reserved and does not admit it', async () => {

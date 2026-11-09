@@ -22,15 +22,19 @@ function replaceOnce(source, anchor, replacement) {
 function patchGateway(source) {
   source = "import { maybeRegisterFeishuAutoRwb } from '../feishu-auto-rwb-gateway.mjs';\n" +
     "import { codePathsFromGoal } from '../task-identity.mjs';\n" + source;
-  source = replaceOnce(source, 'ownerOpenId, log, onAccepted } = {})', 'ownerOpenId, log, onAccepted, autoAdmission, readAutoTaskContext } = {})');
+  source = replaceOnce(source, 'ownerOpenId, log, onAccepted } = {})', 'ownerOpenId, log, onAccepted, autoAdmission, readAutoTaskContext, projectAdapters } = {})');
+  source = replaceOnce(source, "if (!text.startsWith('/rwb ')) return",
+    "if (!text.startsWith('/rwb ') && !text.startsWith('/任务 ')) return");
   const marker = '    const match = new RegExp(';
   return replaceOnce(source, marker,
-    '    const scoped = await maybeRegisterFeishuAutoRwb({ admission: autoAdmission, native, text, operationId, externalRef, sourceEventKey, ownerOpenId, onAccepted, codePathsFromGoal, log, readTaskContext: readAutoTaskContext });\n' +
+    '    const scoped = await maybeRegisterFeishuAutoRwb({ admission: autoAdmission, native, text, operationId, externalRef, sourceEventKey, ownerOpenId, onAccepted, codePathsFromGoal, log, readTaskContext: readAutoTaskContext, projectAdapters });\n' +
     '    if (scoped !== null) return scoped;\n' + marker);
 }
 
 function patchMain(source) {
   source = "import { createFeishuAutoRwbAdmission } from './feishu-auto-rwb-admission.mjs';\n" + source;
+  source = replaceOnce(source, '  controllerOptions = {}, watchdogOptions = {}, onFatal = () => {},',
+    '  controllerOptions = {}, watchdogOptions = {}, projectAdapters = {}, onFatal = () => {},');
   const runtimeState = '  let loaded, gateway, epoch, closing, stopped = false, refreshPending, drainFailed = false, fatalCode;';
   source = replaceOnce(source, runtimeState, runtimeState + '\n' + [
     '  const readAutoTaskContext = async ({ taskId }) => {',
@@ -55,7 +59,7 @@ function patchMain(source) {
     '      }, readOutboundReceipt,',
   ].join('\n'));
   const marker = '    gateway = createGateway({ native: loaded.native, ownerOpenId: loaded.ownerOpenId, token, log,';
-  return replaceOnce(source, marker, marker + ' autoAdmission, readAutoTaskContext,');
+  return replaceOnce(source, marker, marker + ' autoAdmission, readAutoTaskContext, projectAdapters,');
 }
 
 function patchNative(source) {
@@ -138,6 +142,11 @@ function patchFeishu(source) {
   ].join('\n'));
   const completion = '      resultKey = hash([request.taskId, request.headSha]);';
   source = replaceOnce(source, '    let text, resultKey;', '    let text, resultKey, autoReceipt;');
+  source = replaceOnce(source, "    const text = result.type === 'registered' ? `已登记RWB任务${result.taskId}，已进入受控队列` : `RWB任务${result.taskId}补充已收存，按原任务规则处理`;", [
+    "    const label = /^[a-z][a-z0-9-]{0,47}$/.test(result.projectKey ?? '') ? result.projectKey : 'RWB';",
+    "    const text = result.type === 'registered' ? '已登记' + label + '任务' + result.taskId + '，已进入受控队列'",
+    "      : label + '任务' + result.taskId + '补充已收存，按原任务规则处理';",
+  ].join('\n'));
   source = replaceOnce(source, completion, [
     '      const scope = await createFeishuAutoRwbAdmission({ root }).lookup(request.taskId);',
     "      if (scope) {",
@@ -153,12 +162,23 @@ function patchFeishu(source) {
 }
 
 const transforms = [patchGateway, patchMain, patchNative, patchController, patchFeishu, patchFeishu];
-const added = ['feishu-auto-rwb-policy.mjs', 'feishu-auto-rwb-admission.mjs', 'feishu-auto-rwb-gateway.mjs'];
+const added = ['feishu-auto-rwb-policy.mjs', 'feishu-auto-rwb-admission.mjs', 'feishu-auto-rwb-gateway.mjs',
+  'feishu-project-delivery-policy.mjs', 'feishu-project-delivery.mjs'];
 
 function readRegular(filename) {
   const stat = fs.lstatSync(filename);
   if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync(filename) !== filename) throw new Error('FRA_OVERLAY_INPUT_UNSAFE');
   return fs.readFileSync(filename);
+}
+
+function collectBridgeFiles(directory, root = directory) {
+  const files = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...collectBridgeFiles(full, root));
+    else files.push(['feishu/bridge/' + path.relative(root, full), readRegular(full)]);
+  }
+  return files;
 }
 
 export function prepareFeishuAutoRwbOverlay(appRoot, feishuRoot, output) {
@@ -167,6 +187,7 @@ export function prepareFeishuAutoRwbOverlay(appRoot, feishuRoot, output) {
   }
   if (!path.isAbsolute(output) || fs.existsSync(output)) throw new Error('FRA_OVERLAY_OUTPUT_INVALID');
   const files = new Map();
+  const baseDigests = new Map(Object.entries(pins));
   for (const [index, [filename, expected]] of Object.entries(pins).entries()) {
     const slash = filename.indexOf('/');
     const root = filename.startsWith('app/') ? appRoot : feishuRoot;
@@ -179,6 +200,12 @@ export function prepareFeishuAutoRwbOverlay(appRoot, feishuRoot, output) {
     files.set('app/bridge/' + filename, data);
     files.set('feishu/bridge/' + filename, data);
   }
+  // A nested bind cannot introduce files into a read-only /integration bind.
+  // Rebuild that one source directory while preserving every untouched byte.
+  for (const [filename, data] of collectBridgeFiles(path.join(feishuRoot, 'bridge'))) {
+    if (!baseDigests.has(filename)) baseDigests.set(filename, digest(data));
+    if (!files.has(filename)) files.set(filename, data);
+  }
   fs.mkdirSync(output, { mode: 0o700 });
   for (const [filename, data] of files) {
     const destination = path.join(output, filename);
@@ -186,17 +213,18 @@ export function prepareFeishuAutoRwbOverlay(appRoot, feishuRoot, output) {
     fs.writeFileSync(destination, data, { flag: 'wx', mode: 0o644 });
   }
   for (const [role, service, mountRoot] of [['app', 'paperclip', '/opt/super-agent/task'], ['feishu', 'feishu-connection', '/integration']]) {
-    const volumes = [...files.keys()].filter(file => file.startsWith(role + '/')).map(file => ({
+    const mounts = role === 'feishu' ? ['feishu/bridge'] : [...files.keys()].filter(file => file.startsWith('app/'));
+    const volumes = mounts.map(file => ({
       type: 'bind',
       source: path.join(output, file),
-      target: mountRoot + '/' + file.slice((role === 'feishu' ? 'feishu/bridge/' : 'app/').length),
+      target: role === 'feishu' ? mountRoot : mountRoot + '/' + file.slice('app/'.length),
       read_only: true,
       bind: { create_host_path: false },
     }));
     fs.writeFileSync(path.join(output, role + '.compose.json'), JSON.stringify({ services: { [service]: { volumes } } }) + '\n',
       { flag: 'wx', mode: 0o600 });
   }
-  const receipt = { schemaVersion: 1, files: [...files].map(([file, data]) => ({ file, baseSha256: pins[file] ?? null, sha256: digest(data) })) };
+  const receipt = { schemaVersion: 1, files: [...files].map(([file, data]) => ({ file, baseSha256: baseDigests.get(file) ?? null, sha256: digest(data) })) };
   fs.writeFileSync(path.join(output, 'manifest.json'), JSON.stringify(receipt) + '\n', { flag: 'wx', mode: 0o600 });
   return receipt;
 }

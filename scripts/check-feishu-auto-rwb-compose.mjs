@@ -48,7 +48,11 @@ export function checkFeishuAutoRwbCompose(overlay, name) {
   const namespace = name === 'paperclip' ? 'app/' : 'feishu/';
   const baseline = files.filter(entry => entry.file.startsWith(namespace) && entry.baseSha256 !== null);
   if (!baseline.length || baseline.some(entry => !/^[a-f0-9]{64}$/.test(entry.baseSha256))) fail('source-manifest');
-  const targets = baseline.map(entry => additions.find(volume => volume.source === path.join(overlayRoot, entry.file))?.target);
+  const targets = baseline.map(entry => {
+    const file = path.join(overlayRoot, entry.file);
+    const volume = additions.find(item => file === item.source || file.startsWith(item.source + path.sep));
+    return volume && (file === volume.source ? volume.target : volume.target + '/' + path.relative(volume.source, file));
+  });
   if (targets.some(target => typeof target !== 'string' || !target.startsWith('/'))) fail('source-target');
   const readback = docker(['exec', running.Id, 'sha256sum', ...targets]).trim().split('\n');
   if (readback.length !== baseline.length || readback.some((line, index) => line !== baseline[index].baseSha256 + '  ' + targets[index])) {

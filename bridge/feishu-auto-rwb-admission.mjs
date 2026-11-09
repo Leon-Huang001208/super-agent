@@ -19,8 +19,8 @@ function deny(code) {
   throw Object.assign(new Error(code), { code });
 }
 
-function validPaths(paths) {
-  return Array.isArray(paths) && validPathsJson(JSON.stringify(paths));
+function validPaths(paths, validateSupplement) {
+  return Array.isArray(paths) && validPathsJson(JSON.stringify(paths), validateSupplement);
 }
 
 function validChecks(checks) {
@@ -88,25 +88,25 @@ function writePrivate(filename, value) {
   }
 }
 
-function validPathsJson(value) {
+function validPathsJson(value, validateSupplement) {
   // A scope-only check uses the same canonical file policy as a real supplement.
-  return validateFeishuAutoRwbSupplement('核对执行范围', value)?.ok === true;
+  return validateSupplement('核对执行范围', value)?.ok === true;
 }
 
-function validatePolicy(value) {
+function validatePolicy(value, validateSupplement) {
   if (!keysAre(value, ['schemaVersion', 'effectiveAt', 'expiresAt', 'scopes']) || value.schemaVersion !== 1 ||
       !Number.isSafeInteger(value.effectiveAt) || value.effectiveAt < 0 || !Number.isSafeInteger(value.expiresAt) ||
       value.expiresAt <= value.effectiveAt || !Array.isArray(value.scopes) || !value.scopes.length ||
       value.scopes.length > 2) deny('FRA_POLICY_INVALID');
   const scopes = value.scopes.map(scope => {
-    if (!keysAre(scope, ['paths', 'checks']) || !validPaths(scope.paths) || !validChecks(scope.checks)) deny('FRA_POLICY_INVALID');
+    if (!keysAre(scope, ['paths', 'checks']) || !validPaths(scope.paths, validateSupplement) || !validChecks(scope.checks)) deny('FRA_POLICY_INVALID');
     return { pathsJson: JSON.stringify(scope.paths), checks: scope.checks };
   });
   if (new Set(scopes.map(scope => scope.pathsJson)).size !== scopes.length) deny('FRA_POLICY_INVALID');
   return { effectiveAt: value.effectiveAt, expiresAt: value.expiresAt, scopes };
 }
 
-function validateState(value) {
+function validateState(value, validateSupplement) {
   if (!keysAre(value, ['schemaVersion', 'policyDigest', 'reservations']) || value.schemaVersion !== 1 ||
       !matches(value.policyDigest, digest) || !Array.isArray(value.reservations) || value.reservations.length > 4) {
     deny('FRA_STATE_INVALID');
@@ -117,7 +117,7 @@ function validateState(value) {
   if (new Set(records.map(record => record?.operationId)).size !== records.length ||
       records.some(record => !keysAre(record, keys) || !matches(record.operationId, uuid) ||
         !matches(record.chatId, chat) || !matches(record.ownerOpenId, owner) || !matches(record.requestDigest, digest) ||
-        !validPathsJson(record.pathsJson) || !validChecks(record.checks) || ![1, 2].includes(record.version) ||
+        !validPathsJson(record.pathsJson, validateSupplement) || !validChecks(record.checks) || ![1, 2].includes(record.version) ||
         record.taskId !== null && !matches(record.taskId, uuid) ||
         record.inputRevision !== null && (!record.taskId || !matches(record.inputRevision, digest)) ||
         record.version === 1 && (record.previousRevision !== null || record.previousInputRevision !== null || record.previousHead !== null ||
@@ -136,8 +136,8 @@ function validateState(value) {
   return value;
 }
 
-function requestKey(request, chatId, ownerOpenId) {
-  if (request?.kind === 'new' && validPaths(request.paths) && request.pathsJson === JSON.stringify(request.paths) &&
+function requestKey(request, chatId, ownerOpenId, validateSupplement) {
+  if (request?.kind === 'new' && validPaths(request.paths, validateSupplement) && request.pathsJson === JSON.stringify(request.paths) &&
       typeof request.goal === 'string' && request.goal.trim() && Buffer.byteLength(request.goal) <= 16_000 &&
       typeof request.title === 'string' && request.title.trim() && request.title.length <= 160) {
     return hash(['new', chatId, ownerOpenId, request.pathsJson, request.goal, request.title]);
@@ -154,12 +154,14 @@ function receipt(record) {
   return structuredClone(visible);
 }
 
-/** A private, bounded pilot ledger. Synchronous transactions belong to the single native controller process. */
-export function createFeishuAutoRwbAdmission({ root, now = Date.now, readTaskContext } = {}) {
+/** Each trusted project selects its own scope policy and admission namespace. */
+export function createFeishuProjectDeliveryAdmission({ root, namespace, validateSupplement, now = Date.now, readTaskContext } = {}) {
   if (typeof root !== 'string' || !path.isAbsolute(root) || path.resolve(root) !== root ||
       root.includes('\0') || typeof now !== 'function' ||
+      typeof namespace !== 'string' || !/^feishu-auto-[a-z0-9][a-z0-9-]{0,47}$/.test(namespace) ||
+      typeof validateSupplement !== 'function' ||
       (readTaskContext !== undefined && typeof readTaskContext !== 'function')) deny('FRA_CONFIGURATION_INVALID');
-  const directory = path.join(root, 'feishu-auto-rwb');
+  const directory = path.join(root, namespace);
   const stateFile = path.join(directory, 'admission.json');
   let reservationTail = Promise.resolve();
   function directoryExists() {
@@ -177,20 +179,20 @@ export function createFeishuAutoRwbAdmission({ root, now = Date.now, readTaskCon
   function activePolicy() {
     const raw = directoryExists() && readPrivate(path.join(directory, 'policy.json'), 'FRA_POLICY_INVALID');
     if (raw === undefined || raw === false) return null;
-    const policy = validatePolicy(raw);
+    const policy = validatePolicy(raw, validateSupplement);
     const current = now();
     if (!Number.isSafeInteger(current)) deny('FRA_CLOCK_INVALID');
     return current >= policy.effectiveAt && current < policy.expiresAt ? policy : null;
   }
   function readState(policy) {
     const raw = directoryExists() ? readPrivate(stateFile, 'FRA_STATE_INVALID') : undefined;
-    const state = raw === undefined ? null : validateState(raw);
+    const state = raw === undefined ? null : validateState(raw, validateSupplement);
     if (policy && state && state.policyDigest !== hash(policy)) deny('FRA_POLICY_CHANGED');
     return state ?? (policy ? { schemaVersion: 1, policyDigest: hash(policy), reservations: [] } : null);
   }
   async function reserveOne({ operationId, chatId, ownerOpenId, request, previousContext } = {}) {
     if (!matches(operationId, uuid) || !matches(chatId, chat) || !matches(ownerOpenId, owner)) deny('FRA_IDENTITY_INVALID');
-    const payload = requestKey(request, chatId, ownerOpenId);
+    const payload = requestKey(request, chatId, ownerOpenId, validateSupplement);
     const previous = readState()?.reservations.find(item => item.operationId === operationId);
     if (previous) {
       if (previous.requestDigest !== payload) deny('FRA_OPERATION_CONFLICT');
@@ -217,7 +219,7 @@ export function createFeishuAutoRwbAdmission({ root, now = Date.now, readTaskCon
       if (previousContext?.taskId !== first.taskId || previousContext?.status !== 'done' || previousContext.finalized !== true ||
           previousContext?.inputRevision !== first.inputRevision || !matches(previousContext.revision, digest) ||
           !matches(previousHead, commit)) deny('FRA_SUPPLEMENT_CONTEXT_CHANGED');
-      const validation = validateFeishuAutoRwbSupplement(request.text, first.pathsJson);
+      const validation = validateSupplement(request.text, first.pathsJson);
       if (validation?.ok !== true) deny(/^FRA_[A-Z_]+$/.test(validation?.code ?? '') ? validation.code : 'FRA_SUPPLEMENT_SCOPE_DENIED');
       Object.assign(binding, { pathsJson: first.pathsJson, checks: first.checks, version: 2,
         taskId: first.taskId, previousRevision: previousContext.revision, previousInputRevision: first.inputRevision, previousHead });
@@ -238,7 +240,7 @@ export function createFeishuAutoRwbAdmission({ root, now = Date.now, readTaskCon
     if (!stillActive) deny('FRA_POLICY_DISABLED');
     if (hash(stillActive) !== state.policyDigest) deny('FRA_POLICY_CHANGED');
     records.push(binding);
-    writePrivate(stateFile, validateState(state));
+    writePrivate(stateFile, validateState(state, validateSupplement));
     return receipt(binding);
   }
   function reserve(input) {
@@ -258,7 +260,7 @@ export function createFeishuAutoRwbAdmission({ root, now = Date.now, readTaskCon
       return receipt(record);
     }
     Object.assign(record, { taskId, inputRevision });
-    writePrivate(stateFile, validateState(state));
+    writePrivate(stateFile, validateState(state, validateSupplement));
     return receipt(record);
   }
   function runtimeConfig(base) {
@@ -288,4 +290,9 @@ export function createFeishuAutoRwbAdmission({ root, now = Date.now, readTaskCon
   }
   return Object.freeze({ enabled: () => Boolean(activePolicy()), deadline,
     reserve, bind, runtimeConfig, lookup, operation });
+}
+
+export function createFeishuAutoRwbAdmission(options = {}) {
+  return createFeishuProjectDeliveryAdmission({ ...options, namespace: 'feishu-auto-rwb',
+    validateSupplement: validateFeishuAutoRwbSupplement });
 }

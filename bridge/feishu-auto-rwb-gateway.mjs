@@ -1,76 +1,34 @@
 import { parseFeishuAutoRwbIntake } from './feishu-auto-rwb-policy.mjs';
+import { registerScopedFeishuProject, routeFeishuProjectDelivery } from './feishu-project-delivery.mjs';
 
-const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
-const digest = /^[a-f0-9]{64}$/;
-const blocked = (operationId, code) => ({ type: 'scoped_blocked', status: 'blocked', operationId, code });
-
-/** Runs only after the Native Feishu gateway has authenticated the owner and message envelope. */
-export async function maybeRegisterFeishuAutoRwb({
-  admission, native, text, operationId, externalRef, sourceEventKey, ownerOpenId,
-  onAccepted, codePathsFromGoal, log, readTaskContext = input => native.getTaskContext(input),
-}) {
-  if (!admission) return null;
-  const request = parseFeishuAutoRwbIntake(text);
-  if (!await admission.enabled()) {
-    return admission.operation?.(operationId) || request.kind === 'supplement' && admission.lookup?.(request.taskId)
-      ? blocked(operationId, 'FRA_POLICY_DISABLED') : null;
-  }
-  if (request.kind === 'ignored') return { status: 'ignored', created: false, type: 'ignored' };
-  if (request.kind === 'invalid') return blocked(operationId, request.code);
-  let reservation, previousContext;
-  try {
-    if (request.kind === 'supplement') {
-      previousContext = await readTaskContext({ taskId: request.taskId });
-    }
-    reservation = await admission.reserve({ operationId, chatId: externalRef.chatId, ownerOpenId, request, previousContext });
-  } catch (error) {
-    const code = /^(FRA|RWB_AUTO|IN)_[A-Z0-9_]+$/.test(error?.code ?? '') ? error.code : 'FRA_INTAKE_UNKNOWN';
-    await log({ code, operationId });
-    return blocked(operationId, code);
-  }
-
-  const input = { operationId, source: 'feishu', externalRef, sourceEventKey };
-  let result;
-  try {
-    if (request.kind === 'new') {
-      // The pinned Native register port derives its code scope from the stored goal.
-      const goal = request.goal + '\n\n文件范围：\n' + request.paths.join('\n');
-      if (codePathsFromGoal(goal) !== reservation.pathsJson) return blocked(operationId, 'FRA_SCOPE_ENCODING_MISMATCH');
-      result = await native.registerExternalTask({ ...input, origin: 'feishu', text: goal, title: request.title,
-        autoScopePathsJson: reservation.pathsJson });
-    } else {
-      if (!digest.test(reservation.previousRevision ?? '')) return blocked(operationId, 'FRA_SUPPLEMENT_REVISION_UNKNOWN');
-      result = await native.appendTaskInput({ ...input, taskId: request.taskId, text: request.text,
-        expectedRevision: reservation.previousRevision });
-    }
-    if (!uuid.test(result?.taskId ?? '') || result.operationId !== operationId ||
-        !digest.test(result.revision ?? '') || !digest.test(result.inputRevision ?? '') ||
-        request.kind === 'supplement' && result.taskId !== request.taskId) {
-      return blocked(operationId, 'FRA_NATIVE_RECEIPT_UNKNOWN');
-    }
-    const type = request.kind === 'new' ? 'registered' : 'supplement';
-    const accepted = { ...result, status: 'completed', type };
-    if (reservation.inputRevision) {
-      if (reservation.inputRevision !== result.inputRevision || reservation.taskId !== result.taskId) {
-        return blocked(operationId, 'FRA_BINDING_CONFLICT');
-      }
-      return accepted;
-    }
-    const context = await native.getTaskContext({ taskId: result.taskId });
-    if (context?.inputRevision !== result.inputRevision || context.fullTaskInput?.taskKind !== 'code_patch' ||
-        context.fullTaskInput.codeAllowedPathsJson !== reservation.pathsJson) {
-      return blocked(operationId, 'FRA_NATIVE_SCOPE_CHANGED');
-    }
-    await onAccepted({ taskId: result.taskId, type, result: accepted, previousContext });
-    await admission.bind({ operationId, taskId: result.taskId, inputRevision: result.inputRevision, pathsJson: reservation.pathsJson });
-    return accepted;
-  } catch (error) {
-    const code = /^(FRA|IN|US)_[A-Z0-9_]+$/.test(error?.code ?? '') ? error.code : 'FRA_NATIVE_RESULT_UNKNOWN';
-    await log({ code, operationId });
-    return blocked(operationId, code);
-  }
+function rwbProject({ admission, native, onAccepted, codePathsFromGoal, readTaskContext = input => native.getTaskContext(input) }) {
+  return { admission, tasks: {
+    async register({ goal, title, paths, pathsJson, ...input }) {
+      const storedGoal = goal + '\n\n文件范围：\n' + paths.join('\n');
+      if (codePathsFromGoal(storedGoal) !== pathsJson) throw Object.assign(new Error('FRA_SCOPE_ENCODING_MISMATCH'), { code: 'FRA_SCOPE_ENCODING_MISMATCH' });
+      return native.registerExternalTask({ ...input, origin: 'feishu', text: storedGoal, title, autoScopePathsJson: pathsJson });
+    },
+    append: input => native.appendTaskInput(input),
+    readContext: readTaskContext,
+    getContext: input => native.getTaskContext(input),
+    matchesScope: (context, pathsJson) => context.fullTaskInput?.taskKind === 'code_patch' &&
+      context.fullTaskInput.codeAllowedPathsJson === pathsJson,
+    onAccepted,
+  } };
 }
 
+/** The legacy Native RWB bridge is one registered project, behind the shared intake. */
+export async function maybeRegisterFeishuAutoRwb({
+  admission, native, text, operationId, externalRef, sourceEventKey, ownerOpenId,
+  onAccepted, codePathsFromGoal, log, readTaskContext, projectAdapters = {},
+}) {
+  if (!admission) return null;
+  const project = rwbProject({ admission, native, onAccepted, codePathsFromGoal, readTaskContext });
+  const input = { operationId, externalRef, sourceEventKey, ownerOpenId, log };
+  return routeFeishuProjectDelivery({ ...input, text, projects: { ...projectAdapters, rwb: project },
+    legacy: () => registerScopedFeishuProject({ ...input, project, request: parseFeishuAutoRwbIntake(text), legacy: true }),
+  });
+}
 export function requireFeishuAutoRwbChecks(scope, { inputRevision, candidateSha, result }) {
   if (!scope || result?.status !== 'passed') return result;
   if (scope.inputRevision !== inputRevision || result.candidateSha !== candidateSha || !Array.isArray(result.checks) ||
@@ -93,6 +51,10 @@ export function appendScopedCompletion(text, scopeReceipt) {
 }
 
 export function describeFeishuAutoRwbBlocked(code) {
+  if (code === 'FPD_PROJECT_NOT_REGISTERED') return '这个项目尚未开放自动交付。请使用已登记的项目名。';
+  if (/^FPD_[A-Z0-9_]+$/.test(code)) {
+    return '待补充。请用「/任务 项目名 需求」，再在「文件：」下逐行填写范围。补充需沿用原项目和范围。';
+  }
   if (/^RWB_AUTO_[A-Z0-9_]+$/.test(code)) {
     return '待补充。请在同一条 /rwb 消息写需求，并在「文件：」下一行一个填写可修改的仓库相对路径。补充需沿用原范围。';
   }
