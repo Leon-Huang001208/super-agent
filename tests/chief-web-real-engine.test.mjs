@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { createChiefWebRealEngine, REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY } from '../bridge/chief-web-real-engine.mjs';
+import { createChiefWebRealEngine, REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY, realDigest, resolveChiefWebRealScope } from '../bridge/chief-web-real-engine.mjs';
 
 const conversationId = randomUUID();
 const taskId = randomUUID();
@@ -10,8 +10,11 @@ const secondHead = 'b'.repeat(40);
 const baseSha = 'c'.repeat(40);
 const branch = 'codex/integrate-super-agent-' + taskId;
 const receiptDigest = 'e'.repeat(64);
+const singleImage = 'docs/super-agent/chief-single-image-verification.md';
+const packagedDoc = 'docs/super-agent/chief-browser-acceptance.md';
+const pilotPaths = ['intake', 'recovery', 'status'].map(name => 'docs/super-agent/chief-resident-' + name + '.md');
 
-function setup() {
+function setup({ scope = {}, firstCiSucceeds = false, chiefTarget, factory = createChiefWebRealEngine } = {}) {
   const calls = [], publications = [], records = [], messages = [], statuses = [];
   let issued = 0, staleCi = true, clock = 100;
   let respondToReview = true, failDeveloper = false, recoverDeveloper = false;
@@ -31,7 +34,7 @@ function setup() {
     inputRevision: request.inputRevision, evidenceDigest: receiptDigest, result,
   });
   const models = request => {
-    if (request.role === 'chief') return receipt(request, { accepted: true, targetDoc: REAL_RWB_DOCUMENT, requirements: request.text });
+    if (request.role === 'chief') return receipt(request, { accepted: true, targetDoc: chiefTarget ?? request.targetDoc, requirements: request.text });
     if (request.role === 'developer') {
       if (failDeveloper && !recoverDeveloper) return { status: 'unknown', code: 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN' };
       return { ...receipt(request, { candidateSha: request.revision === 1 ? firstHead : secondHead, baseSha, branch, checksPassed: true }), ...(recoverDeveloper && { recoveryVerified: true }) };
@@ -39,7 +42,7 @@ function setup() {
     return respondToReview ? receipt(request, { approved: true, candidateSha: request.candidateSha, reviewDigest: receiptDigest }) :
       { status: 'pending' };
   };
-  const config = { conversationId, generation: 0, expiresAt: 9_000_000 };
+  const config = { conversationId, generation: 0, expiresAt: 9_000_000, ...scope };
   let failPublication = false, recoverPublication = false;
   const publishReceipt = request => receipt(request, { headSha: request.candidateSha, baseSha, branch, number: 123,
     url: 'https://github.com/' + REAL_RWB_REPOSITORY + '/pull/123' });
@@ -54,12 +57,14 @@ function setup() {
         { status: 'unknown', code: 'RWB_REAL_PUBLICATION_UNKNOWN' };
     },
     async readCi(request) {
-      if (request.revision === 1) return { status: 'pending' };
+      if (request.revision === 1) return firstCiSucceeds
+        ? receipt(request, { number: 123, headSha: firstHead, conclusion: 'success', checksDigest: receiptDigest })
+        : { status: 'pending' };
       return receipt(request, { number: 123, headSha: staleCi ? firstHead : secondHead, conclusion: 'success',
         checksDigest: receiptDigest });
     },
   };
-  const engine = () => createChiefWebRealEngine({
+  const engine = () => factory({
     repository, config, publisher, log: async () => {}, now: () => clock,
     executor: {
       async execute(request) { calls.push(request); return models(request); },
@@ -125,6 +130,130 @@ test('two owner inputs retain one Native task and PR across a restart and ignore
   assert.equal(f.publications.length, 2);
   assert.equal(new Set(f.calls.map(call => call.slotId)).size, 6);
   assert.equal(f.statuses.at(-1), 'done');
+});
+
+async function loadScopedEngine(targetDoc) {
+  const key = 'SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT';
+  const previous = process.env[key];
+  process.env[key] = targetDoc;
+  try {
+    const { createChiefWebRealEngine: factory } = await import('../bridge/chief-web-real-engine.mjs?target=' + encodeURIComponent(targetDoc));
+    return factory;
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
+}
+
+test('the finite allowlist binds the two original paths, Stage2, and the three one-input pilot paths', () => {
+  assert.deepEqual(resolveChiefWebRealScope(), { targetDoc: REAL_RWB_DOCUMENT, maxRevisions: 2 });
+  for (const targetDoc of [singleImage, packagedDoc]) {
+    assert.deepEqual(resolveChiefWebRealScope({ targetDoc }), { targetDoc, maxRevisions: 2 });
+  }
+  for (const targetDoc of pilotPaths) {
+    assert.deepEqual(resolveChiefWebRealScope({ targetDoc, maxRevisions: 1 }), { targetDoc, maxRevisions: 1 });
+    assert.throws(() => resolveChiefWebRealScope({ targetDoc }), { code: 'CHIEF_WEB_REAL_SCOPE_CONFIGURATION_INVALID' });
+  }
+  for (const targetDoc of [REAL_RWB_DOCUMENT, singleImage, 'docs/super-agent/chief-resident-extra.md']) {
+    assert.throws(() => resolveChiefWebRealScope({ targetDoc, maxRevisions: 1 }), { code: 'CHIEF_WEB_REAL_SCOPE_CONFIGURATION_INVALID' });
+  }
+});
+
+test('resident pilot ends after exact first-head CI and leaves extra messages untouched', async () => {
+  const [targetDoc] = pilotPaths;
+  const fixture = setup({ scope: { targetDoc, maxRevisions: 1 }, firstCiSucceeds: true, factory: await loadScopedEngine(targetDoc) });
+  const engine = fixture.engine();
+  fixture.newMessage('请验证驻留入口');
+  const first = await until(engine, 'awaiting_confirmation');
+  assert.equal(first.targetDoc, targetDoc);
+  assert.equal(first.maxRevisions, 1);
+  assert.equal(first.inputRevision, realDigest([conversationId, 0, [fixture.messages[0].id], realDigest(fixture.messages[0].text), targetDoc]));
+  await engine.control(approval(first));
+  await until(engine, 'waiting_ci');
+  fixture.newMessage('这条超出本试点的输入次数');
+  const done = await until(fixture.engine(), 'done');
+  assert.equal(done.revision, 1);
+  assert.equal(done.ci.headSha, firstHead);
+  assert.equal(fixture.calls.length, 3);
+  assert.equal(fixture.publications.length, 1);
+  assert.ok([...fixture.calls, ...fixture.publications].every(request => request.targetDoc === targetDoc));
+  assert.equal(fixture.issued(), 1);
+  assert.equal(fixture.statuses.at(-1), 'done');
+  fixture.records.at(-1).targetDoc = pilotPaths[1];
+  await assert.rejects(fixture.engine().status(), { code: 'CHIEF_WEB_REAL_SCOPE_CHANGED' });
+});
+
+test('both historical state formats retain their original input hashes and approval on reopening', async () => {
+  for (const targetDoc of [REAL_RWB_DOCUMENT, packagedDoc]) {
+    const fixture = setup({ scope: { targetDoc }, factory: await loadScopedEngine(targetDoc) });
+    const engine = fixture.engine();
+    fixture.newMessage('请创建历史验证说明');
+    const candidate = await until(engine, 'awaiting_confirmation');
+    const fields = [conversationId, 0, [fixture.messages[0].id], realDigest(fixture.messages[0].text)];
+    if (targetDoc === packagedDoc) fields.push(targetDoc);
+    assert.equal(candidate.inputRevision, realDigest(fields));
+    if (targetDoc === REAL_RWB_DOCUMENT) delete fixture.records.at(-1).targetDoc;
+    delete fixture.records.at(-1).maxRevisions;
+    const restarted = fixture.engine();
+    assert.deepEqual(await restarted.status(), candidate);
+    await restarted.control(approval(candidate));
+    await until(restarted, 'waiting_ci');
+    assert.equal(fixture.publications[0].inputRevision, candidate.inputRevision);
+    assert.equal(fixture.calls.length, 3);
+  }
+});
+
+test('same-image rehearsal retains two revisions and refuses a Chief result for another doc', async () => {
+  const factory = await loadScopedEngine(singleImage);
+  const scope = { targetDoc: singleImage };
+  const fixture = setup({ scope, firstCiSucceeds: true, factory });
+  const engine = fixture.engine();
+  fixture.newMessage('请新建同镜像说明');
+  await engine.control(approval(await until(engine, 'awaiting_confirmation')));
+  assert.equal((await until(engine, 'awaiting_supplement')).revision, 1);
+  fixture.newMessage('请补充同镜像验证');
+  assert.equal((await until(engine, 'awaiting_confirmation')).revision, 2);
+  assert.ok(fixture.calls.every(request => request.targetDoc === singleImage));
+
+  const mismatch = setup({ scope, chiefTarget: REAL_RWB_DOCUMENT, factory });
+  mismatch.newMessage('请修改另一个文档');
+  assert.equal((await until(mismatch.engine(), 'blocked')).code, 'CHIEF_WEB_REAL_INTENT_DENIED');
+  assert.equal(mismatch.issued(), 0);
+});
+
+test('resident spool admits only the exact private binding and first revision', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const script = `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs/promises';
+    import path from 'node:path';
+    import os from 'node:os';
+    import { randomUUID } from 'node:crypto';
+    import { createChiefWebRealSpool } from './bridge/chief-web-real-spool.mjs';
+    import { REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY } from './bridge/chief-web-real-engine.mjs';
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sa-real-resident-'));
+    try {
+      const config = { conversationId: randomUUID(), generation: 0, expiresAt: 30000, targetDoc: REAL_RWB_DOCUMENT, maxRevisions: 1 };
+      const id = randomUUID();
+      const request = { conversationId: config.conversationId, generation: 0, taskId: randomUUID(), inputRevision: 'a'.repeat(64),
+        operationId: id, slotId: id, repository: REAL_RWB_REPOSITORY, targetDoc: REAL_RWB_DOCUMENT, revision: 1, role: 'developer' };
+      const options = { root, config, log: () => {}, now: () => 100 };
+      const spool = await createChiefWebRealSpool(options);
+      assert.equal((await spool.executor.execute(request)).status, 'pending');
+      for (const change of [{ revision: 2 }, { targetDoc: 'docs/super-agent/chief-resident-status.md' }, { conversationId: randomUUID() }]) {
+        await assert.rejects(spool.executor.execute({ ...request, ...change }), { code: 'CHIEF_WEB_REAL_SPOOL_SCOPE_DENIED' });
+      }
+      await assert.rejects(createChiefWebRealSpool({ ...options, config: { ...config, targetDoc: 'docs/super-agent/chief-resident-status.md' } }),
+        { code: 'CHIEF_WEB_REAL_DOCUMENT_BINDING_MISMATCH' });
+      assert.deepEqual(await spool.list(), [id]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+    env: { ...process.env, SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT: pilotPaths[1] }, encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test('pause before dispatch revokes approval and repeated operation has one effect', async () => {

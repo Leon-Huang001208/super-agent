@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY, assertChiefWebRealDocumentBinding, realDigest } from './chief-web-real-engine.mjs';
+import { REAL_RWB_REPOSITORY, assertChiefWebRealDocumentBinding, realDigest } from './chief-web-real-engine.mjs';
 
 const guid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const digest = /^[a-f0-9]{64}$/;
@@ -17,7 +17,7 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
   if (typeof root !== 'string' || !path.isAbsolute(root) || path.resolve(root) !== root ||
       !guid.test(config?.conversationId ?? '') || !Number.isSafeInteger(config.generation) ||
       !Number.isSafeInteger(config.expiresAt) || typeof log !== 'function') fail('CHIEF_WEB_REAL_SPOOL_CONFIGURATION_INVALID');
-  assertChiefWebRealDocumentBinding(config);
+  const { targetDoc, maxRevisions } = assertChiefWebRealDocumentBinding(config);
 
   const uid = process.getuid();
   const maxBytes = 48_000;
@@ -36,8 +36,9 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
   function scoped(request) {
     return guid.test(request?.operationId ?? '') && request.operationId === request.slotId &&
       roles.has(request.role) && request.repository === REAL_RWB_REPOSITORY &&
-      request.targetDoc === REAL_RWB_DOCUMENT && request.conversationId === config.conversationId &&
-      request.generation === config.generation && [1, 2].includes(request.revision) &&
+      request.targetDoc === targetDoc && request.conversationId === config.conversationId &&
+      request.generation === config.generation && Number.isSafeInteger(request.revision) &&
+      request.revision >= 1 && request.revision <= maxRevisions &&
       digest.test(request.inputRevision ?? '') &&
       ((request.role === 'chief' && request.revision === 1 && request.taskId === null) || guid.test(request.taskId ?? ''));
   }
