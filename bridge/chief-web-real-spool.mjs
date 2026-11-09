@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { REAL_RWB_REPOSITORY, assertChiefWebRealDocumentBinding, realDigest } from './chief-web-real-engine.mjs';
+import { REAL_RWB_REPOSITORY, REAL_CI_TRANSPORT_UNKNOWN, assertChiefWebRealDocumentBinding, realDigest } from './chief-web-real-engine.mjs';
 
 const guid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const digest = /^[a-f0-9]{64}$/;
@@ -120,6 +120,13 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
     if (original && (original.schemaVersion !== 1 || original.requestDigest !== envelope.requestDigest)) {
       fail('CHIEF_WEB_REAL_SPOOL_RESPONSE_MISMATCH');
     }
+    if (envelope.request.role === 'ci') {
+      const receipt = await read(directory, 'ci-reconciliation.json');
+      if (receipt) {
+        if (resolution || !matchesCiReconciliation(envelope, original, receipt)) fail('CHIEF_WEB_REAL_SPOOL_RECOVERY_MISMATCH');
+        return { receipt, recoveryVerified: true };
+      }
+    }
     if (!resolution) return { receipt: original, recoveryVerified: false };
     const request = envelope.request;
     const isDeveloper = request.role === 'developer' && resolution.physicalLaunchAbsent === true &&
@@ -138,6 +145,18 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
     if (receipt && (receipt.schemaVersion !== 1 || receipt.requestDigest !== envelope.requestDigest ||
         receipt.recoveryDigest !== realDigest(resolution))) fail('CHIEF_WEB_REAL_SPOOL_RECOVERY_MISMATCH');
     return { receipt, recoveryVerified: true, resolution };
+  }
+
+  function matchesCiReconciliation(envelope, original, receipt) {
+    const request = envelope.request;
+    const { reply } = receipt;
+    return request.role === 'ci' && original?.reply?.status === 'blocked' &&
+      original.reply.code === REAL_CI_TRANSPORT_UNKNOWN && receipt.schemaVersion === 1 &&
+      receipt.requestDigest === envelope.requestDigest && receipt.originalDigest === realDigest(original) &&
+      reply?.status === 'completed' && reply.operationId === request.operationId && reply.taskId === request.taskId &&
+      reply.inputRevision === request.inputRevision && digest.test(reply.evidenceDigest ?? '') &&
+      reply.result?.number === request.pr?.number && reply.result?.headSha === request.headSha &&
+      ['success', 'failure'].includes(reply.result?.conclusion) && digest.test(reply.result?.checksDigest ?? '');
   }
 
   async function submit(request) {
@@ -263,9 +282,15 @@ export async function createChiefWebRealSpool({ root, config, log, now = Date.no
         (await read(directory, 'dispatch.json'))?.requestDigest !== envelope.requestDigest)) fail('CHIEF_WEB_REAL_SPOOL_CLAIM_MISSING');
       if (!['completed', 'blocked', 'unknown'].includes(reply?.status)) fail('CHIEF_WEB_REAL_SPOOL_RESPONSE_MISMATCH');
       const { resolution } = await recoverableResponse(directory, envelope);
-      const name = resolution ? 'reconciled-response.json' : 'response.json';
+      const original = envelope.request.role === 'ci' && await read(directory, 'response.json');
+      const reconcileCi = original?.reply?.status === 'blocked' && original.reply.code === REAL_CI_TRANSPORT_UNKNOWN;
+      const name = reconcileCi ? 'ci-reconciliation.json' : resolution ? 'reconciled-response.json' : 'response.json';
       const receipt = { schemaVersion: 1, requestDigest: envelope.requestDigest, reply,
+        ...(reconcileCi && { originalDigest: realDigest(original) }),
         ...(resolution && { recoveryDigest: realDigest(resolution) }) };
+      if (reconcileCi && (now() >= config.expiresAt || !matchesCiReconciliation(envelope, original, receipt))) {
+        fail('CHIEF_WEB_REAL_SPOOL_RECOVERY_MISMATCH');
+      }
       if (!await write(directory, name, receipt) &&
           realDigest(await read(directory, name)) !== realDigest(receipt)) fail('CHIEF_WEB_REAL_SPOOL_RESPONSE_MISMATCH');
       await log({ code: 'CHIEF_WEB_REAL_SPOOL_RESPONSE', operationId, status: reply.status });

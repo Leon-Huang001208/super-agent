@@ -13,6 +13,7 @@ const documentCaps = new Map([
 export const REAL_RWB_DOCUMENT = process.env.SUPER_AGENT_CHIEF_WEB_REAL_DOCUMENT || defaultDocument;
 if (!documentCaps.has(REAL_RWB_DOCUMENT)) fail('CHIEF_WEB_REAL_DOCUMENT_DENIED');
 export const REAL_RWB_REPOSITORY = 'Leon-Huang001208/ResearchWorkbench';
+export const REAL_CI_TRANSPORT_UNKNOWN = 'RWB_REAL_GITHUB_TRANSPORT_UNKNOWN';
 
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const commit = /^[a-f0-9]{40}$/;
@@ -21,10 +22,11 @@ const stages = { understanding: 'chief', developing: 'developer', reviewing: 're
 const terminal = new Set(['done', 'blocked']);
 const confirmKeys = ['candidateSha', 'reviewDigest', 'baseSha', 'previousHead'];
 const confirmationLifetime = 15 * 60_000;
-const prelaunchUnknown = state => state.phase === 'blocked' && state.attempt &&
+const recoverableBlocked = state => state.phase === 'blocked' && state.attempt &&
   state.recoveredOperationId !== state.attempt.id &&
   ((state.attempt.role === 'developer' && state.code === 'CHIEF_WEB_REAL_EXECUTION_UNKNOWN') ||
-   (state.attempt.role === 'publish' && state.code === 'RWB_REAL_PUBLICATION_UNKNOWN'));
+   (state.attempt.role === 'publish' && state.code === 'RWB_REAL_PUBLICATION_UNKNOWN') ||
+   (state.attempt.role === 'ci' && state.code === REAL_CI_TRANSPORT_UNKNOWN));
 
 function fail(code, status = 409) {
   throw Object.assign(new Error(code), { code, status });
@@ -151,7 +153,10 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
     const messages = await repository.readOwnerMessages();
     return repository.transaction(async tx => {
       let state = stateFrom(await tx.readState());
-      if (terminal.has(state.phase)) return prelaunchUnknown(state) ? { state, fresh: false, messages } : null;
+      if (terminal.has(state.phase)) {
+        if (!recoverableBlocked(state) || (state.attempt.role === 'ci' && (state.paused || now() >= config.expiresAt))) return null;
+        return { state, fresh: false, messages };
+      }
       const mayAdmit = state.revision < maxRevisions && !state.paused && now() < config.expiresAt &&
         (!state.attempt || state.attempt.role === 'ci') &&
         (state.phase === 'ready' ||
@@ -165,7 +170,13 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
           candidate: null, review: null, confirmation: null, ci: null, attempt: null });
       }
       if (state.attempt) {
-        if (state.attempt.role === 'ci' && state.paused) return null;
+        if (state.attempt.role === 'ci') {
+          if (state.paused) return null;
+          if (now() >= config.expiresAt) {
+            await blocked(tx, state, 'CHIEF_WEB_REAL_SCOPE_EXPIRED');
+            return null;
+          }
+        }
         return { state, fresh: false, messages };
       }
       if (state.paused) return null;
@@ -236,15 +247,16 @@ export function createChiefWebRealEngine({ repository, config, executor, publish
     return repository.transaction(async tx => {
       let state = stateFrom(await tx.readState());
       if (state.attempt?.id !== work.state.attempt.id) return false;
+      if (role === 'ci' && (state.paused || now() >= config.expiresAt || reply?.status === 'completed' &&
+          (reply.result?.headSha !== state.pr.headSha || reply.result?.number !== state.pr.number))) return false;
       if (terminal.has(state.phase)) {
-        if (!prelaunchUnknown(state) || reply?.recoveryVerified !== true) return false;
+        if (!recoverableBlocked(state) || reply?.recoveryVerified !== true ||
+            (role === 'ci' && reply.status !== 'completed')) return false;
         await tx.setTask({ taskId: state.taskId, status: 'in_progress' });
-        state = await change(tx, state, { phase: role === 'publish' ? 'approved' : 'developing',
+        state = await change(tx, state, { phase: { publish: 'approved', developer: 'developing', ci: 'waiting_ci' }[role],
           code: null, recoveredOperationId: state.attempt.id });
       }
       if (reply?.status === 'pending') return false;
-      if (role === 'ci' && reply?.status === 'completed' &&
-          (reply.result?.headSha !== state.pr.headSha || reply.result?.number !== state.pr.number)) return false;
       try {
         if (reply?.status === 'blocked' || reply?.status === 'unknown') {
           fail(failureCode(reply, 'CHIEF_WEB_REAL_OPERATION_UNKNOWN'));

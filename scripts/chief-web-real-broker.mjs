@@ -1,3 +1,5 @@
+import { REAL_CI_TRANSPORT_UNKNOWN } from '../bridge/chief-web-real-engine.mjs';
+
 /** Consume only durable Paperclip handoffs. This worker never creates tasks. */
 export function createChiefWebRealBroker({ spool, executor, publisher, admission, log } = {}) {
   if (![spool?.list, spool?.readRequest, spool?.observe, spool?.claim, spool?.complete, spool?.isClaimed, spool?.rejectUnclaimed,
@@ -9,13 +11,17 @@ export function createChiefWebRealBroker({ spool, executor, publisher, admission
 
   async function consume(operationId) {
     const envelope = await spool.readRequest(operationId);
-    if (!envelope || await spool.observe(operationId)) return false;
+    if (!envelope) return false;
     const { request } = envelope;
+    const prior = await spool.observe(operationId);
     if (request.role === 'ci') {
+      if (prior && (prior.status !== 'blocked' || prior.code !== REAL_CI_TRANSPORT_UNKNOWN)) return false;
       const reply = await publisher.readCi(request);
-      if (['completed', 'blocked', 'unknown'].includes(reply?.status)) await spool.complete(operationId, reply);
+      if (reply?.status === 'completed' || !prior && reply?.code !== REAL_CI_TRANSPORT_UNKNOWN &&
+          ['blocked', 'unknown'].includes(reply?.status)) await spool.complete(operationId, reply);
       return false;
     }
+    if (prior) return false;
     return spool.withFence(async () => {
       if (await spool.observe(operationId)) return false;
       const wasClaimed = await spool.isClaimed(operationId);
