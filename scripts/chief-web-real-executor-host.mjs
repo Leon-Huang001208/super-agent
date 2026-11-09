@@ -268,7 +268,9 @@ export function createChiefWebRealDockerExecutor({
     let launched = false;
     try { await invokeDocker(args); launched = true; }
     catch (error) {
-      if (error?.code === 'CHIEF_WEB_REAL_PAUSED_BEFORE_WORKER') return { status: 'pending' };
+      if (['CHIEF_WEB_REAL_PAUSED_BEFORE_WORKER', 'CHIEF_WEB_REAL_DISPATCH_FENCE_BUSY'].includes(error?.code)) {
+        return { status: 'pending' };
+      }
       await log({ code: 'CHIEF_WEB_REAL_WORKER_RECONCILIATION_REQUIRED', operationId: identity.slotId });
     }
     if (!await retire()) return { status: 'pending' };
