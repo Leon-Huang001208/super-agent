@@ -3,6 +3,7 @@ import { bindChiefWebPaperclipRepository } from './chief-web-paperclip-repositor
 import { createChiefWebPilot } from './chief-web-pilot.mjs';
 import { mountChiefWebRoutes } from './chief-web-routes.mjs';
 import { createChiefWebSupplementEvidence } from './chief-web-supplement-evidence.mjs';
+import { createChiefWebProjection } from './chief-web-projection.mjs';
 import { createChiefWebSettlement } from './chief-web-settlement.mjs';
 
 /** Compose the pinned app hook with the server's trusted Native pilot bindings. */
@@ -17,9 +18,9 @@ export function createChiefWebPaperclipMount({ loadBindings, log, now = Date.now
     try {
       const bindings = await loadBindings({ db });
       if (!bindings) throw new Error('CHIEF_WEB_MOUNT_BINDINGS_MISSING');
-      const { chiefAgentId, repository, readGrant, readProjection, readNativeEvidence, readChiefCallReceipt } = bindings;
+      const { chiefAgentId, repository, readGrant, readProjection, readNativeEvidence, readChiefCallReceipt, beforeReserve, afterCommit } = bindings;
       const verifyOwnerSupplement = createChiefWebSupplementEvidence({ chiefAgentId, readNativeEvidence, readChiefCallReceipt, log });
-      const store = createChiefWebNativeStore({ repository, readGrant, readProjection, verifyOwnerSupplement, now });
+      const store = createChiefWebNativeStore({ repository, readGrant, readProjection, verifyOwnerSupplement, beforeReserve, afterCommit, now });
       const pilot = createChiefWebPilot({ ...store, log, now });
       mountChiefWebRoutes(api, { enabled: true, deploymentMode, pilot, chiefAgentId, getIssue, trustedBoardMutationOrigin, log });
       await onMounted?.(pilot, bindings);
@@ -56,8 +57,8 @@ export function createChiefWebPaperclipRuntime({ resolveTurn, ...options } = {})
 }
 
 /** Use only the installed pinned Paperclip dependency tree and its app DB handle. */
-export async function loadPinnedChiefWebPaperclipRuntime({ chiefAgentId, readApprovedGrant, readProjection, readChiefCallReceipt, log, now } = {}) {
-  if (![readApprovedGrant, readProjection, readChiefCallReceipt, log].every(fn => typeof fn === 'function')) {
+export async function loadPinnedChiefWebPaperclipRuntime({ chiefAgentId, readApprovedGrant, readExecutionEvidence, readChiefCallReceipt, beforeReserve, afterCommit, log, now } = {}) {
+  if (![readApprovedGrant, readExecutionEvidence, readChiefCallReceipt, log].every(fn => typeof fn === 'function')) {
     throw new Error('CHIEF_WEB_MOUNT_BINDINGS_MISSING');
   }
   const [{ issueService }, schema, orm] = await Promise.all([
@@ -65,10 +66,11 @@ export async function loadPinnedChiefWebPaperclipRuntime({ chiefAgentId, readApp
     import('/opt/paperclip/node_modules/@paperclipai/db/dist/index.js'),
     import('/opt/paperclip/node_modules/drizzle-orm/index.js'),
   ]);
+  const readProjection = createChiefWebProjection({ readExecutionEvidence });
   return createChiefWebPaperclipRuntime({
     log, now,
     loadBindings: ({ db }) => bindChiefWebPaperclipRepository({
-      db, schema, orm, issueService, chiefAgentId, readApprovedGrant, readProjection, readChiefCallReceipt,
+      db, schema, orm, issueService, chiefAgentId, readApprovedGrant, readProjection, readChiefCallReceipt, beforeReserve, afterCommit,
     }),
   });
 }

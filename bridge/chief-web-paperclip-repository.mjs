@@ -67,6 +67,8 @@ export function createChiefWebPaperclipRepository({ db, issueService, schema, or
               'chief-web-intent': 'reserved',
               'chief-web-effect-claim': 'claimed',
               'chief-web-effect-completion': 'completed',
+              'chief-web-recovery-claim': 'claimed',
+              'chief-web-recovery-completion': 'completed',
             }[record.kind];
             if (!expectedStatus || expectedStatus !== record.status) fail('CHIEF_WEB_PAPERCLIP_WRITE_DENIED');
             const history = await port.listTaskOperations(record.taskId);
@@ -79,11 +81,13 @@ export function createChiefWebPaperclipRepository({ db, issueService, schema, or
               }
             }
             const sequence = history.reduce((max, row) => Math.max(max, Number.isSafeInteger(row.sequence) ? row.sequence : 0), 0) + 1;
+            const details = { ...record, schemaVersion: 1, sequence };
             await tx.insert(activityLog).values({
               companyId: task.companyId, actorType: 'system', actorId: activityActor, action: activityAction,
               entityType: 'issue', entityId: task.id, agentId: null, runId: null,
-              details: { ...record, schemaVersion: 1, sequence },
+              details,
             });
+            history.push(details);
           },
           async readChiefEvidence({ binding, messageId, chiefAgentId }) {
             requireTask(binding.taskId);
@@ -127,7 +131,7 @@ export function createChiefWebPaperclipRepository({ db, issueService, schema, or
   });
 }
 
-export function bindChiefWebPaperclipRepository({ chiefAgentId, readApprovedGrant, readProjection, readChiefCallReceipt, ...options } = {}) {
+export function bindChiefWebPaperclipRepository({ chiefAgentId, readApprovedGrant, readProjection, readChiefCallReceipt, beforeReserve, afterCommit, ...options } = {}) {
   if (typeof chiefAgentId !== 'string' || !chiefAgentId ||
       ![readApprovedGrant, readProjection, readChiefCallReceipt].every(fn => typeof fn === 'function')) {
     fail('CHIEF_WEB_PAPERCLIP_BINDING_INVALID');
@@ -144,7 +148,7 @@ export function bindChiefWebPaperclipRepository({ chiefAgentId, readApprovedGran
     readGrant,
     readProjection,
     readNativeEvidence: ({ transaction, ...scope }) => transaction.readChiefEvidence(scope),
-    readChiefCallReceipt,
+    readChiefCallReceipt, beforeReserve, afterCommit,
     async resolveTurn({ run }) {
       const context = run?.contextSnapshot;
       const messageId = context?.wakeCommentId ?? context?.commentId;

@@ -1,5 +1,13 @@
 # 运行维护与恢复
 
+## 独立 Chief 网页演练
+
+使用 `compose.chief-web-evaluation.yaml`，项目名为 `super-agent-chief-web-rehearsal`，网页绑定 `127.0.0.1:8107`。设置 `SUPER_AGENT_RUNTIME_IMAGE` 为按构建输入复用的确切镜像，设置 `SUPER_AGENT_VERIFIED_DEPENDENCIES` 为与候选锁文件一致的只读安装目录。应用与数据库位于内部网络，网关仅将网页转发到本机端口。
+
+首次启动保持 `SUPER_AGENT_CHIEF_WEB_EVALUATION_ENABLED=false`。在该实例通过 Native 登录和首次管理员认领建立测试账户，启用 Agent Chat，建立公司、项目、测试 Chief 和该账户的原生对话。从实例安装镜像中的 `/opt/super-agent/plugins/chief-web-pilot`。将 `userId`、`companyId`、`chiefAgentId`、`conversationId`、`projectId` 和独立随机 `ciToken` 放入演练 state 卷的 `/paperclip/control/chief-web-evaluation.json`，使用 root 所有且权限 0600 的常规文件。随后以启用开关重新创建该项目的应用容器。配置和测试密码只保存在私有演练记录中。
+
+模拟 CI 由同源已认证演练账户向 `/api/issues/<对话ID>/chief-web-evaluation/ci` 提交 `operationId`、`candidateSha` 和 `conclusion`，请求头 `X-Super-Agent-Eval-Token` 使用演练 token。重启仅针对 `paperclip` 服务，关闭入口后保留独立数据卷和回执。
+
 ## 资产与身份
 
 Paperclip 评估项目名为 `super-agent-paperclip-eval`。专用数据根 `/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0`，底层为外置 SSD 的 APFS sparsebundle。Docker.raw 仍保持原位。数据库、订阅认证、workspace、日志和旧候选必须保留；本仓库不保存秘密。

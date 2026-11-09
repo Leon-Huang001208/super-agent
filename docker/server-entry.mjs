@@ -1,6 +1,6 @@
 import fs from'node:fs';import path from'node:path';import{pathToFileURL}from'node:url';
 import { installChiefWebAppHook } from './chief-web-app-hook.mjs';
-export async function loadServer(directory='/opt/paperclip', { mountChiefWebPilot, settleChiefWebPilot } = {}) {
+export async function loadServer(directory='/opt/paperclip', { mountChiefWebPilot, settleChiefWebPilot, admitChiefWebCall, recoverChiefWebSkippedWake } = {}) {
   const root=fs.realpathSync(path.join(directory,'node_modules','@paperclipai','server'));
   const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
   const target=pkg.exports?.['.']?.import;
@@ -8,7 +8,7 @@ export async function loadServer(directory='/opt/paperclip', { mountChiefWebPilo
   const entry=fs.realpathSync(path.resolve(root,target)),relative=path.relative(root,entry);
   if(relative.startsWith('..'+path.sep)||path.isAbsolute(relative))throw new Error('PAPERCLIP_SERVER_ENTRY_ESCAPE');
   if (mountChiefWebPilot === undefined) {
-    if (settleChiefWebPilot !== undefined) throw new Error('CHIEF_WEB_APP_NOT_CONFIGURED');
+    if (settleChiefWebPilot !== undefined || admitChiefWebCall !== undefined || recoverChiefWebSkippedWake !== undefined) throw new Error('CHIEF_WEB_APP_NOT_CONFIGURED');
     return import(pathToFileURL(entry).href);
   }
   const appFile = fs.realpathSync(path.join(root, 'dist', 'app.js'));
@@ -16,8 +16,11 @@ export async function loadServer(directory='/opt/paperclip', { mountChiefWebPilo
   const conversationPath = path.join(root, 'dist', 'services', 'agent-conversations.js');
   const conversationFile = settleChiefWebPilot === undefined ? undefined : fs.realpathSync(conversationPath);
   if (conversationFile !== undefined && conversationFile !== conversationPath) throw new Error('CHIEF_WEB_APP_ENTRY_ESCAPE');
+  const queuePath = path.join(root, 'dist', 'services', 'heartbeat', 'queue.js');
+  const queueFile = recoverChiefWebSkippedWake === undefined ? undefined : fs.realpathSync(queuePath);
+  if (queueFile !== undefined && queueFile !== queuePath) throw new Error('CHIEF_WEB_APP_ENTRY_ESCAPE');
   const hook = installChiefWebAppHook({
-    appFile, conversationFile, mountPilot: mountChiefWebPilot, settlePilot: settleChiefWebPilot,
+    appFile, conversationFile, queueFile, mountPilot: mountChiefWebPilot, settlePilot: settleChiefWebPilot, admitPilot: admitChiefWebCall, recoverSkippedWakePilot: recoverChiefWebSkippedWake,
   });
   try {
     const server = await import(pathToFileURL(entry).href);

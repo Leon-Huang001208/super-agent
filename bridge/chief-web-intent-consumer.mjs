@@ -3,7 +3,7 @@ import { CHIEF_WEB_PILOT } from './chief-web-pilot.mjs';
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const digest = /^[a-f0-9]{64}$/;
 const sha = /^[a-f0-9]{40}$/;
-const supplementText = '在原文档补一小节说明如何核对原任务 ID、原 PR、输入版本和最新 head 的 CI，以及如何区分历史回执与本次回执。';
+export const CHIEF_WEB_SUPPLEMENT_TEXT = '在原文档补一小节说明如何核对原任务 ID、原 PR、输入版本和最新 head 的 CI，以及如何区分历史回执与本次回执。';
 
 function matches(pattern, value) {
   return typeof value === 'string' && pattern.test(value);
@@ -70,7 +70,7 @@ export function createChiefWebIntentConsumer({ authority, native, publication, l
       let result;
       if (admission.status === 'claimed_now') {
         result = intent.action === 'supplement'
-          ? await effect.append({ ...scope, path: CHIEF_WEB_PILOT.path, text: supplementText, sourceEvidence: intent.sourceEvidence })
+          ? await effect.append({ ...scope, path: CHIEF_WEB_PILOT.path, text: CHIEF_WEB_SUPPLEMENT_TEXT, sourceEvidence: intent.sourceEvidence })
           : await effect.update({ ...scope, candidate: intent.expected.candidate, reviewDigest: intent.expected.reviewDigest });
       } else if (admission.status === 'claimed') {
         result = await effect.observe(scope);
@@ -89,4 +89,22 @@ export function createChiefWebIntentConsumer({ authority, native, publication, l
   }
 
   return Object.freeze({ consume });
+}
+
+/** Use the existing Native Root facade, keeping effect and Native UUID receipts separate. */
+export function createChiefWebNativeInputTransport(facade) {
+  if (typeof facade?.appendChiefWebTaskInput !== 'function' || typeof facade.observeChiefWebTaskInput !== 'function') {
+    throw new Error('CHIEF_WEB_NATIVE_TRANSPORT_UNAVAILABLE');
+  }
+  async function call(method, scope) {
+    const receipt = await facade[method]({ effectOperationId: scope.operationId });
+    if (receipt?.status !== 'completed' || receipt.effectOperationId !== scope.operationId ||
+        receipt.taskId !== scope.taskId || receipt.grantId !== scope.grantId ||
+        receipt.previousInputRevision !== scope.inputRevision) return null;
+    return { ...receipt, supplementOperationId: receipt.operationId, operationId: scope.operationId };
+  }
+  return Object.freeze({
+    append: scope => call('appendChiefWebTaskInput', scope),
+    observe: scope => call('observeChiefWebTaskInput', scope),
+  });
 }

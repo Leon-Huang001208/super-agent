@@ -84,6 +84,18 @@ test('fences a conversation reset and refuses an ambiguous completed turn', asyn
   });
 });
 
+test('allocates distinct activity sequences for the recovery proof and effect claim in one transaction', async () => {
+  const { bindings, task, inserted } = fixture();
+  await bindings.repository.transaction(async transaction => {
+    await transaction.lockTask(task.id);
+    await bindings.readGrant({ task, transaction });
+    await transaction.appendOperation({ taskId: task.id, kind: 'chief-web-recovery-claim', status: 'claimed' });
+    await transaction.appendOperation({ taskId: task.id, kind: 'chief-web-effect-claim', status: 'claimed' });
+    assert.deepEqual((await transaction.listTaskOperations(task.id)).map(row => row.sequence), [4, 5, 6]);
+  });
+  assert.deepEqual(inserted.map(row => row.details.sequence), [5, 6]);
+});
+
 test('resolves only the current locked conversation and Native direct wake source', async () => {
   const { bindings, conversation } = fixture();
   const contextSnapshot = {

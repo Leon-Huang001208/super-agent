@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { CHIEF_WEB_PILOT, projectChiefWebStatus } from './chief-web-pilot.mjs';
+import { CHIEF_WEB_PILOT, chiefWebOperationExpiry, projectChiefWebStatus } from './chief-web-pilot.mjs';
 
 const kind = 'chief-web-intent';
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -34,14 +34,15 @@ function controlFrom(records) {
  * readGrant must lock and recheck the current conversation in this transaction.
  * The application must use the same task transaction before claiming work.
  */
-export function createChiefWebNativeStore({ repository, readGrant, readProjection, verifyOwnerSupplement, now = Date.now } = {}) {
+export function createChiefWebNativeStore({ repository, readGrant, readProjection, verifyOwnerSupplement, beforeReserve = async () => {}, afterCommit = async () => {}, now = Date.now } = {}) {
   if (typeof repository?.transaction !== 'function' ||
-      ![readGrant, readProjection, verifyOwnerSupplement, now].every(fn => typeof fn === 'function')) {
+      ![readGrant, readProjection, verifyOwnerSupplement, beforeReserve, afterCommit, now].every(fn => typeof fn === 'function')) {
     fail('CHIEF_WEB_NATIVE_STORE_INVALID');
   }
 
   async function withTaskTransaction(taskId, handle) {
     if (taskId !== CHIEF_WEB_PILOT.taskId) fail('CHIEF_WEB_NATIVE_TASK_DENIED');
+    let committedControl;
     const outcome = await repository.transaction(async transaction => {
       const task = await transaction.lockTask(taskId);
       if (task?.id !== taskId) return { error: 'CHIEF_WEB_NATIVE_TASK_DENIED' };
@@ -82,6 +83,7 @@ export function createChiefWebNativeStore({ repository, readGrant, readProjectio
             existing.status !== 'reserved' || existing.receipt?.operationId !== operationId) {
           fail('CHIEF_WEB_OPERATION_UNKNOWN');
         }
+        if (existing.action === 'resume' && existing.releasedPauseOperationId) committedControl = existing;
         return { payloadHash: existing.payloadHash, receipt: existing.receipt };
       }
 
@@ -96,14 +98,20 @@ export function createChiefWebNativeStore({ repository, readGrant, readProjectio
         async reserveOperation(operation) {
           const state = await readState();
           const observedAt = now();
-          if (operation.grantId !== binding.grantId || operation.expiresAt !== binding.expiresAt ||
-              !Number.isSafeInteger(observedAt) || observedAt >= binding.expiresAt ||
+          const expiresAt = chiefWebOperationExpiry(binding, operation.action, state.confirmationWindow ? operation.expected : undefined);
+          if (operation.grantId !== binding.grantId || operation.expiresAt !== expiresAt ||
+              !Number.isSafeInteger(observedAt) || observedAt >= expiresAt ||
               operation.expected.contextRevision !== state.contextRevision || readOperation(operation.operationId)) {
             fail('CHIEF_WEB_RESERVATION_CONFLICT');
           }
           const receipt = { operationId: operation.operationId, status: 'reserved' };
+          const lastPause = operation.action === 'resume' ? intents.findLast(record => record.action === 'pause') : null;
+          const record = { ...operation, taskId, kind, status: 'reserved', receipt,
+            ...(lastPause ? { releasedPauseOperationId: lastPause.operationId, releasedPauseGrantId: lastPause.grantId } : {}) };
           writeAttempted = true;
-          await transaction.appendOperation({ ...operation, taskId, kind, status: 'reserved', receipt });
+          await beforeReserve(record);
+          await transaction.appendOperation(record);
+          if (record.releasedPauseOperationId) committedControl = record;
           return receipt;
         },
       };
@@ -119,6 +127,7 @@ export function createChiefWebNativeStore({ repository, readGrant, readProjectio
       }
     });
     if (outcome.error) fail(outcome.error);
+    if (committedControl) await afterCommit(committedControl);
     return outcome.value;
   }
 

@@ -62,9 +62,17 @@ function validateCommand(command) {
   }
 }
 
-function requireGrant(binding, now) {
+export function chiefWebOperationExpiry(binding, action, expected) {
+  const window = binding?.confirmationWindow;
+  if (action === 'confirm' && window && expected?.candidate === window.candidate &&
+      expected.inputRevision === window.inputRevision && expected.prHead === window.prHead &&
+      expected.reviewDigest === window.reviewDigest) return window.expiresAt;
+  return binding?.expiresAt;
+}
+
+function requireGrant(binding, now, expiresAt = binding.expiresAt) {
   if (!matches(uuid, binding.grantId) || !Number.isSafeInteger(binding.expiresAt) ||
-      !Number.isSafeInteger(now) || binding.expiresAt <= now || binding.previousInputRevision !== CHIEF_WEB_PILOT.previousInputRevision ||
+      !Number.isSafeInteger(now) || !Number.isSafeInteger(expiresAt) || expiresAt <= now || binding.previousInputRevision !== CHIEF_WEB_PILOT.previousInputRevision ||
       binding.previousHead !== CHIEF_WEB_PILOT.previousHead) {
     fail('CHIEF_WEB_GRANT_UNAVAILABLE');
   }
@@ -81,12 +89,12 @@ function requireTransition(command, state, binding) {
     }
     return;
   }
-  if (state.phase === 'done' || !matches(digest, state.inputRevision) ||
+  if (['done', 'blocked', 'cancelled'].includes(state.phase) || !matches(digest, state.inputRevision) ||
       state.inputRevision === CHIEF_WEB_PILOT.previousInputRevision ||
       state.supplementGrantId !== binding.grantId) {
     fail('CHIEF_WEB_CONTINUATION_UNBOUND');
   }
-  if (command.action === 'pause' && state.control === 'active') return;
+  if (command.action === 'pause' && state.control === 'active' && state.confirmationReserved === false) return;
   if (command.action === 'resume' && state.control === 'paused' && state.reconciled === true) return;
   if (command.action === 'confirm') {
     if (state.control !== 'active' || state.phase !== 'awaiting_confirmation' || state.confirmationReserved !== false ||
@@ -114,6 +122,10 @@ export function projectChiefWebStatus(state, binding, now) {
     historical: state.inputRevision === CHIEF_WEB_PILOT.previousInputRevision,
     actions: [],
   };
+  if (state.phase === 'blocked' && state.publicationBlocker?.code === 'CHIEF_WEB_MASTER_ADVANCED') {
+    status.code = state.publicationBlocker.code;
+    status.publicationBlocker = state.publicationBlocker;
+  }
   if (state.phase === 'done' && !status.historical) {
     const { ci, publication, confirmationReceipt } = state;
     if (!matches(digest, state.inputRevision) || state.supplementGrantId !== binding.grantId ||
@@ -132,11 +144,6 @@ export function projectChiefWebStatus(state, binding, now) {
       status.code = 'CHIEF_WEB_DELIVERY_EVIDENCE_MISSING';
     }
   }
-  try {
-    requireGrant(binding, now);
-  } catch {
-    return status;
-  }
   for (const action of ['pause', 'resume', 'confirm']) {
     const command = {
       action, contextRevision: state.contextRevision, candidate: state.candidate,
@@ -144,12 +151,17 @@ export function projectChiefWebStatus(state, binding, now) {
     };
     if (action === 'confirm' && (!matches(sha, command.candidate) || !matches(digest, command.reviewDigest))) continue;
     try {
+      const scope = action === 'confirm' && state.confirmationWindow
+        ? { ...command, inputRevision: state.inputRevision, prHead: state.prHead } : undefined;
+      requireGrant(binding, now, chiefWebOperationExpiry(binding, action, scope));
       requireTransition(command, state, binding);
       status.actions.push(action === 'confirm' ? { action, candidate: command.candidate, reviewDigest: command.reviewDigest } : { action });
     } catch {
       // The authoritative state does not currently permit this control.
     }
   }
+  if (state.phase === 'awaiting_confirmation' && !state.confirmationReserved && now >= binding.expiresAt &&
+      (!state.confirmationWindow || now >= binding.confirmationWindow?.expiresAt)) status.code = 'CHIEF_WEB_CONFIRMATION_WINDOW_EXPIRED';
   return status;
 }
 
@@ -190,8 +202,11 @@ export function createChiefWebPilot({ withTaskTransaction, log, now = Date.now }
           return previous.receipt;
         }
 
-        requireGrant(binding, now());
         const state = await tx.readState();
+        const scope = command.action === 'confirm' && state.confirmationWindow
+          ? { ...command, inputRevision: state.inputRevision, prHead: state.prHead } : undefined;
+        const expiresAt = chiefWebOperationExpiry(binding, command.action, scope);
+        requireGrant(binding, now(), expiresAt);
         requireTransition(command, state, binding);
         let sourceEvidence;
         if (command.action === 'supplement') {
@@ -206,13 +221,13 @@ export function createChiefWebPilot({ withTaskTransaction, log, now = Date.now }
           };
         }
 
-        requireGrant(binding, now());
+        requireGrant(binding, now(), expiresAt);
         return tx.reserveOperation({
           action: command.action,
           operationId,
           payloadHash,
           grantId: binding.grantId,
-          expiresAt: binding.expiresAt,
+          expiresAt,
           messageId: command.messageId,
           sourceEvidence,
           expected: {

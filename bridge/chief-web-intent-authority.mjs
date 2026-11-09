@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { CHIEF_WEB_PILOT } from './chief-web-pilot.mjs';
+import { CHIEF_WEB_PILOT, chiefWebOperationExpiry } from './chief-web-pilot.mjs';
 import { readChiefWebIntents } from './chief-web-native-store.mjs';
 import { validateChiefWebEffectResult, validateChiefWebIntent } from './chief-web-intent-consumer.mjs';
 
@@ -50,10 +50,22 @@ function effectRecord(records, kind, operationId) {
   return matches[0];
 }
 
+export function readChiefWebEffectHistory(records, intent) {
+  const claim = effectRecord(records, claimKind, intent.operationId);
+  const completion = effectRecord(records, completionKind, intent.operationId);
+  for (const record of [claim, completion]) {
+    if (record && (record.taskId !== intent.taskId || record.grantId !== intent.grantId ||
+        record.payloadHash !== intent.payloadHash)) fail('CHIEF_WEB_EFFECT_HISTORY_AMBIGUOUS');
+  }
+  if (completion && !claim) fail('CHIEF_WEB_EFFECT_HISTORY_AMBIGUOUS');
+  return { claim, completion };
+}
+
 /** The trusted execution verifier runs under both Native issue locks. */
-export function createChiefWebIntentAuthority({ repository, readGrant, verifyExecution, now = Date.now } = {}) {
+export function createChiefWebIntentAuthority({ repository, readGrant, verifyExecution, onClaim, now = Date.now } = {}) {
   if (typeof repository?.transaction !== 'function' ||
-      ![readGrant, verifyExecution, now].every(fn => typeof fn === 'function')) {
+      ![readGrant, verifyExecution, now].every(fn => typeof fn === 'function') ||
+      (onClaim !== undefined && typeof onClaim !== 'function')) {
     fail('CHIEF_WEB_EFFECT_AUTHORITY_INVALID');
   }
 
@@ -68,18 +80,12 @@ export function createChiefWebIntentAuthority({ repository, readGrant, verifyExe
       if (!intent || intent.taskId !== task.id || !validateChiefWebIntent(intent, operationId)) {
         return { operationId, status: 'blocked' };
       }
-      const claim = effectRecord(records, claimKind, operationId);
-      const completion = effectRecord(records, completionKind, operationId);
-      for (const record of [claim, completion]) {
-        if (record && (record.taskId !== task.id || record.grantId !== intent.grantId ||
-            record.payloadHash !== intent.payloadHash)) fail('CHIEF_WEB_EFFECT_HISTORY_AMBIGUOUS');
-      }
-      if (completion && !claim) fail('CHIEF_WEB_EFFECT_HISTORY_AMBIGUOUS');
+      const { claim, completion } = readChiefWebEffectHistory(records, intent);
 
       let grant;
       if (!claim) {
         grant = await readGrant({ task, transaction });
-        if (!grant || grant.grantId !== intent.grantId || intent.expiresAt !== grant.expiresAt) {
+        if (!grant || grant.grantId !== intent.grantId || intent.expiresAt !== chiefWebOperationExpiry(grant, intent.action, intent.expected)) {
           return { operationId, status: 'blocked' };
         }
       }
@@ -116,7 +122,8 @@ export function createChiefWebIntentAuthority({ repository, readGrant, verifyExe
           return { operationId, status: 'blocked' };
         }
         const claimedAt = now();
-        if (!Number.isSafeInteger(claimedAt) || claimedAt >= grant.expiresAt) return { operationId, status: 'blocked' };
+        if (!Number.isSafeInteger(claimedAt) || claimedAt >= intent.expiresAt) return { operationId, status: 'blocked' };
+        await onClaim?.({ transaction, task, grant, intent, records });
         await append(transaction, intent, claimKind, { status: 'claimed', claimedAt });
         return { status: 'claimed_now', intent };
       });

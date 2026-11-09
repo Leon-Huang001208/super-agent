@@ -3,16 +3,26 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git openssh-client python3 tini \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/paperclip
-COPY docker/entrypoint.sh docker/bootstrap.mjs docker/serve.mjs docker/server-entry.mjs docker/chief-web-app-hook.mjs docker/complete-lock.mjs docker/verify-install.mjs docker/codex-hello-gate.mjs docker/package.install.json docker/package-lock.install.json /opt/super-agent/
+COPY docker/entrypoint.sh docker/bootstrap.mjs docker/serve.mjs docker/server-entry.mjs docker/chief-web-app-hook.mjs docker/complete-lock.mjs docker/verify-install.mjs docker/codex-hello-gate.mjs docker/codex-chief-web-gate.mjs docker/package.install.json docker/package-lock.install.json /opt/super-agent/
 COPY docker/bin /opt/super-agent/bin
-COPY bridge/chief-web-intent-authority.mjs \
+COPY bridge/chief-web-call-admission.mjs \
+     bridge/chief-web-evaluation.mjs \
+     bridge/chief-web-intent-authority.mjs \
      bridge/chief-web-intent-consumer.mjs \
      bridge/chief-web-native-store.mjs \
      bridge/chief-web-paperclip-repository.mjs \
      bridge/chief-web-paperclip.mjs \
      bridge/chief-web-pilot.mjs \
+     bridge/chief-web-private-file.mjs \
+     bridge/chief-web-projection.mjs \
+     bridge/chief-web-recovery-entry.mjs \
+     bridge/chief-web-recovery-finalization.mjs \
+     bridge/chief-web-recovery-publisher.mjs \
+     bridge/chief-web-recovery.mjs \
      bridge/chief-web-routes.mjs \
+     bridge/chief-web-runtime-bootstrap.mjs \
      bridge/chief-web-settlement.mjs \
+     bridge/chief-web-skipped-wake.mjs \
      bridge/chief-web-supplement-evidence.mjs /opt/super-agent/bridge/
 COPY plugins/chief-web-pilot/manifest.js \
      plugins/chief-web-pilot/package.json \

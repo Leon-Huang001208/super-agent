@@ -21,6 +21,7 @@ function fixture() {
     phase: 'done',
   };
   const activity = [];
+  const controlEvents = [];
   let committed = Promise.resolve();
   let writeFails = false;
   const repository = {
@@ -56,13 +57,19 @@ function fixture() {
       verifyOwnerSupplement: ({ messageId }) => messageId === id(5) ? {
         messageId, messageDigest: '9'.repeat(64), runId: id(20), wakeId: id(21), providerClaimId: id(22),
       } : false,
+      beforeReserve(record) {
+        if (record.action === 'pause') controlEvents.push(['pause-before-write', record.operationId, activity.length]);
+      },
+      afterCommit(record) {
+        controlEvents.push(['resume-after-write', record.releasedPauseOperationId, activity.length]);
+      },
       now: () => 1,
     }),
     log() {},
     now: () => 1,
   });
   return {
-    createPilot, actor, grant, state, activity, task,
+    createPilot, actor, grant, state, activity, task, controlEvents,
     failWrite: () => { writeFails = true; },
   };
 }
@@ -87,13 +94,13 @@ test('writes one task-bound Native activity and replays it from a recreated adap
 });
 
 test('reads a persisted pause fence and rejects commands bound to the previous revision', async () => {
-  const { createPilot, actor, grant, state, activity } = fixture();
+  const { createPilot, actor, grant, state, activity, controlEvents } = fixture();
   const pilot = createPilot();
   Object.assign(state, {
     inputRevision: 'b'.repeat(64), supplementGrantId: grant.grantId, phase: 'awaiting_confirmation', reconciled: true,
   });
   const before = await pilot.handle(actor, { action: 'status' });
-  await pilot.handle(actor, { action: 'pause', contextRevision: before.contextRevision, requestId: id(7) });
+  const pause = await pilot.handle(actor, { action: 'pause', contextRevision: before.contextRevision, requestId: id(7) });
   const restored = createPilot();
   const paused = await restored.handle(actor, { action: 'status' });
   assert.equal(paused.control, 'paused');
@@ -108,6 +115,7 @@ test('reads a persisted pause fence and rejects commands bound to the previous r
   await assert.rejects(restored.handle(actor, resume), { code: 'CHIEF_WEB_CONTEXT_CHANGED' });
   await restored.handle(actor, { ...resume, contextRevision: paused.contextRevision });
   assert.equal((await restored.handle(actor, { action: 'status' })).control, 'active');
+  assert.deepEqual(controlEvents, [['pause-before-write', pause.operationId, 0], ['resume-after-write', pause.operationId, 2]]);
 });
 
 test('denies foreign Native owner and rolls back a failed activity write', async () => {

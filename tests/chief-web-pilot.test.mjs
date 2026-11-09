@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CHIEF_WEB_PILOT, createChiefWebPilot } from '../bridge/chief-web-pilot.mjs';
+import { CHIEF_WEB_PILOT, createChiefWebPilot, projectChiefWebStatus } from '../bridge/chief-web-pilot.mjs';
 
 const id = index => `00000000-0000-0000-0000-${String(index).padStart(12, '0')}`;
 const oldRevision = 'a'.repeat(64);
@@ -83,9 +83,28 @@ function fixture() {
   return {
     pilot: createPilot(), createPilot, actor, binding, state, operations, logs, supplement, confirm,
     setFault: value => { fault = value; },
+    setNow: value => { now = value; },
     expireDuringMessageRead: () => { onOwnerMessage = () => { now = binding.expiresAt; }; },
   };
 }
+
+test('reopens only confirmation of the exact reviewed candidate after the original grant expires', async () => {
+  const { pilot, actor, binding, state, supplement, confirm, setNow, operations } = fixture();
+  const inputRevision = 'd'.repeat(64);
+  Object.assign(state, { phase: 'awaiting_confirmation', inputRevision, supplementGrantId: binding.grantId,
+    candidate, independentReview: { candidate, digest: reviewDigest, verdict: 'approved' },
+    localChecks: { candidate, passed: true } });
+  setNow(1100);
+  assert.equal(projectChiefWebStatus(state, binding, 1100).code, 'CHIEF_WEB_CONFIRMATION_WINDOW_EXPIRED');
+  binding.confirmationWindow = { candidate, inputRevision, prHead: state.prHead, reviewDigest, expiresAt: 1300 };
+  state.confirmationWindow = true;
+  assert.deepEqual(projectChiefWebStatus(state, binding, 1100).actions.map(action => action.action), ['confirm']);
+  await assert.rejects(pilot.handle(actor, supplement), { code: 'CHIEF_WEB_GRANT_UNAVAILABLE' });
+  await assert.rejects(pilot.handle(actor, { ...confirm, reviewDigest: 'a'.repeat(64) }), { code: 'CHIEF_WEB_GRANT_UNAVAILABLE' });
+  const result = await pilot.handle(actor, confirm);
+  assert.equal(operations.get(result.operationId).expiresAt, 1300);
+  assert.deepEqual(projectChiefWebStatus(state, binding, 1300).actions, []);
+});
 
 test('verifies the authenticated owner and exact conversation generation even for status', async () => {
   const { pilot, actor } = fixture();
@@ -168,6 +187,7 @@ test('pause fences a later confirmation and resume requires reconciled state', a
   const approvedReceipt = await pilot.handle(actor, confirm);
   assert.equal(approvedReceipt.status, 'reserved');
   assert.deepEqual(await pilot.handle(actor, { ...confirm, requestId: id(13) }), approvedReceipt);
+  await assert.rejects(pilot.handle(actor, { ...pause, requestId: id(14) }), { code: 'CHIEF_WEB_TRANSITION_DENIED' });
 });
 
 test('recovers a reserved operation after response loss and redacts the thrown cause', async () => {
@@ -178,4 +198,15 @@ test('recovers a reserved operation after response loss and redacts the thrown c
   assert.equal((await createPilot().handle(actor, supplement)).status, 'reserved');
   assert.equal(operations.size, 1);
   assert.doesNotMatch(JSON.stringify(logs), /private response body/);
+});
+
+test('a blocked Native continuation cannot reserve control or publish confirmation', async () => {
+  const { pilot, actor, state, binding, confirm } = fixture();
+  Object.assign(state, {
+    phase: 'blocked', inputRevision: 'e'.repeat(64), supplementGrantId: binding.grantId,
+  });
+  await assert.rejects(pilot.handle(actor, confirm), { code: 'CHIEF_WEB_CONTINUATION_UNBOUND' });
+  await assert.rejects(pilot.handle(actor, { action: 'pause', contextRevision: oldRevision, requestId: id(18) }), {
+    code: 'CHIEF_WEB_CONTINUATION_UNBOUND',
+  });
 });
