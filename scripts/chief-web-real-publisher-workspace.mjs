@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { REAL_RWB_DOCUMENT, REAL_RWB_REPOSITORY, realDigest } from '../bridge/chief-web-real-engine.mjs';
 import { chiefWebRealDeliveryIdentity } from '../bridge/chief-web-real-publisher.mjs';
 import { chiefWebRealDigest } from '../bridge/chief-web-real-executor.mjs';
@@ -13,13 +14,16 @@ const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const fail = code => { throw Object.assign(new Error('RWB_REAL_' + code), { code: 'RWB_REAL_' + code }); };
 const same = (value, fields) => Object.entries(fields).every(([key, expected]) => value?.[key] === expected);
 const checkNames = ['documentation-governance', 'project-constraints', 'python-file-index'];
+const preflightLockCodes = new Set(['REPOSITORY_LOCKED', 'NATIVE_LOCKED']);
+const lockWaitMs = 120_000;
+const lockPollMs = 4_000;
 
 /** The journal exposes read(taskId, inputRevision, name) and durable createExclusive with the same keys. */
 export function createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitBinary, controller, runDelivery, github, journal,
-  recordResources, verifyCandidate, assertWorkspaceLease, readReview, log, run = spawnSync } = {}) {
+  recordResources, verifyCandidate, assertWorkspaceLease, readReview, log, run = spawnSync, now = Date.now, wait = delay } = {}) {
   if (![projectRoot, worktreeRoot, gitBinary].every(value => typeof value === 'string' && path.isAbsolute(value) &&
     path.normalize(value) === value) || ![controller?.readDeliveryReceipt, runDelivery, github?.get, journal?.read,
-    journal?.createExclusive, recordResources, verifyCandidate, assertWorkspaceLease, readReview, log, run].every(fn => typeof fn === 'function')) {
+    journal?.createExclusive, recordResources, verifyCandidate, assertWorkspaceLease, readReview, log, run, now, wait].every(fn => typeof fn === 'function')) {
     fail('WORKSPACE_CONFIGURATION_INVALID');
   }
   const decode = bytes => new TextDecoder('utf-8', { fatal: true }).decode(bytes);
@@ -86,18 +90,28 @@ export function createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitB
     if (!same(result, { verified: true, projectRoot, taskId, phase })) fail('RESOURCE_RECORD_UNPROVEN');
     return result;
   }
-  async function managed(scope, action, request) {
+  async function managedOnce(scope, action, request) {
     let recorded = false;
-    const result = await runDelivery({ projectRoot, taskId: scope.deliveryTaskId, action, worktreeRoot,
-      ...(action === 'start' ? { slug: 'chief-web' } : {}) }, {
-      identityRoot: projectRoot, controller,
+    let callbackEntered = false;
+    const track = method => (...args) => {
+      callbackEntered = true;
+      return controller[method](...args);
+    };
+    const input = { projectRoot, taskId: scope.deliveryTaskId, action, worktreeRoot,
+      ...(action === 'start' ? { slug: 'chief-web' } : {}) };
+    const options = {
+      identityRoot: projectRoot,
+      controller: { readDeliveryReceipt: track('readDeliveryReceipt'), startDelivery: track('startDelivery'),
+        prepareDelivery: track('prepareDelivery') },
       resourceRevalidationProbe(repository, taskId, phase) {
+        callbackEntered = true;
         if (recorded) fail('RESOURCE_SCOPE_DENIED');
         const record = resourceProbe(scope, repository, taskId, phase);
         recorded = true;
         return record;
       },
       githubRunner(executable, args, extra) {
+        callbackEntered = true;
         const eq = expected => realDigest(args) === realDigest(expected);
         if (executable !== 'gh' || extra?.cwd !== projectRoot || action !== 'prepare' || scope.revision !== 2) fail('GITHUB_COMMAND_DENIED');
         let data;
@@ -110,9 +124,38 @@ export function createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitB
         } else fail('GITHUB_COMMAND_DENIED');
         return { status: 0, stdout: JSON.stringify(data), stderr: '' };
       },
-    });
+    };
+    let result;
+    try { result = await runDelivery(input, options); }
+    catch (error) {
+      if (callbackEntered || !preflightLockCodes.has(error?.code)) throw error;
+      return { lockDenied: error };
+    }
     if (!recorded || result?.taskId !== scope.deliveryTaskId) fail('WORKSPACE_MANAGED_RESULT_UNVERIFIED');
-    return receipt(scope);
+    return { receipt: receipt(scope) };
+  }
+  async function managed(scope, action, snapshot, leaseSubject, assertCandidate = undefined) {
+    const deadline = Math.min(now() + lockWaitMs,
+      Number.isSafeInteger(leaseSubject.expiresAt) ? leaseSubject.expiresAt : Infinity);
+    let lockDenied;
+    for (;;) {
+      if (lockDenied) {
+        await assertWorkspaceLease(leaseSubject);
+        if (now() >= deadline) throw lockDenied;
+        if (remote(scope, snapshot.previousHead, snapshot.prNumber) !== snapshot.baseSha) fail('REMOTE_BASE_CHANGED');
+      }
+      assertCandidate?.();
+      await assertWorkspaceLease(leaseSubject);
+      if (lockDenied && now() >= deadline) throw lockDenied;
+      const result = await managedOnce(scope, action, snapshot);
+      if (result.receipt) return result.receipt;
+      lockDenied = result.lockDenied;
+      const remaining = deadline - now();
+      if (remaining <= 0) throw lockDenied;
+      await log({ code: 'RWB_REAL_WORKSPACE_LOCK_WAIT', action, lockCode: lockDenied.code,
+        operationId: leaseSubject.operationId ?? leaseSubject.slotId });
+      await wait(Math.min(lockPollMs, remaining));
+    }
   }
   function document(root, commit) {
     const item = command(root, ['ls-tree', '-z', commit, '--', REAL_RWB_DOCUMENT]);
@@ -177,7 +220,7 @@ export function createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitB
         if (start === null) {
           // Record intent before provisioning. Recovery can only adopt the exact started worktree.
           await journal.createExclusive(current.taskId, current.inputRevision, 'start', { ...current, baseSha });
-          started = await managed(current, 'start');
+          started = await managed(current, 'start', { baseSha, previousHead: null, prNumber: null }, request);
         } else {
           if (!same(start, { ...current, baseSha })) fail('WORKSPACE_START_CLAIM_CHANGED');
           started = receipt(current);
@@ -243,7 +286,9 @@ export function createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitB
       if (!same(managedReceipt, { status: 'started', mode: null, baseCommit: snapshot.baseSha })) fail('WORKSPACE_RECEIPT_UNVERIFIED');
       clean(managedReceipt.featureWorktree, managedReceipt.featureBranch, snapshot.baseSha);
       writeDocument(managedReceipt.featureWorktree, before, content);
-      managedReceipt = await managed(current, 'prepare', snapshot);
+      const { featureWorktree, featureBranch } = managedReceipt;
+      const featureHead = head(featureWorktree);
+      managedReceipt = await managed(current, 'prepare', snapshot, claim, () => clean(featureWorktree, featureBranch, featureHead));
       if (!same(managedReceipt, { status: 'prepared', mode: null, baseCommit: snapshot.baseSha })) fail('WORKSPACE_RECEIPT_UNVERIFIED');
     } else {
       if (!same(managedReceipt, { status: 'awaiting_ci', mode: 'pr', integrationCommit: snapshot.previousHead, repairAttempts: 0 }) ||
@@ -259,7 +304,10 @@ export function createChiefWebRealRwbWorkspace({ projectRoot, worktreeRoot, gitB
         if (document(integrationWorktree, head(integrationWorktree)).digest !== before.digest) fail('DOCUMENT_WORKTREE_CHANGED');
       }
       writeDocument(integrationWorktree, before, content);
-      if (!repair) managedReceipt = await managed(current, 'prepare', snapshot);
+      if (!repair) {
+        const integrationHead = head(integrationWorktree);
+        managedReceipt = await managed(current, 'prepare', snapshot, claim, () => clean(integrationWorktree, current.branch, integrationHead));
+      }
       if (!repair && !same(managedReceipt, { status: 'prepared', mode: 'pr', baseCommit: snapshot.baseSha,
         baseRefreshPublishedHead: snapshot.previousHead })) fail('WORKSPACE_RECEIPT_UNVERIFIED');
     }

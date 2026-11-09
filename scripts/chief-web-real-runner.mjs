@@ -146,7 +146,8 @@ export async function runChiefWebRealBroker(filename, recoverOperationId) {
   async function assertWorkspaceLease(request) {
     const lease = readLease(request.operationId ?? request.slotId);
     if (!same(lease, { taskId: request.taskId, inputRevision: request.inputRevision, released: false }) ||
-        !exactLease(lease) || await spool.isPaused() || !legacyDrained()) fail('CHIEF_WEB_REAL_WORKSPACE_LEASE_DENIED');
+        !exactLease(lease) || !legacyDrained() || await spool.isPaused() ||
+        Date.now() >= config.expiresAt) fail('CHIEF_WEB_REAL_WORKSPACE_LEASE_DENIED');
   }
   const admission = createChiefWebRealAdmission({
     databasePath, projectId: config.projectId, verifyLegacyDrained: legacyDrained, storageReceipt: pinnedStorage, log,
