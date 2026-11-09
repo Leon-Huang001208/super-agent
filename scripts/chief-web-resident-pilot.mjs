@@ -128,11 +128,14 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
     const slot = manifest.slots[current.index];
     const binding = bindings[current.index];
     const blocked = { phase: 'blocked', conversationId: slot.conversationId, code: 'CHIEF_WEB_RESIDENT_INACTIVE_OWNER_COMMENT' };
+    const expired = { phase: 'expired', conversationId: slot.conversationId, code: null };
     await host.drain();
     try { await host.verifyFreshComments(slot, binding); }
     catch (error) { if (error?.code === blocked.code) return commit(current, blocked); throw error; }
-    await commit(current, { phase: 'activating', conversationId: slot.conversationId });
-    await host.activate(slot, binding);
+    if (now() >= manifest.expiresAt) return commit(current, expired);
+    await commit(current, { phase: 'activating', conversationId: slot.conversationId, code: null });
+    if (now() >= manifest.expiresAt) return commit(current, expired);
+    if (await host.activate(slot, binding) === false) return commit(current, expired);
     await host.verifyActive(slot, binding);
     try { await host.verifyFreshComments(slot, binding); }
     catch (error) {
@@ -144,14 +147,21 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
     const status = await host.status(slot);
     if (status?.phase !== 'ready' || status.generation !== binding.generation || status.taskId ||
         status.revision !== 0 || status.operationId) fail('CHIEF_WEB_RESIDENT_INTAKE_NOT_EMPTY');
+    if (now() >= manifest.expiresAt) {
+      await host.drain();
+      await host.disable(slot, binding);
+      return commit(current, expired);
+    }
     localConsumer = true;
     await host.start(slot);
-    return commit(current, { phase: 'active', conversationId: slot.conversationId });
+    return commit(current, { phase: 'active', conversationId: slot.conversationId, code: null });
   }
 
   async function step() {
     const current = state(await store.read());
-    if (['blocked', 'complete', 'expired'].includes(current.phase)) return current;
+    const blocked = current.phase === 'blocked';
+    if (['complete', 'expired'].includes(current.phase) ||
+        (blocked && (current.code !== 'CHIEF_WEB_RESIDENT_TASK_BLOCKED' || now() >= manifest.expiresAt))) return current;
     if (['activating', 'draining'].includes(current.phase)) fail('CHIEF_WEB_RESIDENT_TRANSITION_UNKNOWN');
     const slot = manifest.slots[current.index];
     if (now() >= manifest.expiresAt) {
@@ -169,6 +179,9 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
     const status = await host.status(slot);
     if (!nativePhases.has(status?.phase) || status.generation !== bindings[current.index].generation || !Number.isSafeInteger(status.revision) ||
         status.revision < 0 || status.revision > 1) fail('CHIEF_WEB_RESIDENT_NATIVE_STATUS_UNVERIFIED');
+    // The operator may have reconciled the original Native operation while the supervisor was stopped.
+    // Only adopt a terminal receipt. The supervisor must never start an executor for a blocked slot.
+    if (blocked && status.phase !== 'done') return current;
     if (status.phase === 'blocked') {
       await commit(current, { phase: 'draining' });
       await stop();
@@ -180,17 +193,25 @@ export function createChiefWebResidentPilot({ manifest, bindings, store, host, n
         fail('CHIEF_WEB_RESIDENT_TERMINAL_UNVERIFIED');
       }
       const completed = [...current.completed, { conversationId: slot.conversationId, ...result }];
+      if (blocked) {
+        await host.drain();
+        if (now() >= manifest.expiresAt) return current;
+      }
       await commit(current, { phase: 'draining' });
       await stop();
       await host.drain();
       if (current.index + 1 === manifest.slots.length) {
         await host.disable(slot, bindings[current.index]);
-        return commit(current, { phase: 'complete', completed });
+        return commit(current, { phase: 'complete', completed, code: null });
       }
       return activate({ ...current, index: current.index + 1, completed });
     }
     if (!localConsumer) {
       await host.drain();
+      if (now() >= manifest.expiresAt) {
+        await host.disable(slot, bindings[current.index]);
+        return commit(current, { phase: 'expired', code: null });
+      }
       localConsumer = true;
       await host.start(slot);
     }
@@ -449,8 +470,15 @@ async function createMacHost({ manifest, log }) {
       if (hash(JSON.stringify(await readPrivate(path.join(slot.scopeRoot, 'binding.json')))) !== hash(JSON.stringify(binding))) {
         fail('CHIEF_WEB_RESIDENT_BINDING_DRIFT');
       }
+      if (Date.now() >= manifest.expiresAt) return false;
       await dockerDo(['exec', '-i', app, 'node', '-e', replaceBinding], { input: JSON.stringify(binding) + '\n' });
+      if (Date.now() >= manifest.expiresAt) {
+        await compose(slot, false, ['up', '-d', '--wait', '--wait-timeout', '75', '--no-build', '--no-deps', '--force-recreate', 'paperclip'], { timeout: 90000 });
+        await stable(slot, false);
+        return false;
+      }
       await compose(slot, true, ['up', '-d', '--wait', '--wait-timeout', '75', '--no-build', '--no-deps', '--force-recreate', 'paperclip'], { timeout: 90000 });
+      return true;
     },
     async disable(slot, binding) {
       await verifyActive(slot, binding);
@@ -459,6 +487,7 @@ async function createMacHost({ manifest, log }) {
     },
     async start(slot) {
       if (child) fail('CHIEF_WEB_RESIDENT_CONSUMER_PRESENT');
+      if (Date.now() >= manifest.expiresAt) fail('CHIEF_WEB_RESIDENT_PERMIT_EXPIRED');
       const processChild = spawn(process.execPath, [runner, path.join(slot.scopeRoot, 'host-scope.json')], {
         cwd: manifest.sourceRoot, env: chiefWebResidentChildEnvironment(slot), stdio: 'ignore',
       });
