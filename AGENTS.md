@@ -8,7 +8,7 @@
 
 ## Harness 与隔离
 
-- 每个交付任务自动开始或恢复受管 Harness；入口在 `$HOME/.agents/leon-engineering/runtime/`，不复制到仓库、不修改全局框架。具体命令见工作流。
+- 每个交付任务通过 `node scripts/project-runtime.mjs session` 显式开始或恢复受管 Harness；项目固定版本的校验、交付、验证记录和收尾命令见工作流。
 - 高风险及发布任务使用 `iteration-delivery`、`--delivery-required` 和 `--require-delivery`。本项目覆盖框架的直接推送默认值：除首次经审查的基线外，必须 PR、适用 CI 和独立评审通过后再合并。
 - 不覆写其他 worktree；不能从路径名称、暂停、容器健康推断无活动任务。遇到其他任务的未提交集成版本，保持原状并报告。
 
