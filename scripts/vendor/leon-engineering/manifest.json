@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "frameworkVersion": "0.19.4",
+  "sourceCommit": "3913ddb9ac612760fb95bf8d8f7102f948c32d0f",
+  "files": {
+    "harness-session.mjs": "ccef57ef3c1df5aa1e5fd97cc8f5e37f3adcf5fb68706a0c5067caaf8fad3a3c",
+    "harness-enforce.mjs": "a823b1c7dd87da9e8e37518b1a49557b21d519a469b3dd2c5a9526b6d19ccd04",
+    "harness-project.mjs": "155378a8aa55ee9bec7cf6e7ab03a7712f6514b23a66fe854778ffe57b6941f8",
+    "harness-storage.mjs": "f4ffd4b3a69fc97f3c836b2ed75a39775ff0871b56546070cee51b8f4203fe7a",
+    "profile-project.mjs": "08bce8df6cdbb81083e4df125e2addbbddd1027ccfaa72fb962e1c76b106a96b",
+    "iteration-delivery.mjs": "71dc328b2137630ad0ce22bf86bb5584a4fb476e72c518154d0bd70f5e4bc587",
+    "resource-lifecycle.mjs": "c7efde26f14c078e6141deb120ec6822e9cca0d798bd701d554de747c2e87b82",
+    "harness-run.mjs": "9f3622cb170d7facb910ad4caa77cf754edd302b1aca8fd82d591bf838fb2046",
+    "harness-execution.mjs": "a4a5c4ccf36f4f2682607c7465426f504c1dacde34b7e55c09b0628865e14a47",
+    "lib/resources/lifecycle.mjs": "5abc3646e624d3bc22473c847fc4e6d3188f6973bef7675ac99c2f11146c84a1"
+  }
+}
