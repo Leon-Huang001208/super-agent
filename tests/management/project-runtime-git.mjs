@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { readDeliveryReceipt, startDelivery, prepareDelivery, publishDelivery, refreshDeliveryStatus, cleanupDelivery } from '../../scripts/vendor/leon-engineering/iteration-delivery.mjs';
 
 const identity = { ...process.env,
@@ -64,4 +65,31 @@ test('failed CI prevents cleanup and resource blocker preserves both worktrees',
   assert.notEqual(blocked.status, 'cleaned');
   assert.equal(fs.existsSync(receipt.featureWorktree), true);
   assert.equal(fs.existsSync(receipt.integrationWorktree), true);
+});
+
+test('normal delivery status records merged CheckRun and StatusContext success', t => {
+  const { project, receipt } = fixture(t);
+  const filename = path.join(project, '.git/leon-engineering/deliveries/legacy-delivery.json');
+  fs.writeFileSync(filename, JSON.stringify({ ...receipt, status: 'awaiting_ci', mode: 'pr',
+    remoteUrl: 'https://github.com/Leon-Huang001208/super-agent.git',
+    pullRequest: { url: 'https://github.com/Leon-Huang001208/super-agent/pull/16' } }));
+  const tools = path.join(project, 'fake-tools');
+  fs.mkdirSync(tools);
+  const checks = [{ __typename: 'CheckRun', name: 'governance', conclusion: 'SUCCESS' },
+    { __typename: 'CheckRun', name: 'offline-regression', conclusion: 'SUCCESS' },
+    { __typename: 'StatusContext', context: 'independent-review', state: 'SUCCESS' }];
+  const response = { url: 'https://github.com/Leon-Huang001208/super-agent/pull/16',
+    headRefOid: receipt.integrationCommit, baseRefName: receipt.defaultBranch,
+    state: 'MERGED', mergeCommit: { oid: receipt.integrationCommit }, statusCheckRollup: checks };
+  fs.writeFileSync(path.join(tools, 'gh'), `#!${process.execPath}\nconsole.log(${JSON.stringify(JSON.stringify(response))});\n`, { mode: 0o700 });
+  const entry = fileURLToPath(new URL('../../scripts/project-runtime.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [entry, 'delivery', '--status', '--project', project, '--task-id', receipt.taskId], {
+    encoding: 'utf8', env: { ...identity, PATH: `${tools}${path.delimiter}${process.env.PATH}`, SUPER_AGENT_LOG_ROOT: path.join(project, 'logs') }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const updated = JSON.parse(result.stdout);
+  assert.equal(updated.status, 'ci_passed');
+  assert.equal(updated.ci.status, 'passed');
+  assert.deepEqual(updated.ci.runs, checks);
+  assert.equal(updated.remoteCommit, receipt.integrationCommit);
 });
