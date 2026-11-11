@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { verifyProjectRuntime } from '../scripts/project-runtime.mjs';
+import { verifyProjectRuntime, resolveProjectPrStatus } from '../scripts/project-runtime.mjs';
 import { buildHarness, writeHarness, appendHarnessEvent } from '../scripts/vendor/leon-engineering/harness-project.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -85,4 +85,60 @@ test('the preferred sibling resource engine cannot escape the pinned file set', 
   const checked = invoke(path.join(root, 'scripts/project-runtime.mjs'), root, 'verify');
   assert.notEqual(checked.status, 0);
   assert.match(checked.stderr, /PROJECT_RUNTIME_UNVERIFIED_RESOURCE_ENGINE/);
+});
+
+const prUrl = 'https://github.com/Leon-Huang001208/super-agent/pull/16';
+const prIdentity = { url: prUrl, headRefOid: 'b'.repeat(40), baseRefName: 'main' };
+const passingChecks = [{ __typename: 'CheckRun', name: 'governance', conclusion: 'SUCCESS' },
+  { __typename: 'CheckRun', name: 'offline-regression', conclusion: 'SUCCESS' },
+  { __typename: 'StatusContext', context: 'independent-review', state: 'SUCCESS' }];
+
+function prStatus(response, invocation = {}) {
+  const checks = response.statusCheckRollup;
+  const result = resolveProjectPrStatus({ repositoryRoot: '/fixture' }, {
+    remoteUrl: 'https://github.com/Leon-Huang001208/super-agent.git',
+    pullRequest: { url: prUrl }, integrationCommit: prIdentity.headRefOid, defaultBranch: prIdentity.baseRefName
+  }, (command, args, options) => {
+    assert.equal(command, 'gh');
+    assert.deepEqual(args.slice(0, 2), ['pr', 'view']);
+    assert.equal(options.cwd, '/fixture');
+    return { status: 0, stdout: JSON.stringify({ ...prIdentity, mergeCommit: { oid: 'a'.repeat(40) }, ...response }), ...invocation };
+  });
+  assert.deepEqual(result.runs, checks || []);
+  return result;
+}
+
+test('merged CheckRun and StatusContext successes retain raw checks and merge SHA', () => {
+  const result = prStatus({ state: 'MERGED', statusCheckRollup: passingChecks });
+  assert.equal(result.status, 'passed');
+  assert.equal(result.mergeCommit, 'a'.repeat(40));
+});
+
+test('open PR, pending and unknown checks keep delivery pending', () => {
+  for (const response of [
+    { state: 'OPEN', statusCheckRollup: passingChecks },
+    { state: 'MERGED', statusCheckRollup: [...passingChecks, { state: 'PENDING' }] },
+    { state: 'MERGED', statusCheckRollup: [...passingChecks, { conclusion: null, status: 'IN_PROGRESS' }] },
+    { state: 'MERGED', statusCheckRollup: [...passingChecks, { state: 'UNKNOWN' }] },
+    { state: 'MERGED', statusCheckRollup: passingChecks.slice(0, 2) },
+    { state: 'MERGED', statusCheckRollup: passingChecks, mergeCommit: null },
+    { state: 'MERGED', statusCheckRollup: passingChecks, headRefOid: null },
+    { state: 'MERGED', statusCheckRollup: [] },
+    { state: 'MERGED' }
+  ]) assert.equal(prStatus(response).status, 'pending');
+});
+
+test('a mismatched PR, candidate SHA or base is refused', () => {
+  for (const mismatch of [{ url: `${prUrl}0` }, { headRefOid: 'c'.repeat(40) }, { baseRefName: 'other' }]) {
+    assert.throws(() => prStatus({ state: 'MERGED', statusCheckRollup: passingChecks, ...mismatch }),
+      /PROJECT_RUNTIME_PR_IDENTITY_MISMATCH/);
+  }
+});
+
+test('failed checks and error status contexts fail while query errors propagate', () => {
+  for (const check of [{ conclusion: 'FAILURE' }, { conclusion: 'TIMED_OUT' }, { state: 'ERROR' }]) {
+    assert.equal(prStatus({ state: 'MERGED', statusCheckRollup: [check] }).status, 'failed');
+  }
+  assert.throws(() => prStatus({}, { status: 1, stderr: 'private error detail' }), /PROJECT_RUNTIME_CI_QUERY_FAILED/);
+  assert.throws(() => prStatus({}, { stdout: 'invalid JSON' }), /PROJECT_RUNTIME_CI_RESPONSE_INVALID/);
 });
