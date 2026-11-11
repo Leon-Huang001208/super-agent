@@ -37,6 +37,8 @@ node scripts/project-runtime.mjs delivery --start \
 
 独立评审状态由项目管理身份上传独立代理的真实评审结果，它不是另一 GitHub 账号的 APPROVED review。原生批准数为 0，服务器通过必需 independent-review 状态强制要求该结果；不能将作者自己的 COMMENT 冒充独立批准。后续引入第二位 GitHub 评审人时再提高批准数。
 
+`node scripts/project-runtime.mjs delivery --status` 核对 PR 地址、候选 SHA 和目标分支，兼容 `CheckRun.conclusion` 与 `StatusContext.state`，并将原始检查保存在受管回执。PR 合并、有合并 SHA 且三个必需状态都成功后才记为通过。失败检查记为失败，缺失、未完成或未知检查继续等待。查询失败或身份不匹配时保留原回执并报告错误。
+
 CI 成功不等于业务验收。合并后验证远端默认分支包含候选，按原始实测证据记录 Harness；完整交付必须通过 `node scripts/project-runtime.mjs enforce --project "$PWD" --task-id '<任务ID>' --require-delivery`，PR-only 受阻状态不能登记 completed/passed。
 
 ## 收尾与中断恢复

@@ -61,9 +61,74 @@ function log(action, status, exitCode) {
   })}\n`, { mode: 0o600 });
 }
 
-function main(args) {
+export function resolveProjectPrStatus(repository, receipt, invoke = spawnSync) {
+  const match = receipt.remoteUrl.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/i);
+  if (!match) throw new Error('PROJECT_RUNTIME_GITHUB_REMOTE_INVALID');
+  const expectedUrl = receipt.pullRequest?.url;
+  const pr = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/[1-9]\d*$/i.exec(expectedUrl);
+  if (!pr || pr[1].toLowerCase() !== match[1].toLowerCase() || !/^[a-f0-9]{40}$/.test(receipt.integrationCommit)
+    || typeof receipt.defaultBranch !== 'string' || !receipt.defaultBranch) throw new Error('PROJECT_RUNTIME_PR_RECEIPT_INVALID');
+  const viewed = invoke('gh', ['pr', 'view', receipt.pullRequest.url, '--repo', match[1],
+    '--json', 'url,headRefOid,baseRefName,state,mergeCommit,statusCheckRollup'], { cwd: repository.repositoryRoot, encoding: 'utf8' });
+  if (viewed.error || viewed.status !== 0) throw new Error('PROJECT_RUNTIME_CI_QUERY_FAILED');
+  let result;
+  try { result = JSON.parse(viewed.stdout); }
+  catch { throw new Error('PROJECT_RUNTIME_CI_RESPONSE_INVALID'); }
+  if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('PROJECT_RUNTIME_CI_RESPONSE_INVALID');
+  const runs = Array.isArray(result.statusCheckRollup) ? result.statusCheckRollup : [];
+  const identity = [[result.url, expectedUrl], [result.headRefOid, receipt.integrationCommit], [result.baseRefName, receipt.defaultBranch]];
+  if (identity.some(([actual, expected]) => typeof actual === 'string' && actual && actual !== expected)) {
+    throw new Error('PROJECT_RUNTIME_PR_IDENTITY_MISMATCH');
+  }
+  if (identity.some(([actual, expected]) => actual !== expected)) return { status: 'pending', runs };
+  const outcomes = runs.map(item => item?.conclusion ?? item?.state);
+  const failures = new Set(['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'STALE']);
+  if (outcomes.some(outcome => failures.has(outcome))) return { status: 'failed', runs };
+  const passing = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
+  const required = ['governance', 'offline-regression', 'independent-review'];
+  const mergeCommit = result.mergeCommit?.oid;
+  if (result.state === 'MERGED' && /^[a-f0-9]{40}$/.test(mergeCommit) && outcomes.every(outcome => passing.has(outcome))
+    && required.every(name => runs.some((item, index) => (item?.name ?? item?.context) === name && outcomes[index] === 'SUCCESS'))) {
+    return { status: 'passed', runs, mergeCommit };
+  }
+  return { status: 'pending', runs };
+}
+
+export async function refreshProjectDeliveryStatus({ projectRoot, taskId, invoke }) {
+  verifyProjectRuntime();
+  const { readDeliveryReceipt, refreshDeliveryStatus } = await import('./vendor/leon-engineering/iteration-delivery.mjs');
+  const receipt = readDeliveryReceipt({ projectRoot, taskId });
+  return refreshDeliveryStatus({ projectRoot, taskId, ...(receipt.mode === 'pr' ? {
+    resolveCiStatus: (repository, current) => resolveProjectPrStatus(repository, current, invoke)
+  } : {}) });
+}
+
+function deliveryStatusOptions(args) {
+  const actions = ['--start', '--prepare', '--publish', '--status', '--cleanup', '--rollback'].filter(item => args.includes(item));
+  if (actions.length !== 1 || actions[0] !== '--status' || args.includes('--replace-prepared')) return null;
+  const valued = new Set(['--project', '--task-id', '--slug', '--remote', '--worktree-root',
+    '--verification-command', '--verification-status', '--verification-duration-seconds']);
+  const options = {};
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === '--status' || argument === '--repair') continue;
+    if (!valued.has(argument) || !args[index + 1] || args[index + 1].startsWith('--')) return null;
+    options[argument] = args[++index];
+  }
+  return options['--project'] && options['--task-id']
+    ? { projectRoot: options['--project'], taskId: options['--task-id'] } : null;
+}
+
+async function main(args) {
   const [action, ...forwarded] = args;
   if (!['verify', ...Object.keys(commands)].includes(action)) throw new Error('PROJECT_RUNTIME_ACTION_INVALID');
+  const statusOptions = action === 'delivery' ? deliveryStatusOptions(forwarded) : null;
+  if (statusOptions) {
+    const result = await refreshProjectDeliveryStatus(statusOptions);
+    log(action, result.status, 0);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
   const verified = verifyProjectRuntime();
   if (action === 'verify') {
     if (forwarded.length) throw new Error('PROJECT_RUNTIME_ARGUMENT_INVALID');
@@ -79,13 +144,11 @@ function main(args) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try {
-    main(process.argv.slice(2));
-  } catch (error) {
+  main(process.argv.slice(2)).catch(error => {
     const code = /^PROJECT_RUNTIME_[A-Z_]+$/.test(error.message) ? error.message : 'PROJECT_RUNTIME_FAILED';
     try { log(Object.hasOwn(commands, process.argv[2]) ? process.argv[2] : 'verify', code, 1); }
     catch { process.stderr.write('PROJECT_RUNTIME_LOG_FAILED\n'); }
     process.stderr.write(`${code}\n`);
     process.exitCode = 1;
-  }
+  });
 }
