@@ -107,7 +107,7 @@ function inspect(ref) {
   return {id,os,architecture,key,tags:tags??[],digests:digests??[]};
 }
 
-function verifyArchive(target, reference, imageId) {
+export function verifyArchive(target, reference, imageId) {
   const code = 'IMAGE_ARCHIVE_UNVERIFIED';
   const options = {timeout:120000,code};
   const archive = args => command('tar',args,options);
