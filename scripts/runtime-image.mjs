@@ -134,7 +134,7 @@ export const dockerDriver = {
   },
 };
 
-function checkState(state, create) {
+export function checkState(state, create) {
   if (fs.realpathSync(path.dirname(state))!==path.dirname(state)) fail('IMAGE_STATE_ALIAS');
   if (!fs.existsSync(state) && create) fs.mkdirSync(state,{mode:0o700});
   if (!fs.existsSync(state)) return false;
@@ -143,19 +143,23 @@ function checkState(state, create) {
   return true;
 }
 
-function readRecord(filename, key, reference) {
+export function readRecordSnapshot(filename, key, reference) {
   const fd=fs.openSync(filename,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
   try {
     const s=fs.fstatSync(fd);
     if (!s.isFile() || s.uid!==process.getuid() || s.nlink!==1 || (s.mode&0o777)!==0o600 || s.size>2048) fail('IMAGE_RECORD_UNSAFE');
-    const d=JSON.parse(fs.readFileSync(fd,'utf8'));
+    const bytes=fs.readFileSync(fd),d=JSON.parse(bytes);
     if (!same(s,fs.fstatSync(fd)) || !same(s,fs.lstatSync(filename)) ||
         d.schemaVersion!==1 || d.key!==key || d.reference!==reference || d.platform!==PLATFORM || !ID.test(d.imageId)) fail('IMAGE_RECORD_INVALID');
-    return d;
+    return {record:d,bytes};
   } finally { fs.closeSync(fd); }
 }
 
-function imageMatches(image, key) {
+function readRecord(filename, key, reference) {
+  return readRecordSnapshot(filename, key, reference).record;
+}
+
+export function imageMatches(image, key) {
   return image && ID.test(image.id) && image.os==='linux' && image.architecture==='arm64' && image.key===key;
 }
 
@@ -182,12 +186,14 @@ export function runImageAction({root,state,action,driver=dockerDriver,capacity,l
     return {imageId:r.imageId,key,decision:'reused'};
   };
   const exists=checkState(state,action==='build');
+  const lock=path.join(state,'build.lock');
   if (exists) {
+    if (fs.existsSync(lock)) fail('IMAGE_BUILD_IN_PROGRESS');
     const hit=lookup();
+    if (fs.existsSync(lock)) fail('IMAGE_BUILD_IN_PROGRESS');
     if (hit) {log({action, ...hit});return hit;}
   }
   if (action==='resolve') fail('RUNTIME_IMAGE_NOT_RECORDED');
-  const lock=path.join(state,'build.lock');
   try {fs.mkdirSync(lock,{mode:0o700});}
   catch(e) {if(e.code==='EEXIST')fail('IMAGE_BUILD_IN_PROGRESS');throw e;}
   const lockIdentity=fs.lstatSync(lock);
