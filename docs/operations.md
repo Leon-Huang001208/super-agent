@@ -38,7 +38,7 @@ Docker 内的操作员入口为 `node /opt/super-agent/bridge/chief-web-recovery
 
 ## 资产与身份
 
-Paperclip 评估项目名为 `super-agent-paperclip-eval`。专用数据根 `/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0`，底层为外置 SSD 的 APFS sparsebundle。Docker.raw 仍保持原位。数据库、订阅认证、workspace、日志和旧候选必须保留；本仓库不保存秘密。
+Paperclip 评估项目名为 `super-agent-paperclip-eval`。专用数据根 `/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0`，底层为外置 SSD 的 APFS sparsebundle。Docker.raw 仍保持原位。数据库、订阅认证、workspace、日志及尚未确认退役的镜像继续保留。
 
 运行身份以实时容器 inspect 的镜像 ID、Compose 来源、挂载及启动命令为准，不能以本目录的 compose 文件代替。2026-11-04 已观察到运行服务从另一个统一集成目录启动，详见 [当日状态](governance-status-20261104.md)。
 
@@ -59,7 +59,20 @@ Paperclip 评估项目名为 `super-agent-paperclip-eval`。专用数据根 `/Vo
 
 `./scripts/sa up` 按当前输入解析精确镜像 ID，固定 Compose 文件和项目名，禁用隐式配置覆盖、构建及拉取。登记将本次构建元数据的镜像 manifest/index digest 解析为本地 ID，再与标签实际指向比对，不把配置 digest 当镜像 ID；无法核实即保留锁和现场。镜像构建登记和日志保存在专用外置根。首次采用新入口须在获授权的运行升级窗口准备同候选镜像并验证；本次源码改动不改正在运行的独立集成目录。
 
-清点保留有容器引用的镜像和未知镜像。无容器引用的登记项仍是待核对候选；须由资源所有者同时证明不属于现用、上一已验回滚版本或恢复/活动依赖，才按正式退休流程处理。禁止全局 prune。见[外置存储规划](external-storage-plan.md)。
+真实验收通过并排空后，从拥有该运行配置的受控检出执行 `./scripts/sa image-closeout <plan-name>`。资源所有者在同一专用数据根的 `image-closeout-plans/<plan-name>.json` 准备本人所有、权限为 `0600` 的普通文件，提供以下字段。
+
+| 字段 | 内容 |
+|---|---|
+| `schemaVersion` | `1` |
+| `verification` | 验收和排空回执相对 `logs/` 的路径，例如 `daily/daily-summary.json`。回执是本人所有、权限为 `0600` 的普通 JSON 文件，包含 `status: "PASS"`、本次已验的 `imageId`、`executionClosed: true`、`activeSharedLeases: 0` 和 `liveModelWorkers: 0`。 |
+| `current` | 本次已验镜像的 `{key, imageId}`，与验收回执及构建登记一致。 |
+| `previousImageId` | 上一个已验回滚镜像的完整 ID。确实没有上一版本时才填 `null`。 |
+| `configs` | 逐项列出实际启动和回滚配置。每项含 `kind`（`startup` 或 `rollback`）、绝对 `path` 和 `images`。列出配置使用的完整镜像 ID 或 Super Agent 镜像引用，包括通过环境变量解析的实际值。收尾也读取 Docker 记录的 Compose 文件。无法核对的 `include` 或 `extends` 配置会阻止退役。 |
+| `retire` | 本任务明确归属且已确认被替代的登记镜像，每项为 `{key, imageId}`。 `key` 是完整构建输入指纹，`imageId` 是完整 `sha256:` ID。 |
+
+按镜像 ID、标签和用途核实退役。保留本次及上一已验镜像、运行或已停止容器引用的镜像、启动和回滚配置引用的镜像，以及依赖或身份不明的镜像。镜像年龄和容器引用数只用于清点。维护窗口内暂停同一环境的外部启动和配置改动。
+
+收尾与构建共用锁。删除前逐项复查 Docker 引用、配置和构建登记，先在专用外置数据根的 `archives/image-closeout-v1/` 保存并校验确切镜像、原构建登记和退役意图，再按完整 ID 单次删除。确认镜像消失后才转移活跃登记，并保存结果回执。重复执行原计划时，已退役的镜像按回执和实际 Docker 状态核对。删除结果未知时保留锁、归档及回执，先对账再决定后续操作。离线回归和宿主退役分别留证。见[外置存储规划](external-storage-plan.md)。
 
 仅在明确候选和授权后关闭新派发，确认无活动及未知任务，保全数据库可读备份、原镜像与依赖、会话和回执。升级仅触及 Super Agent 专用容器。镜像、依赖和源码不一致、其他任务持有工作区或未知结果时停止；不强杀、不删锁、不重置任务。
 
