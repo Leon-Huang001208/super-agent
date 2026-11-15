@@ -5,8 +5,19 @@ import fs from 'node:fs';
 const ID = /^sha256:[a-f0-9]{64}$/;
 const CONTAINER_ID = /^[a-f0-9]{64}$/;
 const RUNTIME_REF = /^super-agent-paperclip-runtime:input-[a-f0-9]{64}$/;
-const BLOB = /^blobs\/sha256\/[a-f0-9]{64}$/;
 const LABEL = 'io.super-agent.build-input-sha256';
+const INDEX_TYPES = new Set(['application/vnd.oci.image.index.v1+json','application/vnd.docker.distribution.manifest.list.v2+json']);
+const MANIFEST_TYPES = new Set(['application/vnd.oci.image.manifest.v1+json','application/vnd.docker.distribution.manifest.v2+json']);
+const HASH_STDIN = `
+  import {createHash} from 'node:crypto';
+  const hash = createHash('sha256');
+  let size = 0;
+  for await (const bytes of process.stdin) {
+    hash.update(bytes);
+    size += bytes.length;
+  }
+  process.stdout.write(size + ' ' + hash.digest('hex'));
+`;
 const fail = code => { throw new Error(code); };
 
 function command(file, args, {timeout=15000, code='DOCKER_OBSERVATION_FAILED', output}={}) {
@@ -97,26 +108,72 @@ function inspect(ref) {
 }
 
 function verifyArchive(target, reference, imageId) {
-  const archive = (args) => command('tar',args,{timeout:120000,code:'IMAGE_ARCHIVE_UNVERIFIED'});
-  const entries = lines(archive(['-tf',target]));
-  if (new Set(entries).size!==entries.length) fail('IMAGE_ARCHIVE_UNVERIFIED');
+  const code = 'IMAGE_ARCHIVE_UNVERIFIED';
+  const options = {timeout:120000,code};
+  const archive = args => command('tar',args,options);
+  const names = lines(archive(['-tf',target]));
+  const entries = new Set(names);
+  if (entries.size!==names.length) fail(code);
   const read = name => archive(['-xOf',target,name]);
-  const index = json(read('index.json'),'IMAGE_ARCHIVE_UNVERIFIED');
-  const manifest = json(read('manifest.json'),'IMAGE_ARCHIVE_UNVERIFIED');
+  const index = json(read('index.json'),code);
+  const manifest = json(read('manifest.json'),code);
   const fullyQualified = 'docker.io/library/'+reference;
   const descriptors = index?.manifests?.filter(item =>
     [reference,fullyQualified].includes(item?.annotations?.['io.containerd.image.name']));
-  if (descriptors?.length!==1 || descriptors[0].digest!==imageId) fail('IMAGE_ARCHIVE_UNVERIFIED');
-  const root = 'blobs/sha256/'+imageId.slice('sha256:'.length);
-  if (!entries.includes(root) || createHash('sha256').update(read(root)).digest('hex')!==imageId.slice(7)) {
-    fail('IMAGE_ARCHIVE_UNVERIFIED');
+  if (index?.schemaVersion!==2 || descriptors?.length!==1 || descriptors[0].digest!==imageId) fail(code);
+
+  const visited = new Map();
+  const manifestPaths = [];
+  function verifyDescriptor(descriptor, requireManifest=false) {
+    const {digest,size,mediaType} = descriptor ?? {};
+    if (typeof digest!=='string' || !ID.test(digest) || !Number.isSafeInteger(size) || size<0 ||
+        typeof mediaType!=='string' || !mediaType) fail(code);
+    const isIndex = INDEX_TYPES.has(mediaType);
+    const isManifest = MANIFEST_TYPES.has(mediaType);
+    if (requireManifest && !isIndex && !isManifest) fail(code);
+    const hex = digest.slice(7);
+    const blob = 'blobs/sha256/'+hex;
+    if (!entries.has(blob)) fail(code);
+    const prior = visited.get(digest);
+    if (prior) {
+      if (prior.size!==size || prior.mediaType!==mediaType) fail(code);
+      return blob;
+    }
+    visited.set(digest,{size,mediaType});
+
+    if (!isIndex && !isManifest) {
+      // Pass filenames as shell arguments. The hash worker streams layer bytes
+      // from tar and pipefail preserves extraction errors from tar.
+      const computed = command('/bin/bash',['--noprofile','--norc','-o','pipefail','-c',
+        'tar -xOf "$1" "$2" | "$3" --input-type=module -e "$4"',
+        'image-archive',target,blob,process.execPath,HASH_STDIN],options);
+      if (computed!==size+' '+hex) fail(code);
+      return blob;
+    }
+
+    const bytes = read(blob);
+    if (Buffer.byteLength(bytes)!==size || createHash('sha256').update(bytes).digest('hex')!==hex) fail(code);
+    const document = json(bytes,code);
+    if (document?.schemaVersion!==2 || (document.mediaType!==undefined && document.mediaType!==mediaType)) fail(code);
+    if (isIndex) {
+      if (!Array.isArray(document.manifests) || !document.manifests.length) fail(code);
+      for (const child of document.manifests) verifyDescriptor(child,true);
+    } else {
+      if (!Array.isArray(document.layers)) fail(code);
+      const config = verifyDescriptor(document.config);
+      const layers = document.layers.map(layer=>verifyDescriptor(layer));
+      manifestPaths.push([config,...layers]);
+    }
+    if (document.subject!==undefined) verifyDescriptor(document.subject,true);
+    return blob;
   }
+  verifyDescriptor(descriptors[0],true);
+
   const named = Array.isArray(manifest) && manifest.filter(item =>
     item?.RepoTags?.some(tag=>tag===reference || tag===fullyQualified));
-  if (named?.length!==1 || !Array.isArray(named[0].Layers) ||
-      [named[0].Config,...named[0].Layers].some(blob=>!BLOB.test(blob) || !entries.includes(blob))) {
-    fail('IMAGE_ARCHIVE_UNVERIFIED');
-  }
+  if (named?.length!==1 || !Array.isArray(named[0].Layers)) fail(code);
+  const paths = [named[0].Config,...named[0].Layers];
+  if (!manifestPaths.some(blobs=>blobs.length===paths.length && blobs.every((blob,i)=>blob===paths[i]))) fail(code);
 }
 
 // Exclusive output prevents the Docker client from replacing a pre-existing file.

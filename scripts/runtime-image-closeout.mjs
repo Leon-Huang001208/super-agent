@@ -10,7 +10,7 @@ const REPOSITORY = 'super-agent-paperclip-runtime';
 const KEY = /^[0-9a-f]{64}$/;
 const ID = /^sha256:[0-9a-f]{64}$/;
 const NAME = /^[a-z0-9][a-z0-9-]{0,79}$/;
-const REF = /^(?:(?:docker\.io\/)?library\/)?super-agent-paperclip-runtime(?::[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}|@sha256:[a-f0-9]{64})$/;
+const REF = /^(?:(?:index\.)?docker\.io\/)?(?:library\/)?super-agent-paperclip-runtime(?::[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}|@sha256:[a-f0-9]{64})$/;
 const IMAGE_FIELD = /(?:^|[\n,{])\s*["']?image["']?\s*:\s*([^\n]+)/g;
 const EXTERNAL_CONFIG_FIELD = /(?:^|[\n,{])\s*["']?(?:include|extends)["']?\s*:/;
 const TAG = key => REPOSITORY + ':input-' + key;
@@ -36,10 +36,16 @@ function readFile(filename, code, secret = true) {
       const mode = before.mode & 0o777;
       if (!before.isFile() || before.nlink !== 1 || before.uid !== process.getuid() ||
           (mode & 0o022) || (secret && mode !== 0o600) || before.size > 1024 * 1024) fail(code);
-      const bytes = fs.readFileSync(fd);
-      if (bytes.length !== before.size || !statMatches(before, fs.fstatSync(fd)) ||
+      const bytes = Buffer.alloc(before.size + 1);
+      let read = 0;
+      while (read < bytes.length) {
+        const count = fs.readSync(fd, bytes, read, bytes.length - read, read);
+        if (!count) break;
+        read += count;
+      }
+      if (read !== before.size || !statMatches(before, fs.fstatSync(fd)) ||
           !statMatches(before, fs.lstatSync(filename))) fail(code);
-      return bytes;
+      return bytes.subarray(0, read);
     } finally {
       fs.closeSync(fd);
     }
@@ -98,7 +104,7 @@ function loadPlan(data, name) {
 }
 
 function canonical(ref) {
-  return typeof ref === 'string' ? ref.replace(/^(?:docker\.io\/)?library\//, '') : '';
+  return typeof ref === 'string' ? ref.replace(/^(?:(?:index\.)?docker\.io\/)?(?:library\/)?/, '') : '';
 }
 
 function refersTo(ref, row) {

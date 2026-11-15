@@ -191,15 +191,20 @@ test('actual container image IDs and stale stopped-container original tags both 
   const f = fixture(t);
   const running = f.image();
   const stopped = f.image();
-  f.plan.retire = [subject(running), subject(stopped)];
+  const legacyHubAlias = f.image();
+  const hubAlias = f.image();
+  const protectedImages = [running, stopped, legacyHubAlias, hubAlias];
+  f.plan.retire = protectedImages.map(subject);
   f.containers.push(
     { imageId: running.imageId, image: f.current.reference, project: 'super-agent-paperclip-eval', configFiles: [], state: 'running' },
     { imageId: f.current.imageId, image: stopped.reference, project: 'super-agent-paperclip-eval', configFiles: [], state: 'exited' },
+    { imageId: f.current.imageId, image: 'index.docker.io/' + legacyHubAlias.reference, project: '', configFiles: [], state: 'exited' },
+    { imageId: f.current.imageId, image: 'docker.io/' + hubAlias.reference, project: '', configFiles: [], state: 'exited' },
   );
 
   const result = f.run();
 
-  for (const image of [running, stopped]) {
+  for (const image of protectedImages) {
     assert.equal(result.images.find(item => item.imageId === image.imageId)?.decision, 'keep-protected');
     assert.equal(fs.existsSync(image.recordPath), true);
   }
