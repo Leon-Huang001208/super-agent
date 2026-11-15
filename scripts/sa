@@ -6,7 +6,7 @@ sa_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 sa_volume=/Volumes/SuperAgentDockerData
 sa_data_root=$sa_volume/paperclip-v2026.1023.0
 sa_action=${1:-status}
-case "$sa_action" in up|status|stop|test|preflight|logs|image-build|image-audit) ;; *) printf '%s\n' '{"errorCode":"ACTION_NOT_ALLOWED"}' >&2; exit 64;; esac
+case "$sa_action" in up|status|stop|test|preflight|logs|image-build|image-audit|image-closeout) ;; *) printf '%s\n' '{"errorCode":"ACTION_NOT_ALLOWED"}' >&2; exit 64;; esac
 if [ ! -d "$sa_data_root" ]; then printf '%s\n' '{"errorCode":"DEDICATED_STORAGE_NOT_MOUNTED"}' >&2; exit 1; fi
 sa_fs=$(/usr/sbin/diskutil info -plist "$sa_volume" | /usr/bin/plutil -extract FilesystemType raw -o - -)
 if [ "$sa_fs" != apfs ]; then printf '%s\n' '{"errorCode":"APFS_STORAGE_REQUIRED"}' >&2; exit 1; fi
@@ -23,6 +23,10 @@ sa_compose() {
 case "$sa_action" in
   image-build) node scripts/runtime-image.mjs build ;;
   image-audit) node scripts/runtime-image.mjs audit ;;
+  image-closeout)
+    if [ "$#" -ne 2 ]; then printf '%s\n' '{"errorCode":"IMAGE_CLOSEOUT_PLAN_REQUIRED"}' >&2; exit 64; fi
+    node scripts/runtime-image-closeout.mjs "$2"
+    ;;
   up)
     SUPER_AGENT_RUNTIME_IMAGE=$(node scripts/runtime-image.mjs resolve)
     export SUPER_AGENT_RUNTIME_IMAGE
