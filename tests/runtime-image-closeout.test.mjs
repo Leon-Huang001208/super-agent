@@ -30,14 +30,16 @@ function fixture(t) {
     const imageId = 'sha256:' + (sequence + 100).toString(16).padStart(64, '0');
     const reference = repository + ':input-' + key;
     const generated = { key, imageId, reference, recordPath: path.join(state, key + '.json') };
-    localImages.set(reference, {
+    const entry = {
       id: imageId,
       key,
       os: 'linux',
       architecture: 'arm64',
       tags: [reference],
       digests: [repository + '@' + imageId],
-    });
+    };
+    localImages.set(reference, entry);
+    localImages.set(imageId, entry);
     if (register) {
       writeJson(generated.recordPath, { schemaVersion: 1, key, reference, platform: 'linux/arm64', imageId });
     }
@@ -48,6 +50,20 @@ function fixture(t) {
     fs.writeFileSync(file, references.map((reference, index) =>
       '  app' + index + ':\n    image: ' + reference + '\n').join(''), { mode: 0o600 });
     return { kind, path: file, images: references };
+  }
+  function bindRole(role, target, { dropInput = false } = {}) {
+    const reference = repository + ':' + role;
+    const previous = localImages.get(reference);
+    const image = localImages.get(target.reference);
+    assert(image);
+    if (previous) previous.tags = previous.tags.filter(tag => tag !== reference);
+    image.tags.push(reference);
+    localImages.set(reference, image);
+    if (dropInput) {
+      image.tags = image.tags.filter(tag => tag !== target.reference);
+      localImages.delete(target.reference);
+    }
+    return reference;
   }
 
   const current = image();
@@ -97,7 +113,7 @@ function fixture(t) {
 
   return {
     data, state, planPath, plan, current, previous, startup, rollback, pass,
-    image, containers, driver, calls,
+    image, bindRole, containers, driver, calls,
     run() {
       writeJson(planPath, plan);
       return runImageCloseout({ data, name, driver, log: () => {} });
@@ -165,6 +181,92 @@ test('a passed receipt does not authorize retirement if the verified image ident
   assert.throws(() => f.run(), stableError);
   assert.deepEqual(f.calls, []);
   assert.equal(fs.existsSync(retired.recordPath), true);
+});
+
+test('a verified current image can use a role tag after dropping its input tag', t => {
+  const f = fixture(t);
+  const production = f.bindRole('production', f.current, { dropInput: true });
+  const retired = f.image();
+  f.plan.retire = [subject(retired)];
+
+  assert.equal(f.driver.inspect(f.current.reference), null);
+  assert.equal(f.run().status, 'PASS');
+  assert.deepEqual(f.calls, [['save', retired.imageId], ['remove', retired.imageId]]);
+  assert.equal(f.driver.inspect(production)?.id, f.current.imageId);
+});
+
+test('all three role tags protect their exact images without a container or explicit configuration pin', t => {
+  const f = fixture(t);
+  const assigned = ['production', 'development', 'rollback'].map(role => {
+    const image = f.image();
+    f.bindRole(role, image, { dropInput: true });
+    return image;
+  });
+  f.plan.retire = assigned.map(subject);
+
+  const result = f.run();
+
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(result.images.map(row => row.decision), assigned.map(() => 'keep-protected'));
+  assert.deepEqual(f.calls, []);
+});
+
+test('an untagged former role image is archived and removed by its registered full ID', t => {
+  const f = fixture(t);
+  const former = f.image();
+  f.bindRole('development', former, { dropInput: true });
+  f.bindRole('development', f.current);
+  f.plan.retire = [subject(former)];
+  const save = f.driver.save;
+  f.driver.save = params => {
+    assert.equal(params.reference, former.imageId);
+    return save(params);
+  };
+
+  const result = f.run();
+
+  assert.equal(result.images[0].decision, 'retired');
+  assert.deepEqual(f.calls, [['save', former.imageId], ['remove', former.imageId]]);
+  assert.equal(fs.existsSync(former.recordPath), false);
+  assert.deepEqual(f.run(), result);
+});
+
+test('a drifted input tag or foreign tag blocks the anonymous archive path', t => {
+  const f = fixture(t);
+  const drifted = f.image();
+  const foreign = f.image();
+  f.bindRole('production', drifted, { dropInput: true });
+  f.bindRole('development', foreign, { dropInput: true });
+  f.bindRole('production', f.current);
+  f.bindRole('development', f.current);
+  f.driver.inspect(foreign.imageId).tags.push('other-project:live');
+  const inspect = f.driver.inspect;
+  f.driver.inspect = ref => ref === drifted.reference ? inspect(f.current.reference) : inspect(ref);
+  f.plan.retire = [drifted, foreign].map(subject);
+
+  assert.deepEqual(f.run().images.map(row => row.decision), ['keep-unknown', 'keep-unknown']);
+  assert.deepEqual(f.calls, []);
+});
+
+test('an input tag appearing after an anonymous archive prevents removal', t => {
+  const f = fixture(t);
+  const former = f.image();
+  f.bindRole('development', former, { dropInput: true });
+  f.bindRole('development', f.current);
+  f.plan.retire = [subject(former)];
+  const save = f.driver.save;
+  const inspect = f.driver.inspect;
+  f.driver.save = params => {
+    assert.equal(params.reference, former.imageId);
+    const result = save(params);
+    const image = inspect(former.imageId);
+    image.tags.push(former.reference);
+    f.driver.inspect = ref => ref === former.reference ? image : inspect(ref);
+    return result;
+  };
+
+  assert.equal(f.run().images[0].decision, 'keep-unknown');
+  assert.deepEqual(f.calls, [['save', former.imageId]]);
 });
 
 test('current, previous verified, startup and rollback image pins all survive an explicit retirement list', t => {
@@ -330,6 +432,26 @@ test('a new container image reference after the archive is saved stops retiremen
   assert.deepEqual(f.calls, [['save', retired.imageId]]);
   assert.equal(fs.existsSync(retired.recordPath), true);
   assert.equal(fs.existsSync(path.join(f.state, 'build.lock')), false);
+});
+
+test('repointing the rollback role during archive stops the pending retirement', t => {
+  const f = fixture(t);
+  const retired = f.image();
+  f.plan.retire = [subject(retired)];
+  const rollback = f.bindRole('rollback', f.previous);
+  const save = f.driver.save;
+  f.driver.save = params => {
+    const result = save(params);
+    f.bindRole('rollback', retired);
+    return result;
+  };
+
+  const result = f.run();
+
+  assert.equal(result.images.find(row => row.imageId === retired.imageId)?.decision, 'keep-protected');
+  assert.equal(f.driver.inspect(rollback)?.id, retired.imageId);
+  assert.deepEqual(f.calls, [['save', retired.imageId]]);
+  assert.equal(fs.existsSync(retired.recordPath), true);
 });
 
 test('uncertain removal preserves the original registry entry, archive and build lock', t => {
