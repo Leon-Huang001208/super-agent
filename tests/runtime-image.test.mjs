@@ -46,6 +46,36 @@ test('same approved build inputs reuse the exact image across tasks', t => {
   assert.equal(f.run('audit').images[0].retirement, 'REVIEW_REQUIRED');
 });
 
+test('a registered image still resolves after its temporary tag is replaced by a matching role', t => {
+  const f = fixture(t);
+  const { reference } = inputSnapshot(f.root);
+  const accepted = f.run('build');
+  const image = f.images.get(reference);
+  f.images.set('super-agent-paperclip-runtime:production', image);
+  f.images.set('super-agent-paperclip-runtime:development', image);
+  f.images.delete(reference);
+  assert.equal(f.run('resolve').imageId, accepted.imageId);
+  assert.equal(f.run('build').decision, 'reused');
+  assert.equal(f.run('audit').images[0].retirement, 'KEEP_ROLE');
+  assert.equal(f.builds(), 1);
+});
+
+test('a role alias cannot hide drift or substitute a different recorded image', t => {
+  const f = fixture(t);
+  const { reference, key } = inputSnapshot(f.root);
+  f.run('build');
+  const image = f.images.get(reference);
+  const moved = { id: 'sha256:' + 'd'.repeat(64), os: 'linux', architecture: 'arm64', key };
+  const role = 'super-agent-paperclip-runtime:production';
+  f.images.set(role, image);
+  f.images.set(reference, moved);
+  assert.throws(() => f.run('resolve'), /RUNTIME_IMAGE_IDENTITY_MISMATCH/);
+  f.images.delete(reference);
+  f.images.set(role, moved);
+  assert.throws(() => f.run('build'), /RUNTIME_IMAGE_IDENTITY_MISMATCH/);
+  assert.equal(f.builds(), 1);
+});
+
 test('runtime source and executable mode changes alter the key', t => {
   const f = fixture(t);
   const initial = inputSnapshot(f.root).key;

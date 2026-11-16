@@ -13,7 +13,7 @@ const manifestType = 'application/vnd.oci.image.manifest.v1+json';
 const sha256 = bytes=>createHash('sha256').update(bytes).digest('hex');
 const blobPath = descriptor=>'blobs/sha256/'+descriptor.digest.slice(7);
 
-test('archive validation rejects corruption in reachable layer and attestation blobs', t => {
+test('named and anonymous archives bind the exact image and validate all reachable blobs', t => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(),'sa-closeout-archive-'));
   const input = path.join(tmp,'source.tar');
   t.after(()=>fs.rmSync(tmp,{recursive:true,force:true}));
@@ -56,4 +56,21 @@ test('archive validation rejects corruption in reachable layer and attestation b
     assert.throws(()=>verifyArchive(input,reference,imageIndex.digest),{message:'IMAGE_ARCHIVE_UNVERIFIED'});
     fs.writeFileSync(file,original);
   }
+
+  fs.writeFileSync(path.join(content,'index.json'),JSON.stringify({schemaVersion:2,manifests:[imageIndex]}));
+  fs.writeFileSync(path.join(content,'manifest.json'),JSON.stringify([
+    {Config:blobPath(config),Layers:[blobPath(layer)],RepoTags:null}
+  ]));
+  pack();
+  assert.doesNotThrow(()=>verifyArchive(input,imageIndex.digest,imageIndex.digest));
+  assert.throws(()=>verifyArchive(input,image.digest,image.digest),{message:'IMAGE_ARCHIVE_UNVERIFIED'});
+  fs.writeFileSync(path.join(content,blobPath(layer)),Buffer.alloc(layer.size,0));
+  pack();
+  assert.throws(()=>verifyArchive(input,imageIndex.digest,imageIndex.digest),{message:'IMAGE_ARCHIVE_UNVERIFIED'});
+  fs.writeFileSync(path.join(content,blobPath(layer)),'example layer bytes');
+  fs.writeFileSync(path.join(content,'manifest.json'),JSON.stringify([
+    {Config:blobPath(config),Layers:[blobPath(layer)],RepoTags:['other-project:live']}
+  ]));
+  pack();
+  assert.throws(()=>verifyArchive(input,imageIndex.digest,imageIndex.digest),{message:'IMAGE_ARCHIVE_UNVERIFIED'});
 });

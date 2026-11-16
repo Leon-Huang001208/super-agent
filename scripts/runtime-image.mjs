@@ -52,6 +52,9 @@ const KEY = /^[0-9a-f]{64}$/;
 const LABEL = 'io.super-agent.build-input-sha256';
 const fail = code => { throw new Error(code); };
 const same = (a,b) => ['dev','ino','size','mode','mtimeMs','ctimeMs'].every(k => a[k]===b[k]);
+export const RUNTIME_ROLE_REFERENCES = Object.freeze(
+  ['production', 'development', 'rollback'].map(role => 'super-agent-paperclip-runtime:' + role)
+);
 
 export function inputSnapshot(root) {
   const bin = path.join(root, 'docker/bin');
@@ -163,17 +166,30 @@ export function imageMatches(image, key) {
   return image && ID.test(image.id) && image.os==='linux' && image.architecture==='arm64' && image.key===key;
 }
 
+export function findRegisteredRuntimeImage(driver, record) {
+  const matches = image => imageMatches(image, record.key) && image.id === record.imageId;
+  const original = driver.inspect(record.reference);
+  // A moved original tag is a conflict, not a reason to fall back to a role.
+  if (original) return matches(original) ? original : null;
+  for (const role of RUNTIME_ROLE_REFERENCES) {
+    const image = driver.inspect(role);
+    if (matches(image)) return image;
+  }
+  return null;
+}
+
 export function runImageAction({root,state,action,driver=dockerDriver,capacity,log}) {
   if (!['build','resolve','audit'].includes(action)) fail('IMAGE_ACTION_INVALID');
   if (action==='audit') {
     if (!checkState(state,false)) return {images:[],unknownImagesProtected:true};
     const references=driver.references();
+    const roles=new Set(RUNTIME_ROLE_REFERENCES.map(ref => driver.inspect(ref)?.id).filter(Boolean));
     return {images:fs.readdirSync(state).filter(n=>/^[a-f0-9]{64}\.json$/.test(n)).sort().map(name=>{
       const key=name.slice(0,-5),reference='super-agent-paperclip-runtime:input-'+key;
       const record=readRecord(path.join(state,name),key,reference);
-      const image=driver.inspect(reference),count=references.get(record.imageId)??0;
+      const image=findRegisteredRuntimeImage(driver,record),count=references.get(record.imageId)??0;
       return {key,imageId:record.imageId,containers:count,retirement:count?'KEEP_REFERENCED':
-        imageMatches(image,key)&&image.id===record.imageId?'REVIEW_REQUIRED':'KEEP_UNKNOWN'};
+        roles.has(record.imageId)?'KEEP_ROLE':image?'REVIEW_REQUIRED':'KEEP_UNKNOWN'};
     }),unknownImagesProtected:true};
   }
   const input=inputSnapshot(root),{key,reference,base}=input;
@@ -181,8 +197,8 @@ export function runImageAction({root,state,action,driver=dockerDriver,capacity,l
   const lookup=()=>{
     try { fs.lstatSync(filename); }
     catch(e) { if (e.code==='ENOENT') return null; throw e; }
-    const r=readRecord(filename,key,reference),i=driver.inspect(reference);
-    if (!imageMatches(i,key) || i.id!==r.imageId) fail('RUNTIME_IMAGE_IDENTITY_MISMATCH');
+    const r=readRecord(filename,key,reference),i=findRegisteredRuntimeImage(driver,r);
+    if (!i) fail('RUNTIME_IMAGE_IDENTITY_MISMATCH');
     return {imageId:r.imageId,key,decision:'reused'};
   };
   const exists=checkState(state,action==='build');
