@@ -3,7 +3,7 @@
 | 子系统 | 本仓库入口 | 维护与验证 |
 |---|---|---|
 | 容器与存储 | `compose.yaml`、`docker/Dockerfile.runtime`、`scripts/sa` | 专用 APFS、只读根、固定镜像、日志和缺盘拒绝；Docker 回归 |
-| 镜像复用与退役 | `scripts/runtime-image.mjs`、`scripts/runtime-image-closeout.mjs`、`scripts/runtime-image-closeout-docker.mjs` | `image-build` 按内容指纹复用，`image-audit` 只读清点；`image-closeout` 核对真实验收回执、容器和启动及回滚配置，只逐张退役已确认的镜像。离线验证见 `tests/runtime-image.test.mjs` 和 `tests/runtime-image-closeout.test.mjs`。 |
+| 镜像复用与退役 | `scripts/runtime-image.mjs`、`scripts/runtime-image-closeout.mjs`、`scripts/runtime-image-closeout-docker.mjs` | `image-build` 按完整 ID、内容指纹和用途标签复用，`image-audit` 只读清点。`image-closeout` 保护被容器、启动配置和用途标签引用的镜像，允许按 ID 核对退役的无标签登记项。离线夹具覆盖标签移除、漂移、轮换和归档验证，见 `tests/runtime-image.test.mjs`、`tests/runtime-image-closeout.test.mjs`、`tests/runtime-image-closeout-docker.test.mjs`。 |
 | 依赖与候选 | `docker/package*.json`、`evaluation/candidate.json` | 固定版本与完整性；候选校验不等于安装或业务验收 |
 | 订阅 hello | `docker/bin/codex`、`docker/codex-hello-gate.mjs` | 单次许可、只读、无回退、进程终止与审计；不能充当业务执行器 |
 | 网关与初始化 | `docker/gateway.mjs`、`docker/bootstrap*.mjs`、`docker/server-entry.mjs` | 精确 Origin、秘密不回显、启动校验及错误传播 |

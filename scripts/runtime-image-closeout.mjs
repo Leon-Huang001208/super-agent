@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { checkState, imageMatches, readRecordSnapshot } from './runtime-image.mjs';
+import { checkState, findRegisteredRuntimeImage, imageMatches, readRecordSnapshot, RUNTIME_ROLE_REFERENCES } from './runtime-image.mjs';
 import { dockerCloseoutDriver } from './runtime-image-closeout-docker.mjs';
 
 const REPOSITORY = 'super-agent-paperclip-runtime';
@@ -117,6 +117,12 @@ function snapshotProtection(closeout, driver) {
   const { plan, configurations } = closeout;
   const files = new Set(configurations.keys());
   const refs = new Set([plan.current.imageId, TAG(plan.current.key), plan.previousImageId]);
+  for (const reference of RUNTIME_ROLE_REFERENCES) {
+    const image = driver.inspect(reference);
+    if (!image) continue;
+    if (!ID.test(image.id ?? '')) fail('IMAGE_CLOSEOUT_ROLE_UNVERIFIED');
+    refs.add(image.id);
+  }
   for (const row of driver.observe()) {
     refs.add(row.imageId);
     refs.add(row.image);
@@ -175,10 +181,17 @@ function observeRecord(state, row) {
   return { filename, bytes, hash: digest(bytes), reference };
 }
 
-function exactImage(image, row) {
-  return imageMatches(image, row.key) && image.id === row.imageId &&
-    Array.isArray(image.tags) && image.tags.length === 1 && canonical(image.tags[0]) === TAG(row.key) &&
-    Array.isArray(image.digests) && image.digests.every(ref => canonical(ref) === REPOSITORY + '@' + row.imageId);
+function archiveReference(driver, enrolled, row) {
+  const original = driver.inspect(enrolled.reference);
+  // A present but changed input reference is drift, even if the recorded ID still exists.
+  const image = original ?? driver.inspect(row.imageId);
+  if (!imageMatches(image, row.key) || image.id !== row.imageId ||
+      !Array.isArray(image.tags) || !Array.isArray(image.digests) ||
+      !image.digests.every(ref => canonical(ref) === REPOSITORY + '@' + row.imageId)) return null;
+  if (original) {
+    return image.tags.length === 1 && canonical(image.tags[0]) === enrolled.reference ? enrolled.reference : null;
+  }
+  return image.tags.length === 0 ? row.imageId : null;
 }
 
 function protects(refs, row) {
@@ -187,8 +200,9 @@ function protects(refs, row) {
 
 function verifyCurrent(state, row, driver) {
   const current = observeRecord(state, row);
-  const image = current && driver.inspect(current.reference);
-  if (!imageMatches(image, row.key) || image.id !== row.imageId) fail('IMAGE_CLOSEOUT_CURRENT_UNVERIFIED');
+  if (!current || !findRegisteredRuntimeImage(driver, { ...row, reference: current.reference })) {
+    fail('IMAGE_CLOSEOUT_CURRENT_UNVERIFIED');
+  }
 }
 
 function syncDirectory(directory) {
@@ -269,7 +283,8 @@ export function runImageCloseout({ data, name, driver = dockerCloseoutDriver, lo
         record(row, !enrolled && alreadyRetired(priorArchive, row, driver) ? 'retired' : 'keep-unknown');
         continue;
       }
-      if (!enrolled || !exactImage(driver.inspect(enrolled.reference), row)) {
+      const saveReference = enrolled && archiveReference(driver, enrolled, row);
+      if (!saveReference) {
         record(row, 'keep-unknown');
         continue;
       }
@@ -278,10 +293,10 @@ export function runImageCloseout({ data, name, driver = dockerCloseoutDriver, lo
       fs.mkdirSync(candidate, { mode: 0o700 });
       syncDirectory(archive);
       const archiveFile = path.join(candidate, 'image.tar');
-      const archiveHash = driver.save({ target: archiveFile, reference: enrolled.reference, imageId: row.imageId });
+      const archiveHash = driver.save({ target: archiveFile, reference: saveReference, imageId: row.imageId });
       if (typeof archiveHash !== 'string' || !KEY.test(archiveHash)) fail('IMAGE_ARCHIVE_UNVERIFIED');
       writeEvidence(path.join(candidate, 'record.json'), enrolled.bytes);
-      const evidence = { ...row, reference: enrolled.reference, archiveHash, recordHash: enrolled.hash,
+      const evidence = { ...row, reference: enrolled.reference, archiveReference: saveReference, archiveHash, recordHash: enrolled.hash,
         planHash: closeout.planHash, verificationHash: closeout.verificationHash,
         configurations: Array.from(protection.snapshots, ([file, sha256]) => ({ file, sha256 })) };
       writeJson(path.join(candidate, 'archive.json'), evidence);
@@ -292,8 +307,7 @@ export function runImageCloseout({ data, name, driver = dockerCloseoutDriver, lo
         continue;
       }
       const observed = observeRecord(state, row);
-      if (!observed || observed.hash !== enrolled.hash ||
-          !exactImage(driver.inspect(enrolled.reference), row)) {
+      if (!observed || observed.hash !== enrolled.hash || archiveReference(driver, observed, row) !== saveReference) {
         writeJson(path.join(candidate, 'result.json'), { decision: 'keep-unknown' });
         record(row, 'keep-unknown');
         continue;

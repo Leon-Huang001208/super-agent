@@ -117,10 +117,14 @@ export function verifyArchive(target, reference, imageId) {
   const read = name => archive(['-xOf',target,name]);
   const index = json(read('index.json'),code);
   const manifest = json(read('manifest.json'),code);
+  if (index?.schemaVersion!==2 || !Array.isArray(index.manifests) || !Array.isArray(manifest)) fail(code);
+  const anonymous = reference===imageId && ID.test(imageId);
   const fullyQualified = 'docker.io/library/'+reference;
-  const descriptors = index?.manifests?.filter(item =>
+  const descriptors = anonymous ? index.manifests : index.manifests.filter(item =>
     [reference,fullyQualified].includes(item?.annotations?.['io.containerd.image.name']));
-  if (index?.schemaVersion!==2 || descriptors?.length!==1 || descriptors[0].digest!==imageId) fail(code);
+  if (descriptors.length!==1 || descriptors[0]?.digest!==imageId ||
+      (anonymous && (descriptors[0].annotations?.['io.containerd.image.name'] != null ||
+        descriptors[0].annotations?.['org.opencontainers.image.ref.name'] != null))) fail(code);
 
   const visited = new Map();
   const manifestPaths = [];
@@ -169,16 +173,18 @@ export function verifyArchive(target, reference, imageId) {
   }
   verifyDescriptor(descriptors[0],true);
 
-  const named = Array.isArray(manifest) && manifest.filter(item =>
-    item?.RepoTags?.some(tag=>tag===reference || tag===fullyQualified));
-  if (named?.length!==1 || !Array.isArray(named[0].Layers)) fail(code);
-  const paths = [named[0].Config,...named[0].Layers];
+  const matching = anonymous ? manifest : manifest.filter(item =>
+    Array.isArray(item?.RepoTags) && item.RepoTags.some(tag=>tag===reference || tag===fullyQualified));
+  if (matching.length!==1 || !Array.isArray(matching[0]?.Layers) ||
+      (anonymous && matching[0].RepoTags != null &&
+        (!Array.isArray(matching[0].RepoTags) || matching[0].RepoTags.length!==0))) fail(code);
+  const paths = [matching[0].Config,...matching[0].Layers];
   if (!manifestPaths.some(blobs=>blobs.length===paths.length && blobs.every((blob,i)=>blob===paths[i]))) fail(code);
 }
 
 // Exclusive output prevents the Docker client from replacing a pre-existing file.
 function save({target,reference,imageId}) {
-  if (!RUNTIME_REF.test(reference) || !ID.test(imageId)) fail('IMAGE_ARCHIVE_ID_INVALID');
+  if (!ID.test(imageId) || (reference!==imageId && !RUNTIME_REF.test(reference))) fail('IMAGE_ARCHIVE_ID_INVALID');
   let fd;
   try {
     fd = fs.openSync(target,fs.constants.O_RDWR|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
