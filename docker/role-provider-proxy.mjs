@@ -6,7 +6,7 @@ import dns from 'node:dns/promises';
 const configRoot=process.env.SUPER_AGENT_ROLE_PROXY_ROOT??'/proxy';
 const auditRoot=process.env.SUPER_AGENT_ROLE_PROXY_AUDIT??'/audit';
 const config=JSON.parse(fs.readFileSync(configRoot+'/config.json','utf8'));
-const auth=JSON.parse(fs.readFileSync(configRoot+'/auth.json','utf8'));
+const auth=JSON.parse(fs.readFileSync(process.env.SUPER_AGENT_ROLE_PROXY_AUTH_FILE??configRoot+'/auth.json','utf8'));
 const fail=(res,status,code)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:code,type:'role_scope'}}));};
 const audit=event=>fs.appendFileSync(auditRoot+'/provider.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});
 const claims=JSON.parse(Buffer.from(auth.tokens.id_token.split('.')[1],'base64url').toString());

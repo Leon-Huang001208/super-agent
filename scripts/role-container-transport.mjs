@@ -43,7 +43,7 @@ try{
   const prior=JSON.parse(read(dir+'/host.claim.json'));
   if(prior.runId!==runId||prior.image!==IMAGE||prior.name!==name||fs.existsSync(dir+'/stdout')||
      exec(['ps','-a','--filter','name=^/sa-role-provider-'+runId+'$','--format','{{.ID}}']).trim())fail('ROLE_CONTAINER_SETUP_RESUME_DENIED');
-  durable(dir+'/setup-resume.json',{runId,code:'DOCKER_DEFAULT_ADDRESS_POOL_EXHAUSTED',at:new Date().toISOString()});
+  durable(dir+'/setup-resume.json',{runId,code:'PROVIDER_CONTAINER_NOT_CREATED',at:new Date().toISOString()});
  }else durable(dir+'/host.claim.json',{runId,name,image:IMAGE,at:new Date().toISOString(),network:'isolated-with-scoped-provider'});
  const client=dir+'/client',proxy=dir+'/proxy',audit=dir+'/proxy-audit';
  for(const p of [client,proxy,audit])if(!fs.existsSync(p))fs.mkdirSync(p,{mode:0o700});
@@ -61,20 +61,25 @@ try{
  // Avoid a hard-coded models refresh sending the opaque token directly upstream.
  const catalog=JSON.parse(exec(['exec','super-agent-paperclip-eval-paperclip-1','/opt/paperclip/node_modules/.bin/codex','debug','models','--bundled']));
  if(!Array.isArray(catalog.models)||!catalog.models.length)fail('ROLE_CONTAINER_CATALOG_DENIED');
- durable(client+'/models.json',catalog);
+ if(!resumeSetup)durable(client+'/models.json',catalog);
+ else if(sha(read(client+'/models.json'))!==sha(Buffer.from(JSON.stringify(catalog)+'\n')))fail('ROLE_CONTAINER_CATALOG_CHANGED');
  const containerProxy='/paperclip/control/research-pm/transport/'+runId+'/proxy';
- exec(['exec','super-agent-paperclip-eval-paperclip-1','openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1',
+ if(!resumeSetup)exec(['exec','super-agent-paperclip-eval-paperclip-1','openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1',
   '-keyout',containerProxy+'/tls.key','-out',containerProxy+'/tls.crt','-subj','/CN=provider','-addext','subjectAltName=DNS:provider']);
  fs.chmodSync(proxy+'/tls.key',0o600);fs.chmodSync(proxy+'/tls.crt',0o600);
- fs.writeFileSync(client+'/trust.pem',exec(['exec','super-agent-paperclip-eval-paperclip-1','cat','/etc/ssl/certs/ca-certificates.crt'])+read(proxy+'/tls.crt'),{mode:0o600,flag:'wx'});
+ if(!resumeSetup)fs.writeFileSync(client+'/trust.pem',exec(['exec','super-agent-paperclip-eval-paperclip-1','cat','/etc/ssl/certs/ca-certificates.crt'])+read(proxy+'/tls.crt'),{mode:0o600,flag:'wx'});
  network='sa-role-net-'+runId;broker='sa-role-provider-'+runId;
- exec(['network','create','--internal','--subnet','10.203.240.0/28','--label','io.super-agent.task=sa-research-pm-m1-20261119',network]);
+ if(resumeSetup){
+  const found=JSON.parse(exec(['network','ls','--filter','name=^'+network+'$','--format','json']).trim()||'null');
+  if(found){const n=JSON.parse(exec(['network','inspect',network]))[0];if(n.Name!==network||!n.Internal||Object.keys(n.Containers??{}).length||n.Labels?.['io.super-agent.task']!=='sa-research-pm-m1-20261119'||n.IPAM.Config?.[0]?.Subnet!=='10.203.240.0/28')fail('ROLE_CONTAINER_NETWORK_CHANGED');}
+  else exec(['network','create','--internal','--subnet','10.203.240.0/28','--label','io.super-agent.task=sa-research-pm-m1-20261119',network]);
+ }else exec(['network','create','--internal','--subnet','10.203.240.0/28','--label','io.super-agent.task=sa-research-pm-m1-20261119',network]);
  const base=['--pull','never','--platform','linux/arm64','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',
   '--log-driver','json-file','--log-opt','max-size=2m','--log-opt','max-file=1','--label','io.super-agent.task=sa-research-pm-m1-20261119'];
  const source=fileURLToPath(new URL('../docker/role-provider-proxy.mjs',import.meta.url));
  const provider=['run','-d','--rm','--name',broker,...base,'--network','bridge','--pids-limit','64','--memory','256m','--tmpfs','/tmp:size=16m',
   '--mount','type=bind,source='+proxy+',target=/proxy,readonly',
-  '--mount','type=bind,source='+dir+'/provider/auth.json,target=/proxy/auth.json,readonly',
+  '--mount','type=bind,source='+dir+'/provider/auth.json,target=/provider-auth.json,readonly','--env','SUPER_AGENT_ROLE_PROXY_AUTH_FILE=/provider-auth.json',
   '--mount','type=bind,source='+audit+',target=/audit','--mount','type=bind,source='+source+',target=/proxy.mjs,readonly',
   '--env','NODE_USE_ENV_PROXY=1'];
  for(const e of app.Config.Env??[])if(/^(HTTP_PROXY|HTTPS_PROXY|NO_PROXY)=/.test(e)){
