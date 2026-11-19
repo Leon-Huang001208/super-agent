@@ -75,10 +75,10 @@ export async function installNativeRoles() {
           dispatchMode:'controlled',model:ctx.config.model,reasoningEffort:ctx.config.modelReasoningEffort};
       };
       const prepareRole=createRolePreparation({readContext,readKnowledge:async()=>json(ROOT+'/knowledge.json').records,log});
-      let nativeEntered=false;
+      let nativeEntered=false,gateStderr='';
       const knownUnstarted=result=>{
         if(result?.signal||result?.timedOut||result?.exitCode===0||fs.existsSync(ROOT+'/claims/'+ctx.runId+'.json'))return false;
-        return String(result?.resultJson?.stderr??'').split('\n').some(line=>{
+        return String(gateStderr||result?.stderr||result?.resultJson?.stderr||'').split('\n').some(line=>{
           try{const e=JSON.parse(line);return /^ROLE_GATE_[A-Z_]+$/.test(e.code??'')&&e.claimed===false;}catch{return false;}
         });
       };
@@ -101,7 +101,10 @@ export async function installNativeRoles() {
             instructionsFilePath:file,materialSha256:required.sha256});
           const operation=registered(ctx.agent.id).registry.operations.find(x=>x.kind==='run'&&x.role===r.profile.role&&x.id===ctx.context.roleOperationId&&x.taskId===r.binding.taskId&&x.agentId===r.binding.agentId);
           return withRoleCall({registry:registered(ctx.agent.id).registry,operation,log,
-            perform:async()=>{nativeEntered=true;const result=await original.execute(checked);
+            perform:async()=>{nativeEntered=true;const result=await original.execute({...checked,onLog:async(stream,chunk)=>{
+                if(stream==='stderr'&&gateStderr.length<8192)gateStderr+=String(chunk).slice(0,8192-gateStderr.length);
+                return checked.onLog(stream,chunk);
+              }});
               if(knownUnstarted(result))return {...result,resultJson:{...result.resultJson,executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
               return result;
             },

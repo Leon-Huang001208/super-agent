@@ -13,6 +13,10 @@ test('role gate rejects expanded tools, old sessions, API fallback and mismatche
     CODEX_HOME:'/tmp/paperclip-ai-'+id+'-'+id+'-abcdef/provider'};
   const input={permit,args,env,cwd:permit.cwd,now:100000};
   assert.equal(validateRoleCall(input),permit);
+  const prefix=['-c','features.shell_snapshot=false','-c','shell_environment_policy.inherit="all"','-c',
+    'shell_environment_policy.ignore_default_excludes=true','-c','shell_environment_policy.include_only=["PATH","HOME"]'];
+  assert.equal(validateRoleCall({...input,args:[...prefix,...args]}),permit);
+  assert.throws(()=>validateRoleCall({...input,args:[...prefix.slice(0,7),'shell_environment_policy.include_only=["INVALID=VALUE"]',...args]}),/ARGUMENTS_DENIED/);
   assert.throws(()=>validateRoleCall({...input,env:{...env,CODEX_HOME:env.CODEX_HOME.replace('paperclip-ai-','paperclip-ai-foreign-')}}),/SCOPE_DENIED/);
   for(const badArgs of [[...args,'resume',id],args.filter(x=>x!=='workspace-write'),[...args,'--dangerously-bypass-approvals-and-sandbox']]){
     assert.throws(()=>validateRoleCall({...input,args:badArgs}),/ARGUMENTS_DENIED/);

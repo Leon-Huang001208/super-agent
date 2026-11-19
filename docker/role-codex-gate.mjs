@@ -25,6 +25,17 @@ function readPrivate(filename) {
   } finally { fs.closeSync(fd); }
 }
 
+export function normalizeNativeRoleArgs(args) {
+  if (args[0] !== '-c' || args[1] !== 'features.shell_snapshot=false') return args;
+  const fixed = ['-c','features.shell_snapshot=false','-c','shell_environment_policy.inherit="all"',
+    '-c','shell_environment_policy.ignore_default_excludes=true','-c'];
+  if (!fixed.every((value,i) => args[i] === value) || !args[7]?.startsWith('shell_environment_policy.include_only=')) fail('ROLE_GATE_ARGUMENTS_DENIED');
+  let keys;
+  try { keys = JSON.parse(args[7].slice('shell_environment_policy.include_only='.length)); } catch { fail('ROLE_GATE_ARGUMENTS_DENIED'); }
+  if (!Array.isArray(keys) || keys.length > 256 || keys.some(key => typeof key !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))) fail('ROLE_GATE_ARGUMENTS_DENIED');
+  return args.slice(8);
+}
+
 export function validateRoleCall({ permit, args, env, cwd, now }) {
   if (!permit || permit.schemaVersion !== 1 || !['research', 'pm'].includes(permit.role) ||
       !['runId','taskId','agentId','companyId','projectId','credentialGrantId'].every(k => uuid.test(permit[k] ?? '')) ||
@@ -38,6 +49,7 @@ export function validateRoleCall({ permit, args, env, cwd, now }) {
       env.PAPERCLIP_RUN_ID !== permit.runId || env.PAPERCLIP_AGENT_ID !== permit.agentId ||
       env.PAPERCLIP_COMPANY_ID !== permit.companyId || env.PAPERCLIP_TASK_ID !== permit.taskId ||
       !new RegExp('^/tmp/paperclip-ai-'+permit.companyId+'-'+permit.credentialGrantId+'-[A-Za-z0-9]+/provider$').test(env.CODEX_HOME ?? '')) fail('ROLE_GATE_SCOPE_DENIED');
+  args = normalizeNativeRoleArgs(args);
   const base = ['exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"',...NATIVE_ROLE_MANAGED_ARGS,'-'];
   const allowed = [base, [...base.slice(0,2),'--skip-git-repo-check',...base.slice(2)]]
     .map(value => ['--search', ...value]);

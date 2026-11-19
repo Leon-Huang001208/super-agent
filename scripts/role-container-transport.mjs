@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {spawn,spawnSync} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
 import {NATIVE_ROLE_EXTRA_ARGS} from '../bridge/native-role-adapter.mjs';
-import {validateRoleCall} from '../docker/role-codex-gate.mjs';
+import {validateRoleCall,normalizeNativeRoleArgs} from '../docker/role-codex-gate.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0',ROOT=DATA+'/state/control/research-pm';
 const IMAGE='sha256:ce66c5354e5efdd7279953134cba2a43c16b54e618a9e15ca6eb83e6bcae0c6c';
 const runId=process.argv[2],sha=x=>createHash('sha256').update(x).digest('hex'),docker='/usr/local/bin/docker';
@@ -73,7 +73,7 @@ try{
   '--env','HTTP_PROXY=http://provider:8090','--env','HTTPS_PROXY=http://provider:8090','--env','NO_PROXY=provider'];
  if(seccomp){const file=dir+'/seccomp.json';fs.writeFileSync(file,seccomp.slice(8),{mode:0o600,flag:'wx'});args.push('--security-opt','seccomp='+file);}
  args.push('--entrypoint','/usr/bin/timeout',IMAGE,'--signal=TERM','--kill-after=4s','600','/opt/paperclip/node_modules/.bin/codex',
-  ...request.args.slice(0,-1),'--skip-git-repo-check',...NATIVE_ROLE_EXTRA_ARGS.slice(2),'-c','chatgpt_base_url="http://provider:8090/backend-api"','-');
+  ...normalizeNativeRoleArgs(request.args).slice(0,-1),'--skip-git-repo-check',...NATIVE_ROLE_EXTRA_ARGS.slice(2),'-c','chatgpt_base_url="http://provider:8090/backend-api"','-');
  if(fs.existsSync(dir+'/cancel.json'))fail('ROLE_CONTAINER_CANCELLED_BEFORE_START');
  input=fs.openSync(dir+'/stdin','r');stream=fs.openSync(dir+'/stdout','wx',0o600);err=fs.openSync(dir+'/stderr','wx',0o600);
  let cancelled=false,stopping=false;
