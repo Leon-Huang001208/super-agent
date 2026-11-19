@@ -31,3 +31,7 @@ PM Skill 的跨设备参考包须先核对声明的 ZIP SHA、六成员白名单
 离线 Role preparation 端口核对 task/agent/project/run/owner/inputRevision、前后 Native revision、固定订阅配置、必需材料及角色知识。它只输出待审核准备结果，dispatch 与 toolVerification 明确为 NOT_RUN。现行原生执行器尚未接入此端口，待完整运行包核实后完成装配和真实工具范围验证。
 
 日常数据库的未完任务属于 Chief process Agent，company 为 d79278a0-288f-4ae8-96e9-e39e16ef45d8，project_id 为空，任务更新于 2026-11-09。模型运行表为空，原任务仍 in_review。角色准备端口要求 Native 权威读口确认 projectKey/role 并复制第一次读取的快照，防止缓存原地更新掩盖版本漂移。
+
+2026-11-19 原挂载由本人通过 Finder 成功恢复，APFS UUID 0A71984A-FF62-4B30-8E23-D91478C246F8。评估db及app按原ID恢复，所有执行/调度开关false。评估69条run均终态，但manual in_review与active旧恢复动作仍需保全，不把无running视为业务完成。飞书覆盖层121+1文件摘要全部通过。PM ZIP的15960字节、声明SHA和六成员已核对，落在本任务assets下，尚未实际加载。用户另授权迁移窗口独占运行环境，本窗口已交接并暂停运行写入。
+
+新增 native-role-adapter 为原生 codex_local execute 的预检包装候选，保留原ctx、身份及回调，禁止直接CLI替换、API回退和resume旧session。现行应用尚未导入该包装；需迁移窗口释放后，在受控配置中完成原生注册表与prepareRole装配及真实工具核验。新增合同测试在迁移期间暂未执行。
