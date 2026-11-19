@@ -8,7 +8,10 @@ export async function settleNativeRole({binding,result,transaction,log}) {
  const digest=createHash('sha256').update(result.summary).digest('hex');
  await transaction(async port=>{
   const {task,run}=await port.lock(binding);
-  if(task.id!==binding.taskId||task.companyId!==binding.companyId||task.projectId!==binding.projectId||
+  if(!task||!run||!['todo','in_progress'].includes(task.status)||
+    ![task.executionRunId,task.checkoutRunId].includes(binding.runId)||
+    [task.executionRunId,task.checkoutRunId].some(id=>id&&id!==binding.runId)||
+    task.id!==binding.taskId||task.companyId!==binding.companyId||task.projectId!==binding.projectId||
     task.responsibleUserId!==binding.ownerId||task.assigneeAgentId!==binding.agentId||
     createHash('sha256').update(task.description??'').digest('hex')!==binding.inputRevision||
     run.id!==binding.runId||run.agentId!==binding.agentId||run.status!=='running')fail('NATIVE_ROLE_SETTLEMENT_CHANGED');

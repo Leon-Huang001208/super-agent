@@ -112,8 +112,8 @@ export async function installNativeRoles() {
                 return db.transaction(async tx=>{
                   const issues=(await import(PKG+'/@paperclipai/server/dist/services/issues.js')).issueService(tx);
                   return fn({lock:async()=>{
+                    const [run]=await tx.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,r.binding.runId)).for('update');
                     const [task]=await tx.select().from(s.issues).where(o.eq(s.issues.id,r.binding.taskId)).for('update');
-                    const [run]=await tx.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,r.binding.runId));
                     return {task,run};
                   },addCompletion:(id,body,actor)=>issues.addComment(id,body,actor,{completionReply:true}),handBack:(id,patch)=>issues.update(id,patch)});
                 });
