@@ -62,13 +62,18 @@ try{
  const catalog=JSON.parse(exec(['exec','super-agent-paperclip-eval-paperclip-1','/opt/paperclip/node_modules/.bin/codex','debug','models','--bundled']));
  if(!Array.isArray(catalog.models)||!catalog.models.length)fail('ROLE_CONTAINER_CATALOG_DENIED');
  durable(client+'/models.json',catalog);
+ const containerProxy='/paperclip/control/research-pm/transport/'+runId+'/proxy';
+ exec(['exec','super-agent-paperclip-eval-paperclip-1','openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1',
+  '-keyout',containerProxy+'/tls.key','-out',containerProxy+'/tls.crt','-subj','/CN=provider','-addext','subjectAltName=DNS:provider']);
+ fs.chmodSync(proxy+'/tls.key',0o600);fs.chmodSync(proxy+'/tls.crt',0o600);
+ fs.writeFileSync(client+'/trust.pem',exec(['exec','super-agent-paperclip-eval-paperclip-1','cat','/etc/ssl/certs/ca-certificates.crt'])+read(proxy+'/tls.crt'),{mode:0o600,flag:'wx'});
  network='sa-role-net-'+runId;broker='sa-role-provider-'+runId;
  exec(['network','create','--internal','--subnet','10.203.240.0/28','--label','io.super-agent.task=sa-research-pm-m1-20261119',network]);
  const base=['--pull','never','--platform','linux/arm64','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',
   '--log-driver','json-file','--log-opt','max-size=2m','--log-opt','max-file=1','--label','io.super-agent.task=sa-research-pm-m1-20261119'];
  const source=fileURLToPath(new URL('../docker/role-provider-proxy.mjs',import.meta.url));
  const provider=['run','-d','--rm','--name',broker,...base,'--network','bridge','--pids-limit','64','--memory','256m','--tmpfs','/tmp:size=16m',
-  '--mount','type=bind,source='+proxy+'/config.json,target=/proxy/config.json,readonly',
+  '--mount','type=bind,source='+proxy+',target=/proxy,readonly',
   '--mount','type=bind,source='+dir+'/provider/auth.json,target=/proxy/auth.json,readonly',
   '--mount','type=bind,source='+audit+',target=/audit','--mount','type=bind,source='+source+',target=/proxy.mjs,readonly',
   '--env','NODE_USE_ENV_PROXY=1'];
@@ -84,11 +89,11 @@ try{
   '--mount','type=bind,source='+client+',target='+request.home,
   '--mount','type=bind,source='+material+',target='+permit.instructionsFilePath+',readonly',
   '--mount','type=bind,source='+DATA+'/dependencies-paperclip-taskguard4,target=/opt/paperclip,readonly',
-  '--env','HOME=/tmp/role-home','--env','CODEX_HOME='+request.home,'--env','LANG=C.UTF-8',
+  '--env','HOME=/tmp/role-home','--env','CODEX_HOME='+request.home,'--env','LANG=C.UTF-8','--env','SSL_CERT_FILE='+request.home+'/trust.pem',
   '--env','HTTP_PROXY=http://provider:8090','--env','HTTPS_PROXY=http://provider:8090','--env','NO_PROXY=provider'];
  if(seccomp){const file=dir+'/seccomp.json';fs.writeFileSync(file,seccomp.slice(8),{mode:0o600,flag:'wx'});args.push('--security-opt','seccomp='+file);}
  args.push('--entrypoint','/usr/bin/timeout',IMAGE,'--signal=TERM','--kill-after=4s','600','/opt/paperclip/node_modules/.bin/codex',
-  ...normalizeNativeRoleArgs(request.args).slice(0,-1),'--skip-git-repo-check',...NATIVE_ROLE_EXTRA_ARGS.slice(2),'-c','model_catalog_json='+JSON.stringify(request.home+'/models.json'),'-c','chatgpt_base_url="http://provider:8090/backend-api"','-');
+  ...normalizeNativeRoleArgs(request.args).slice(0,-1),'--skip-git-repo-check',...NATIVE_ROLE_EXTRA_ARGS.slice(2),'-c','model_catalog_json='+JSON.stringify(request.home+'/models.json'),'-c','chatgpt_base_url="https://provider:8091/backend-api"','-');
  if(fs.existsSync(dir+'/cancel.json'))fail('ROLE_CONTAINER_CANCELLED_BEFORE_START');
  input=fs.openSync(dir+'/stdin','r');stream=fs.openSync(dir+'/stdout','wx',0o600);err=fs.openSync(dir+'/stderr','wx',0o600);
  let cancelled=false,stopping=false;

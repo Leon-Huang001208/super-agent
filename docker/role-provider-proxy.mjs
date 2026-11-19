@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import http from 'node:http';
+import https from 'node:https';
 import net from 'node:net';
 import dns from 'node:dns/promises';
 const configRoot=process.env.SUPER_AGENT_ROLE_PROXY_ROOT??'/proxy';
@@ -14,15 +15,16 @@ if(!account||!auth.tokens.access_token)throw Error('ROLE_PROXY_AUTH_REQUIRED');
 let session=null,count=0;
 const publicIp=ip=>/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)&&
  !/^(?:0\.|10\.|127\.|169\.254\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|224\.|255\.)/.test(ip);
-const server=http.createServer(async(req,res)=>{
+const handler=async(req,res)=>{
  try{
   if(!req.url?.startsWith('/'))return fail(res,403,'ROLE_PROXY_ABSOLUTE_URL_DENIED');
-  if(req.headers.authorization!=='Bearer '+config.key)return fail(res,403,'ROLE_PROXY_TOKEN_DENIED');
+  if(req.headers.authorization!=='Bearer '+config.key){audit({code:'ROLE_PROXY_TOKEN_DENIED',method:req.method,path:new URL(req.url,'http://local').pathname});return fail(res,403,'ROLE_PROXY_TOKEN_DENIED');}
   if(Date.now()>config.expiresAt)return fail(res,403,'ROLE_PROXY_EXPIRED');
   const url=new URL(req.url,'http://local');
   const modelPath=req.method==='POST'&&url.pathname==='/backend-api/codex/responses';
   const metadata=(req.method==='GET'&&['/backend-api/codex/models','/backend-api/wham/usage'].includes(url.pathname))||
-    (['GET','POST'].includes(req.method)&&url.pathname==='/backend-api/wham/accounts/check');
+    (['GET','POST'].includes(req.method)&&url.pathname==='/backend-api/wham/accounts/check')||
+    (req.method==='GET'&&['/backend-api/ps/plugins/suggested/codex','/backend-api/wham/settings/user'].includes(url.pathname));
   if(req.method==='POST'&&url.pathname==='/backend-api/codex/analytics-events/events'){res.writeHead(204);res.end();return;}
   if(!modelPath&&!metadata){audit({code:'ROLE_PROXY_PATH_DENIED',path:url.pathname});return fail(res,403,'ROLE_PROXY_PATH_DENIED');}
   if(url.pathname.endsWith('/responses')){
@@ -50,7 +52,9 @@ const server=http.createServer(async(req,res)=>{
   if(upstream.body)for await(const bytes of upstream.body){if(res.destroyed){controller.abort();break;}res.write(Buffer.from(bytes));}
   res.end();audit({code:'ROLE_PROXY_COMPLETED',path:url.pathname,status:upstream.status,requestCount:count});
  }catch(e){audit({code:'ROLE_PROXY_UPSTREAM_UNKNOWN',errorType:e.name});if(!res.headersSent)fail(res,502,'ROLE_PROXY_UPSTREAM_UNKNOWN');else res.destroy();}
-});
+};
+const server=http.createServer(handler);
+const tls=fs.existsSync(configRoot+'/tls.key')?https.createServer({key:fs.readFileSync(configRoot+'/tls.key'),cert:fs.readFileSync(configRoot+'/tls.crt')},handler):null;
 server.on('connect',async(req,client,head)=>{
  try{
   const value=new URL('https://'+req.url),port=Number(value.port||443);
@@ -65,5 +69,6 @@ server.on('connect',async(req,client,head)=>{
  }catch{client.end('HTTP/1.1 403 Forbidden\r\n\r\n');}
 });
 server.listen(8090,'0.0.0.0',()=>audit({code:'ROLE_PROXY_READY',runId:config.runId}));
-for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>server.close(()=>process.exit(0)));
+tls?.listen(8091,'0.0.0.0',()=>audit({code:'ROLE_PROXY_TLS_READY',runId:config.runId}));
+for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{tls?.close();server.close(()=>process.exit(0));});
 setTimeout(()=>process.exit(1),700000).unref();
