@@ -93,10 +93,11 @@ try{
   const task=await issueSvc.getById(taskId);
   const op={id:randomUUID(),kind:'run',taskId,agentId,role:roleName};
   r.operations.push(op);write(ROOT+'/registry.json',r);
+  const comment=await issueSvc.addComment(taskId,'按本人在Codex主聊天的续接授权继续本轮'+roleName+'验收；先前预检失败已核对未发生角色provider调用，当前使用修正的原生配置。',{userId:OWNER});
   const {heartbeatService}=await import(PKG+'/@paperclipai/server/dist/services/heartbeat.js');
   const result=await heartbeatService(db).wakeup(agentId,{manualUserWake:true,source:'on_demand',triggerDetail:'manual',
-    requestedByActorType:'user',requestedByActorId:OWNER,reason:'research_pm_acceptance',idempotencyKey:'role:'+op.id,
-    payload:{issueId:taskId},contextSnapshot:{issueId:taskId,taskId,projectId:r.projectId,responsibleUserId:OWNER,inputRevision:sha(task.description??''),
+    requestedByActorType:'user',requestedByActorId:OWNER,reason:'issue_commented',idempotencyKey:'role:'+op.id,
+    payload:{issueId:taskId,commentId:comment.id},contextSnapshot:{wakeCommentId:comment.id,issueId:taskId,taskId,projectId:r.projectId,responsibleUserId:OWNER,inputRevision:sha(task.description??''),
       roleOperationId:op.id,taskGoal:task.description,conversationMode:false}});
   log({code:'ROLE_ACCEPTANCE_WAKE_RETURNED',taskId,agentId,operationId:op.id,runId:result?.id});
   console.log(JSON.stringify({operationId:op.id,runId:result?.id,status:result?.status}));

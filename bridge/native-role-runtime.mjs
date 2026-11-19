@@ -75,6 +75,7 @@ export async function installNativeRoles() {
           dispatchMode:'controlled',model:ctx.config.model,reasoningEffort:ctx.config.modelReasoningEffort};
       };
       const prepareRole=createRolePreparation({readContext,readKnowledge:async()=>json(ROOT+'/knowledge.json').records,log});
+      let nativeEntered=false;
       const wrapped=createNativeRoleAdapter({readRegistration,prepareRole,log,basePromptTemplate:utils.DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
         nativeExecute:async checked=>{
           const r=await readRegistration(),file=checked.config.instructionsFilePath;
@@ -91,10 +92,16 @@ export async function installNativeRoles() {
             instructionsFilePath:file,materialSha256:required.sha256});
           const operation=registered(ctx.agent.id).registry.operations.find(x=>x.kind==='run'&&x.role===r.profile.role&&x.id===ctx.context.roleOperationId&&x.taskId===r.binding.taskId&&x.agentId===r.binding.agentId);
           return withRoleCall({registry:registered(ctx.agent.id).registry,operation,log,
-            perform:()=>original.execute(checked),
+            perform:()=>{nativeEntered=true;return original.execute(checked);},
             completed:result=>result?.exitCode===0&&!result.signal&&!result.timedOut&&!result.errorCode});
         }});
-      return wrapped(ctx);
+      try{return await wrapped(ctx);}
+      catch(error){
+        if(nativeEntered)throw error;
+        const code=/^NATIVE_ROLE_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
+        return {exitCode:1,signal:null,timedOut:false,errorCode:code,errorMessage:code,
+          resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
+      }
     },
     async testEnvironment(input) {
       const agentId=input.config?.env?.SUPER_AGENT_ROLE_AGENT_ID;
