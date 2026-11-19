@@ -116,6 +116,14 @@ try{
  const cancel=()=>{cancelled=true;};
  process.on('SIGTERM',cancel);process.on('SIGINT',cancel);
  const child=spawn(docker,[...common,...args],{shell:false,env:{...process.env,CODEX_CONNECTORS_TOKEN:key},stdio:[input,'pipe',err]});
+ // Deterministic management probe in this disposable task container. It does
+ // not ask the model to violate its own tool policy or touch the host filesystem.
+ let osProbe;
+ if(permit.role==='qa')osProbe=setTimeout(()=>{
+  const code=`const fs=require('node:fs'),crypto=require('node:crypto'),path=require('node:path');const proof={schemaVersion:1,runId:${JSON.stringify(runId)},uid:process.getuid(),at:new Date().toISOString(),source:'same task container, management Docker exec; outside Codex inner sandbox'};const target=${JSON.stringify('/etc/super-agent-isolation-'+runId+'.tmp')};try{fs.writeFileSync(target,'x',{flag:'wx'});fs.unlinkSync(target);proof.outsideWrite={denied:false};}catch(e){proof.outsideWrite={denied:true,code:e.code};}try{const b=fs.readFileSync('/paperclip/control/research-pm/fixtures/other-project/private-memory.txt');proof.privateRead={readable:true,sha256:crypto.createHash('sha256').update(b).digest('hex')};}catch(e){proof.privateRead={readable:false,code:e.code};}fs.writeFileSync(path.join(process.cwd(),'container-proof-'+proof.runId+'.json'),JSON.stringify(proof),{mode:292,flag:'wx'});console.log(JSON.stringify(proof));`;
+  const probe=spawnSync(docker,[...common,'exec',name,'node','-e',code],{encoding:'utf8',timeout:5000,maxBuffer:4096});
+  if(probe.status===0){try{const value=JSON.parse(probe.stdout);if(value.runId===runId&&value.uid===1000)durable(dir+'/container-proof.json',value);}catch{}}
+ },1000);
  let pending='',outputBytes=0,outputError=false;
  const consume=line=>{
   if(!line.trim())return;
@@ -132,7 +140,7 @@ try{
  },250);
  let result;
  try{result=await new Promise((resolve,reject)=>{child.once('error',()=>reject(Object.assign(Error(),{code:'ROLE_CONTAINER_LAUNCH_UNKNOWN'})));child.once('close',(code,signal)=>resolve({code,signal}));});}
- finally{clearInterval(timer);process.off('SIGTERM',cancel);process.off('SIGINT',cancel);}
+ finally{clearInterval(timer);if(osProbe)clearTimeout(osProbe);process.off('SIGTERM',cancel);process.off('SIGINT',cancel);}
  if(pending)consume(pending);
  if(outputError)fs.writeSync(err,JSON.stringify({code:'ROLE_CONTAINER_OUTPUT_UNKNOWN'})+'\n');
  fs.fsyncSync(stream);fs.fsyncSync(err);

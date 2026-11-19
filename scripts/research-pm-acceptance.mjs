@@ -1,3 +1,4 @@
+import{taskInputRevision}from'../bridge/task-input.mjs';
 /** Explicit operator acceptance. Native services own all projects, agents, tasks and runs. */
 import fs from 'node:fs';
 import { randomUUID,createHash } from 'node:crypto';
@@ -108,7 +109,7 @@ try{
   const {heartbeatService}=await import(PKG+'/@paperclipai/server/dist/services/heartbeat.js');
   const result=await heartbeatService(db).wakeup(agentId,{manualUserWake:true,source:'on_demand',triggerDetail:'manual',
     requestedByActorType:'user',requestedByActorId:OWNER,reason:'issue_commented',idempotencyKey:'role:'+op.id,
-    payload:{issueId:taskId,commentId:comment.id},contextSnapshot:{wakeCommentId:comment.id,issueId:taskId,taskId,projectId:task.projectId,responsibleUserId:OWNER,inputRevision:sha(task.description??''),
+    payload:{issueId:taskId,commentId:comment.id},contextSnapshot:{wakeCommentId:comment.id,issueId:taskId,taskId,projectId:task.projectId,responsibleUserId:OWNER,inputRevision:taskInputRevision(task),
       roleOperationId:op.id,taskGoal:task.description,conversationMode:false}});
   log({code:'ROLE_ACCEPTANCE_WAKE_RETURNED',taskId,agentId,operationId:op.id,runId:result?.id});
   console.log(JSON.stringify({operationId:op.id,runId:result?.id,status:result?.status}));

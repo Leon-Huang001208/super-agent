@@ -39,3 +39,12 @@ test('six physical calls and unknown outcomes stop further provider calls',async
  assert.equal(fs.existsSync(g.root+'/call.lock'),true);
  await assert.rejects(withRoleCall({...g,operation:{...g.operation,id:randomUUID()},log(){},perform:()=>assert.fail('unknown rerun'),completed:()=>true},g));
 });
+test('delegated tasks spend their original root budget instead of receiving a new allowance',async t=>{
+ const f=fixture(t),parent=randomUUID();fs.mkdirSync(f.root+'/budget/'+parent,{mode:0o700});
+ f.registry.tasks=[parent,f.operation.taskId];f.registry.taskRoots={[f.operation.taskId]:parent};const operation={...f.operation,rootTaskId:parent,kind:'run'};
+ await withRoleCall({...f,operation,log(){},perform:async()=>({ok:true}),completed:x=>x.ok},f);
+ assert.equal(fs.readdirSync(f.root+'/budget/'+parent).length,1);assert.equal(fs.readdirSync(f.root+'/budget/'+f.operation.taskId).length,0);
+ for(let i=0;i<5;i++)fs.writeFileSync(f.root+'/budget/'+parent+'/'+randomUUID()+'.json','{}',{mode:0o600});
+ await assert.rejects(withRoleCall({...f,operation:{...operation,id:randomUUID()},log(){},perform:()=>assert.fail('child bypassed root cap'),completed:()=>true},f),/ROLE_CALL_BUDGET_DENIED/);
+ await assert.rejects(withRoleCall({...f,operation:{...operation,id:randomUUID(),rootTaskId:randomUUID()},log(){},perform:()=>assert.fail('unregistered root'),completed:()=>true},f),/ROLE_CALL_ROOT_DENIED/);
+});
