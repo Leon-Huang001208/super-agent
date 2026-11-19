@@ -28,7 +28,7 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
       const registration = structuredClone(await readRegistration(ctx));
       const { binding, profile } = registration ?? {};
       const config = original.config;
-      if (!binding || !config || original.executionTarget || original.executionTransport || binding.runId !== ctx.runId || binding.agentId !== ctx.agent?.id ||
+      if (!binding || !config || (original.executionTarget && original.executionTarget.kind !== 'local') || original.executionTransport?.remoteExecution || binding.runId !== ctx.runId || binding.agentId !== ctx.agent?.id ||
           binding.companyId !== ctx.agent?.companyId || binding.taskId !== ctx.context?.issueId ||
           binding.projectId !== ctx.context?.projectId || binding.ownerId !== ctx.context?.responsibleUserId ||
           binding.inputRevision !== ctx.context?.inputRevision || profile?.engine !== 'codex_local' ||
@@ -39,6 +39,11 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
           config.search !== true || ctx.runtime?.sessionId ||
           ctx.runtime?.sessionParams?.sessionId ||
           ['OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'].some(key => config.env?.[key])) {
+        log({code:'NATIVE_ROLE_SCOPE_CHECK',runId:ctx?.runId,
+          checks:{targetLocal:!original.executionTarget||original.executionTarget.kind==='local',
+            noRemoteTransport:!original.executionTransport?.remoteExecution,engine:config?.engine==='cli',
+            model:config?.model==='gpt-6.1-sol',effort:config?.modelReasoningEffort==='low',
+            arguments:isDeepStrictEqual(config?.extraArgs,NATIVE_ROLE_MANAGED_ARGS),fresh:!ctx?.runtime?.sessionId&&!ctx?.runtime?.sessionParams?.sessionId}});
         fail('NATIVE_ROLE_SCOPE_DENIED');
       }
       const prepared = await prepareRole(registration);

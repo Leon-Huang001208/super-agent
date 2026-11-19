@@ -19,6 +19,7 @@ test('Native adapter port prepares mandatory materials before exactly one origin
   });
   assert.equal((await adapter(ctx)).exitCode,0);
   assert.equal(calls,1);
+  ctx.executionTarget={kind:'local'};
   mutate = true;
   await assert.rejects(adapter(ctx),/NATIVE_ROLE_CONTEXT_CHANGED/);
   assert.equal(calls,1);
