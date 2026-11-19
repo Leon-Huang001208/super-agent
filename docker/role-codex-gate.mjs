@@ -27,11 +27,11 @@ function readPrivate(filename) {
 
 export function validateRoleCall({ permit, args, env, cwd, now }) {
   if (!permit || permit.schemaVersion !== 1 || !['research', 'pm'].includes(permit.role) ||
-      !['runId','taskId','agentId','companyId','credentialGrantId'].every(k => uuid.test(permit[k] ?? '')) ||
+      !['runId','taskId','agentId','companyId','projectId','credentialGrantId'].every(k => uuid.test(permit[k] ?? '')) ||
       permit.model !== 'gpt-6.1-sol' || permit.reasoningEffort !== 'low' || permit.apiFallback !== false ||
       !Number.isSafeInteger(permit.expiresAt) || !Number.isSafeInteger(now) ||
       permit.expiresAt <= now || permit.expiresAt - now > 300000 ||
-      permit.cwd !== cwd || !cwd.startsWith(ROOT + '/workspaces/') ||
+      permit.cwd !== cwd || !(cwd.startsWith(ROOT + '/workspaces/') || cwd === '/paperclip/instances/default/projects/'+permit.companyId+'/'+permit.projectId+'/_default') ||
       !/^[a-f0-9]{64}$/.test(permit.materialSha256 ?? '') ||
       !/^\/paperclip\/control\/research-pm\/materials\/[a-f0-9-]{36}\.md$/.test(permit.instructionsFilePath ?? '') ||
       ['OPENAI_API_KEY','CODEX_API_KEY','OPENAI_BASE_URL','ANTHROPIC_API_KEY'].some(k => Boolean(env[k])) ||

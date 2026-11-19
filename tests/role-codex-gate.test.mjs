@@ -5,7 +5,7 @@ import { NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
 
 test('role gate rejects expanded tools, old sessions, API fallback and mismatched Native run', () => {
   const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
-  const permit={schemaVersion:1,credentialGrantId:id,role:'research',runId:id,taskId:id,agentId:id,companyId:id,model:'gpt-6.1-sol',
+  const permit={schemaVersion:1,credentialGrantId:id,projectId:id,role:'research',runId:id,taskId:id,agentId:id,companyId:id,model:'gpt-6.1-sol',
     reasoningEffort:'low',apiFallback:false,expiresAt:200000,cwd:'/paperclip/control/research-pm/workspaces/demo',
     instructionsFilePath:'/paperclip/control/research-pm/materials/'+id+'.md',materialSha256:'a'.repeat(64)};
   const args=['--search','exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"',...NATIVE_ROLE_MANAGED_ARGS,'-'];

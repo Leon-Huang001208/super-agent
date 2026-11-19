@@ -32,7 +32,8 @@ try{
  validateRoleCall({permit,args:request.args,env:{PAPERCLIP_RUN_ID:permit.runId,PAPERCLIP_AGENT_ID:permit.agentId,
   PAPERCLIP_COMPANY_ID:permit.companyId,PAPERCLIP_TASK_ID:permit.taskId,CODEX_HOME:request.home},cwd:request.cwd,now:Date.now()});
  const cwd=DATA+'/state/'+request.cwd.slice('/paperclip/'.length),name='sa-role-'+runId;
- if(!cwd.startsWith(ROOT+'/workspaces/')||fs.realpathSync(cwd)!==cwd||!fs.lstatSync(cwd).isDirectory())fail('ROLE_CONTAINER_WORKSPACE_DENIED');
+ const managed=DATA+'/state/instances/default/projects/'+permit.companyId+'/'+permit.projectId+'/_default';
+ if(!(cwd.startsWith(ROOT+'/workspaces/')||cwd===managed)||fs.realpathSync(cwd)!==cwd||!fs.lstatSync(cwd).isDirectory())fail('ROLE_CONTAINER_WORKSPACE_DENIED');
  if(exec(['ps','-a','--filter','name=^/'+name+'$','--format','{{.ID}}']).trim()||fs.existsSync(dir+'/host.claim.json')||fs.existsSync(dir+'/cancel.json'))fail('ROLE_CONTAINER_REPLAY_OR_CANCEL_DENIED');
  const app=JSON.parse(exec(['inspect','super-agent-paperclip-eval-paperclip-1']))[0];
  if(app.Image!==IMAGE)fail('ROLE_CONTAINER_SOURCE_CHANGED');

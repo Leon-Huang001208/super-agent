@@ -76,9 +76,18 @@ export async function installNativeRoles() {
       };
       const prepareRole=createRolePreparation({readContext,readKnowledge:async()=>json(ROOT+'/knowledge.json').records,log});
       let nativeEntered=false;
+      const knownUnstarted=result=>{
+        if(result?.signal||result?.timedOut||result?.exitCode===0||fs.existsSync(ROOT+'/claims/'+ctx.runId+'.json'))return false;
+        return String(result?.resultJson?.stderr??'').split('\n').some(line=>{
+          try{const e=JSON.parse(line);return /^ROLE_GATE_[A-Z_]+$/.test(e.code??'')&&e.claimed===false;}catch{return false;}
+        });
+      };
       const wrapped=createNativeRoleAdapter({readRegistration,prepareRole,log,basePromptTemplate:utils.DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
         nativeExecute:async checked=>{
           const r=await readRegistration(),file=checked.config.instructionsFilePath;
+          const executionCwd=checked.context.paperclipWorkspace?.cwd??checked.config.cwd;
+          const managedCwd='/paperclip/instances/default/projects/'+r.binding.companyId+'/'+r.binding.projectId+'/_default';
+          if(executionCwd!==managedCwd&&executionCwd!==checked.config.cwd)fail('NATIVE_ROLE_WORKSPACE_DENIED');
           const grantId=grantFor(checked.config.env?.CODEX_HOME,r.binding.companyId);
           const operationFile=ROOT+'/operations/'+ctx.context.roleOperationId+'.json';
           if(fs.existsSync(operationFile)){
@@ -88,12 +97,15 @@ export async function installNativeRoles() {
           const required=r.manifest.files.find(x=>ROOT+'/materials/'+x.path===file);
           if(!required||sha(fs.readFileSync(file))!==required.sha256)fail('NATIVE_ROLE_MATERIAL_CHANGED');
           write(ROOT+'/permits/'+ctx.runId+'.json',{schemaVersion:1,...r.binding,credentialGrantId:grantId,role:r.profile.role,
-            model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:Date.now()+300000,cwd:checked.config.cwd,
+            model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:Date.now()+300000,cwd:executionCwd,
             instructionsFilePath:file,materialSha256:required.sha256});
           const operation=registered(ctx.agent.id).registry.operations.find(x=>x.kind==='run'&&x.role===r.profile.role&&x.id===ctx.context.roleOperationId&&x.taskId===r.binding.taskId&&x.agentId===r.binding.agentId);
           return withRoleCall({registry:registered(ctx.agent.id).registry,operation,log,
-            perform:()=>{nativeEntered=true;return original.execute(checked);},
-            completed:result=>result?.exitCode===0&&!result.signal&&!result.timedOut&&!result.errorCode});
+            perform:async()=>{nativeEntered=true;const result=await original.execute(checked);
+              if(knownUnstarted(result))return {...result,resultJson:{...result.resultJson,executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
+              return result;
+            },
+            completed:result=>(result?.exitCode===0&&!result.signal&&!result.timedOut&&!result.errorCode)||knownUnstarted(result)});
         }});
       try{return await wrapped(ctx);}
       catch(error){
