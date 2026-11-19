@@ -57,10 +57,9 @@ try{
   email:'role@local.invalid','https://api.openai.com/auth':{chatgpt_account_id:accountId,chatgpt_user_id:'role-'+runId,chatgpt_plan_type:'plus'}};
  const jwt=Buffer.from('{"alg":"RS256","typ":"JWT"}').toString('base64url')+'.'+Buffer.from(JSON.stringify(payload)).toString('base64url')+'.eA';
  if(!resumeSetup)durable(client+'/auth.json',{auth_mode:'chatgpt',tokens:{access_token:key,refresh_token:'role-no-refresh',id_token:jwt,account_id:accountId},last_refresh:new Date().toISOString()});
- // The bundled catalog is data from this exact installed CLI, not a provider call.
- // Avoid a hard-coded models refresh sending the opaque token directly upstream.
- const catalog=JSON.parse(exec(['exec','super-agent-paperclip-eval-paperclip-1','/opt/paperclip/node_modules/.bin/codex','debug','models','--bundled']));
- if(!Array.isArray(catalog.models)||!catalog.models.length)fail('ROLE_CONTAINER_CATALOG_DENIED');
+ // Owner-side read-only subscription metadata; never synthesize a model profile.
+ const catalog=JSON.parse(read(ROOT+'/models-current.json'));
+ if(!Array.isArray(catalog.models)||!catalog.models.some(m=>m.slug==='gpt-6.1-sol'))fail('ROLE_CONTAINER_CATALOG_DENIED');
  if(!resumeSetup)durable(client+'/models.json',catalog);
  else if(sha(read(client+'/models.json'))!==sha(Buffer.from(JSON.stringify(catalog)+'\n')))fail('ROLE_CONTAINER_CATALOG_CHANGED');
  const containerProxy='/paperclip/control/research-pm/transport/'+runId+'/proxy';
@@ -95,12 +94,15 @@ try{
   provider.push('--env',e);
  }
  provider.push('--entrypoint','node',IMAGE,'/proxy.mjs');exec(provider);exec(['network','connect','--alias','provider',network,broker]);
+ fs.writeFileSync(client+'/instructions.md',read(material),{mode:0o600,flag:'wx'});
+ exec(['exec','super-agent-paperclip-eval-paperclip-1','chown','-R','1000:1000',
+  '/paperclip/control/research-pm/transport/'+runId+'/client',request.cwd]);
  const seccomp=app.HostConfig.SecurityOpt.find(x=>x.startsWith('seccomp='));
- const args=['run','-i','--rm','--name',name,...base,'--network',network,'--pids-limit','256','--memory','1536m','--cpus','2',
+ const args=['run','-i','--rm','--name',name,...base,'--user','1000:1000','--network',network,'--pids-limit','256','--memory','1536m','--cpus','2',
   '--tmpfs','/tmp:size=128m,mode=1777','--workdir',request.cwd,
   '--mount','type=bind,source='+cwd+',target='+request.cwd,
   '--mount','type=bind,source='+client+',target='+request.home,
-  '--mount','type=bind,source='+material+',target='+permit.instructionsFilePath+',readonly',
+  '--mount','type=bind,source='+client+'/instructions.md,target='+permit.instructionsFilePath+',readonly',
   '--mount','type=bind,source='+DATA+'/dependencies-paperclip-taskguard4,target=/opt/paperclip,readonly',
   '--env','HOME=/tmp/role-home','--env','CODEX_HOME='+request.home,'--env','LANG=C.UTF-8','--env','SSL_CERT_FILE='+request.home+'/trust.pem','--env','CODEX_CA_CERTIFICATE='+request.home+'/trust.pem',
   '--env','HTTP_PROXY=http://provider:8090','--env','HTTPS_PROXY=http://provider:8090','--env','NO_PROXY=provider'];
@@ -112,15 +114,27 @@ try{
  let cancelled=false,stopping=false;
  const cancel=()=>{cancelled=true;};
  process.on('SIGTERM',cancel);process.on('SIGINT',cancel);
- const child=spawn(docker,[...common,...args],{shell:false,stdio:[input,stream,err]});
+ const child=spawn(docker,[...common,...args],{shell:false,stdio:[input,'pipe',err]});
+ let pending='',outputBytes=0,outputError=false;
+ const consume=line=>{
+  if(!line.trim())return;
+  try{const value=JSON.parse(line);if(value.type?.includes('reasoning')||value.item?.type==='reasoning')return;fs.writeSync(stream,line+'\n');}
+  catch{outputError=true;}
+ };
+ child.stdout.setEncoding('utf8');child.stdout.on('data',chunk=>{
+  outputBytes+=Buffer.byteLength(chunk);if(outputBytes>8*1024*1024){outputError=true;return;}
+  pending+=chunk;let cut;while((cut=pending.indexOf('\n'))>=0){consume(pending.slice(0,cut));pending=pending.slice(cut+1);}
+ });
  const timer=setInterval(()=>{
-  if(fs.existsSync(dir+'/cancel.json'))cancelled=true;
+  if(fs.existsSync(dir+'/cancel.json')||outputError)cancelled=true;
   if(cancelled&&!stopping){stopping=true;const stop=spawn(docker,[...common,'stop','--time','3',name],{stdio:'ignore'});stop.once('close',()=>stopping=false);stop.once('error',()=>stopping=false);}
  },250);
  let result;
  try{result=await new Promise((resolve,reject)=>{child.once('error',()=>reject(Object.assign(Error(),{code:'ROLE_CONTAINER_LAUNCH_UNKNOWN'})));child.once('close',(code,signal)=>resolve({code,signal}));});}
  finally{clearInterval(timer);process.off('SIGTERM',cancel);process.off('SIGINT',cancel);}
+ if(pending)consume(pending);
  fs.fsyncSync(stream);fs.fsyncSync(err);
+ if(outputError)fail('ROLE_CONTAINER_OUTPUT_UNKNOWN');
  if(result.signal||!Number.isInteger(result.code))fail('ROLE_CONTAINER_RESULT_UNKNOWN');
  terminal=true;
  durable(dir+'/result.json',{runId,exitCode:result.code,signal:null,cancelled,timedOut:result.code===124,image:IMAGE,
