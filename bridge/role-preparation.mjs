@@ -16,7 +16,7 @@ export function createRolePreparation({ readContext, readKnowledge, log }) {
       if (!binding || !['companyId', 'projectId', 'taskId', 'agentId', 'runId'].every(key => uuid.test(binding[key] ?? '')) ||
           !hash.test(binding.inputRevision ?? '') || typeof binding.ownerId !== 'string' || !binding.ownerId.trim() ||
           !profile || profile.agentId !== binding.agentId || profile.projectId !== binding.projectId ||
-          !['research', 'pm'].includes(profile.role) || profile.engine !== 'codex_local' ||
+          !['research', 'pm', 'network-engineer'].includes(profile.role) || profile.engine !== 'codex_local' ||
           profile.model !== 'gpt-6.1-sol' || profile.reasoningEffort !== 'low' ||
           profile.dangerouslyBypassApprovalsAndSandbox !== false || !['read-only', 'workspace-write'].includes(profile.sandbox) ||
           !Array.isArray(profile.tools) || profile.tools.some(tool => !['read_materials', 'read_sources', 'shell', 'apply_patch', 'apps', 'plugins'].includes(tool))) {
@@ -44,7 +44,7 @@ export function createRolePreparation({ readContext, readKnowledge, log }) {
           dangerouslyBypassApprovalsAndSandbox: false, sandbox: profile.sandbox,
           instructionsFilePath: materials.instructionsFilePath },
         materials: materials.files, knowledge, requestedTools: [...profile.tools],
-        toolVerification: 'NOT_RUN', dispatch: 'NOT_RUN', artifactKind: profile.role === 'research' ? 'sourced-research' : 'requirements-and-acceptance',
+        toolVerification: 'NOT_RUN', dispatch: 'NOT_RUN', artifactKind: profile.role === 'research' ? 'sourced-research' : profile.role==='pm'?'requirements-and-acceptance':'network-diagnosis',
       };
     } catch (error) {
       const code = /^(?:ROLE_PREPARE|ROLE_MATERIAL|ROLE_KNOWLEDGE)_[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'ROLE_PREPARE_DEPENDENCY_FAILED';

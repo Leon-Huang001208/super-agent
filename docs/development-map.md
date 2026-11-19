@@ -59,3 +59,9 @@ docker run --rm --network none --read-only --tmpfs /tmp:rw,size=64m \
 ## 运行集成边界
 
 当前工作区的基线不包含后来统一集成目录中的 bridge、业务执行许可、宿主准入及恢复模块。该目录是独立候选且存在未提交改动，不能复制覆盖或视为已合入。其能力应在取得一致、已提交候选后逐项核对合同、测试和运行证据，再接入本体系。参见 [当日状态](governance-status-20261104.md)。
+
+## 专职网络角色与Apps接线
+
+`bridge/network-role.mjs`定义网络职责、主题和只读动作白名单；`tests/network-role.test.mjs`覆盖跨域、写入请求及知识隔离。role-materials/role-preparation允许network-engineer，Native运行前校验可信operation的networkScope。原验收脚本按对应profile.projectId创建上下文，避免新网络项目误绑定Research项目。
+
+Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避免把真实token交给任务。MCP初始化/目录与本轮两个安全只读测试动作分别受限并留脱敏回执，实际能力以本轮真实结果为准；参见[Research/PM验收](plans/research-pm-m1.md)及[网络职责](network-engineer.md)。

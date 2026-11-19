@@ -21,6 +21,9 @@ test('provider broker rejects wrong token, other routes, other model/session and
   headers:{authorization:'Bearer '+key,session_id:session,'content-type':'application/json'},body:JSON.stringify({model,reasoning:{effort:'low'}})});
  assert.equal((await request('/backend-api/codex/responses','wrong')).status,403);
  assert.equal((await request('/api/companies')).status,403);
+  assert.equal((await request('/backend-api/ps/mcp','wrong')).status,403);
+  const mcp=await fetch('http://127.0.0.1:8090/backend-api/ps/mcp',{method:'POST',headers:{authorization:'Bearer synthetic-role-key','content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'sites.delete_site',arguments:{}}})});
+  assert.equal(mcp.status,403);assert.match(await mcp.text(),/MCP_ACTION_DENIED/);
  assert.equal((await request('/backend-api/codex/responses')).status,403);
  assert.equal((await request('/backend-api/codex/responses','synthetic-role-key','two','gpt-6.1-sol')).status,403);
   assert.equal((await fetch('http://127.0.0.1:8090/backend-api/codex/responses',{method:'POST',headers:{authorization:'Bearer synthetic-role-key','session-id':'two','content-type':'application/json'},body:JSON.stringify({model:'gpt-6.1-sol',reasoning:{effort:'low'}})})).status,403);

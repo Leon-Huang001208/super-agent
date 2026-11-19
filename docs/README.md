@@ -13,6 +13,8 @@
 - [验收运行手册](acceptance-runbook.md)：受控真实任务与证据契约。
 - [架构决策](decisions/0001-paperclip-and-delivery.md)：路线选择、权限分层和重开条件。
 
+- [专职网络工程师](network-engineer.md)：Tailscale、代理、设备、网关与路由的职责和授权边界。
+
 ## 带日期的状态与证据
 
 - [治理建设状态](governance-status-20261104.md)：本轮源码、远端、运行与验收分别记录。

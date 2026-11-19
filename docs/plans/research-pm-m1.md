@@ -57,3 +57,13 @@ Research 报告明确区分官方事实、推论、假设和未执行项，没�
 旧执行/定时/GitHub/Chief 自动开关保持关闭；角色只接受精确 operation 和 task 许可。停止新派发后先排空已知运行，UNKNOWN保留原锁与回执。回退复用原 ce66 镜像和已保存的 Compose 源绑定，不覆盖数据库或恢复旧任务。宿主启动仅复用已授权的工程管理工具，不新增开机服务。
 
 临时 model/provider 容器正常退出后删除、internal 网络按身份移除。已确认本任务结束的输出错误同样收尾资源，显式失败回执保留 UNKNOWN 调用锁。没有全局 prune、删未知锁、合并或部署 RWB。运行候选归档及原历史证据继续保留，资源最终收尾还需随真实验收完成核对。
+
+## 真实交接与工具接入后续
+
+PR #20候选745893a已通过三项必需检查并合入Super Agent，merge SHA为79750d812d49ce49517481daa606f21b1c6c0909。App角色源绑定已更新到该已审候选；运行镜像仍为原ce66。
+
+Research工具复验run 6fd73827-13e8-4119-80ca-77af128ec021 succeeded，实际UID1000 shell、Node v24.22.1、proof写入读回、独立apply_patch及材料SHA均成功，Native正式保存completion并交回本人in_review。PM独立run 30be1ee8-3a02-4e79-a444-9b9e2234bdcf succeeded，读取Research两文件、PM Skill材料并写出pm-requirements.md，复述docker-dependencies/v1/owner-chat知识来源。仅此证明角色交接和本次记忆读取；版本更正、隔离负例及产品自身未实现用例不升级为通过。
+
+Apps原失败定位到CLI专用CODEX_CONNECTORS_TOKEN缺失：用无真实凭据探针确认设置opaque token后MCP实际请求带Bearer；原订阅只读initialize和tools/list均200，共778条工具目录。新传输只把per-run opaque key交给此环境变量，真实授权仍留broker，不新增授权、账号或连接。MCP目录/初始化可用；本轮tools/call严格限定两个已核对的安全只读动作sites.check_slug_availability和plugin_management.search_plugins，其他业务动作须其具体任务授权，不能把开启工具类别当成发信、部署或安装授权。代理同时限制MCP调用数64。最终角色内Apps/Plugins调用仍须实际验证。
+
+新增网络角色单独见[网络工程师](../network-engineer.md)。不改变RWB动作边界。

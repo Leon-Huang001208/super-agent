@@ -77,7 +77,9 @@ try{
   if(existing.length)fail('ROLE_ACCEPTANCE_HIRE_ALREADY_EXISTS');
   const {companyService}=await import(PKG+'/@paperclipai/server/dist/services/companies.js');
   await companyService(db).update(COMPANY,{status:'active'},{actorType:'user',actorId:OWNER});
-  const agent=await agentSvc.requestHire(COMPANY,{id,name:'M1 '+roleName,role:roleName==='research'?'researcher':'pm',title:roleName,
+  const nativeRole={research:'researcher',pm:'pm','network-engineer':'engineer'}[roleName];
+  if(!nativeRole)fail('ROLE_ACCEPTANCE_ROLE_DENIED');
+  const agent=await agentSvc.requestHire(COMPANY,{id,name:roleName==='network-engineer'?'Network Engineer':'M1 '+roleName,role:nativeRole,title:roleName==='network-engineer'?'专职网络工程师':roleName,
     adapterType:'codex_local',adapterConfig:{engine:'cli',command:'/opt/super-agent/bin/codex',cwd:ROOT+'/workspaces/'+roleName,
       instructionsFilePath:ROOT+'/materials/'+id+'.md',model:'gpt-6.1-sol',modelReasoningEffort:'low',search:true,
       dangerouslyBypassApprovalsAndSandbox:false,dangerouslyBypassSandbox:false,extraArgs:[...NATIVE_ROLE_MANAGED_ARGS],
@@ -91,13 +93,15 @@ try{
   const taskId=r.taskId,agentId=entry.profile.agentId;
   await issueSvc.update(taskId,{assigneeAgentId:agentId,assigneeUserId:null,status:'todo'});
   const task=await issueSvc.getById(taskId);
-  const op={id:randomUUID(),kind:'run',taskId,agentId,role:roleName};
+  if(task.projectId!==entry.profile.projectId)fail('ROLE_ACCEPTANCE_PROJECT_DENIED');
+  const op={id:randomUUID(),kind:'run',taskId,agentId,role:roleName,
+    ...(roleName==='network-engineer'?{networkScope:r.networkScope}:{})};
   r.operations.push(op);write(ROOT+'/registry.json',r);
   const comment=await issueSvc.addComment(taskId,'按本人在Codex主聊天的续接授权继续本轮'+roleName+'验收；先前预检失败已核对未发生角色provider调用，当前使用修正的原生配置。',{userId:OWNER});
   const {heartbeatService}=await import(PKG+'/@paperclipai/server/dist/services/heartbeat.js');
   const result=await heartbeatService(db).wakeup(agentId,{manualUserWake:true,source:'on_demand',triggerDetail:'manual',
     requestedByActorType:'user',requestedByActorId:OWNER,reason:'issue_commented',idempotencyKey:'role:'+op.id,
-    payload:{issueId:taskId,commentId:comment.id},contextSnapshot:{wakeCommentId:comment.id,issueId:taskId,taskId,projectId:r.projectId,responsibleUserId:OWNER,inputRevision:sha(task.description??''),
+    payload:{issueId:taskId,commentId:comment.id},contextSnapshot:{wakeCommentId:comment.id,issueId:taskId,taskId,projectId:task.projectId,responsibleUserId:OWNER,inputRevision:sha(task.description??''),
       roleOperationId:op.id,taskGoal:task.description,conversationMode:false}});
   log({code:'ROLE_ACCEPTANCE_WAKE_RETURNED',taskId,agentId,operationId:op.id,runId:result?.id});
   console.log(JSON.stringify({operationId:op.id,runId:result?.id,status:result?.status}));

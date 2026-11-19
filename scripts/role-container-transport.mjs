@@ -48,7 +48,8 @@ try{
  const client=dir+'/client',proxy=dir+'/proxy',audit=dir+'/proxy-audit';
  for(const p of [client,proxy,audit])if(!fs.existsSync(p))fs.mkdirSync(p,{mode:0o700});
  const key=resumeSetup?JSON.parse(read(proxy+'/config.json')).key:randomBytes(32).toString('hex');
- if(!resumeSetup)durable(proxy+'/config.json',{runId,key,expiresAt:Date.now()+660000});
+ if(!resumeSetup)durable(proxy+'/config.json',{runId,key,expiresAt:Date.now()+660000,
+  mcpAllowedTools:['research','pm'].includes(permit.role)?['sites.check_slug_availability','plugin_management.search_plugins']:[]});
  const selectedAuth=JSON.parse(read(dir+'/provider/auth.json'));
  const selectedClaims=JSON.parse(Buffer.from(selectedAuth.tokens.id_token.split('.')[1],'base64url').toString());
  const accountId=selectedAuth.tokens.account_id??selectedClaims['https://api.openai.com/auth']?.chatgpt_account_id;
@@ -105,7 +106,7 @@ try{
   '--mount','type=bind,source='+client+'/instructions.md,target='+permit.instructionsFilePath+',readonly',
   '--mount','type=bind,source='+DATA+'/dependencies-paperclip-taskguard4,target=/opt/paperclip,readonly',
   '--env','HOME=/tmp/role-home','--env','CODEX_HOME='+request.home,'--env','LANG=C.UTF-8','--env','SSL_CERT_FILE='+request.home+'/trust.pem','--env','CODEX_CA_CERTIFICATE='+request.home+'/trust.pem',
-  '--env','HTTP_PROXY=http://provider:8090','--env','HTTPS_PROXY=http://provider:8090','--env','NO_PROXY=provider'];
+  '--env','HTTP_PROXY=http://provider:8090','--env','HTTPS_PROXY=http://provider:8090','--env','NO_PROXY=provider','--env','CODEX_CONNECTORS_TOKEN'];
  if(seccomp){const file=dir+'/seccomp.json';fs.writeFileSync(file,seccomp.slice(8),{mode:0o600,flag:'wx'});args.push('--security-opt','seccomp='+file);}
  args.push('--entrypoint','/usr/bin/timeout',IMAGE,'--signal=TERM','--kill-after=4s','600','/opt/paperclip/node_modules/.bin/codex',
   ...normalizeNativeRoleArgs(request.args).slice(0,-1),'--skip-git-repo-check',...NATIVE_ROLE_EXTRA_ARGS.slice(2),'-c','model_catalog_json='+JSON.stringify(request.home+'/models.json'),'-c','chatgpt_base_url="https://provider:8091/backend-api"','-');
@@ -114,7 +115,7 @@ try{
  let cancelled=false,stopping=false;
  const cancel=()=>{cancelled=true;};
  process.on('SIGTERM',cancel);process.on('SIGINT',cancel);
- const child=spawn(docker,[...common,...args],{shell:false,stdio:[input,'pipe',err]});
+ const child=spawn(docker,[...common,...args],{shell:false,env:{...process.env,CODEX_CONNECTORS_TOKEN:key},stdio:[input,'pipe',err]});
  let pending='',outputBytes=0,outputError=false;
  const consume=line=>{
   if(!line.trim())return;

@@ -12,7 +12,7 @@ const audit=event=>fs.appendFileSync(auditRoot+'/provider.jsonl',JSON.stringify(
 const claims=JSON.parse(Buffer.from(auth.tokens.id_token.split('.')[1],'base64url').toString());
 const account=auth.tokens.account_id??claims['https://api.openai.com/auth']?.chatgpt_account_id;
 if(!account||!auth.tokens.access_token)throw Error('ROLE_PROXY_AUTH_REQUIRED');
-let session=null,count=0;
+let session=null,count=0,mcpCount=0;
 const publicIp=ip=>/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)&&
  !/^(?:0\.|10\.|127\.|169\.254\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|224\.|255\.)/.test(ip);
 const handler=async(req,res)=>{
@@ -22,12 +22,13 @@ const handler=async(req,res)=>{
   if(Date.now()>config.expiresAt)return fail(res,403,'ROLE_PROXY_EXPIRED');
   const url=new URL(req.url,'http://local');
   const modelPath=req.method==='POST'&&url.pathname==='/backend-api/codex/responses';
+  const mcpPath=['GET','POST','DELETE'].includes(req.method)&&url.pathname==='/backend-api/ps/mcp';
   const metadata=(req.method==='GET'&&['/backend-api/codex/models','/backend-api/wham/usage'].includes(url.pathname))||
     (['GET','POST'].includes(req.method)&&url.pathname==='/backend-api/wham/accounts/check')||
     (req.method==='GET'&&['/backend-api/ps/plugins/suggested/codex','/backend-api/wham/settings/user',
       '/backend-api/ps/plugins/installed','/backend-api/ps/plugins/list','/backend-api/plugins/featured'].includes(url.pathname));
   if(req.method==='POST'&&url.pathname==='/backend-api/codex/analytics-events/events'){res.writeHead(204);res.end();return;}
-  if(!modelPath&&!metadata){audit({code:'ROLE_PROXY_PATH_DENIED',path:url.pathname});return fail(res,403,'ROLE_PROXY_PATH_DENIED');}
+  if(!modelPath&&!metadata&&!mcpPath){audit({code:'ROLE_PROXY_PATH_DENIED',path:url.pathname});return fail(res,403,'ROLE_PROXY_PATH_DENIED');}
   if(url.pathname.endsWith('/responses')){
    const current=req.headers['session-id']??req.headers.session_id??req.headers['x-codex-session-id'];
    if(typeof current!=='string'||!current||session&&session!==current){
@@ -39,6 +40,18 @@ const handler=async(req,res)=>{
   }
   let body=Buffer.alloc(0);
   for await(const chunk of req){if(body.length+chunk.length>4*1024*1024)return fail(res,413,'ROLE_PROXY_INPUT_LIMIT');body=Buffer.concat([body,chunk]);}
+  if(mcpPath){
+   if(++mcpCount>64)return fail(res,429,'ROLE_PROXY_MCP_LIMIT');
+   if(req.method==='POST'){
+    const message=JSON.parse(body),method=message.method;
+    const catalogs=['initialize','notifications/initialized','ping','tools/list','resources/list','resources/templates/list','prompts/list'];
+    const safeTools=['sites.check_slug_availability','plugin_management.search_plugins'];
+    if(!catalogs.includes(method)&&!(method==='tools/call'&&safeTools.includes(message.params?.name)&&config.mcpAllowedTools?.includes(message.params.name))){
+     audit({code:'ROLE_PROXY_MCP_ACTION_DENIED'});return fail(res,403,'ROLE_PROXY_MCP_ACTION_DENIED');
+    }
+    audit({code:'ROLE_PROXY_MCP_REQUEST',method,tool:method==='tools/call'?message.params.name:undefined});
+   }
+  }
   if(url.pathname.endsWith('/responses')){
    const parsed=JSON.parse(body);
    if(parsed.model!=='gpt-6.1-sol'||parsed.reasoning?.effort!=='low')return fail(res,403,'ROLE_PROXY_MODEL_DENIED');

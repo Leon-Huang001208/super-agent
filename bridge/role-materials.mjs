@@ -11,7 +11,7 @@ const digest = /^[a-f0-9]{64}$/;
 export function loadRoleMaterials({ root, project, role, manifest, log }) {
   try {
     if (!path.isAbsolute(root ?? '') || !token.test(project ?? '') ||
-        !['research', 'pm'].includes(role) || typeof log !== 'function' ||
+        !['research', 'pm', 'network-engineer'].includes(role) || typeof log !== 'function' ||
         manifest?.schemaVersion !== 1 || manifest.project !== project || manifest.role !== role ||
         !Array.isArray(manifest.files) || !manifest.files.length || manifest.files.length > 32) {
       fail('ROLE_MATERIAL_CONFIG_INVALID');
@@ -68,7 +68,7 @@ export function loadRoleMaterials({ root, project, role, manifest, log }) {
 
 /** No task status or authorization is derived from memory content. */
 export function selectRoleKnowledge({ project, role, records }) {
-  if (!token.test(project ?? '') || !['research', 'pm'].includes(role) ||
+  if (!token.test(project ?? '') || !['research', 'pm', 'network-engineer'].includes(role) ||
       !Array.isArray(records) || records.length > 1000) fail('ROLE_KNOWLEDGE_CONFIG_INVALID');
   const latest = new Map(), versions = new Map();
   for (const record of records) {
