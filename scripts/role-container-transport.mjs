@@ -26,9 +26,9 @@ let stream,err,input,network,broker,terminal=false;
 try{
  if(process.platform!=='darwin'||!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(runId??''))fail('ROLE_CONTAINER_ARGUMENT_DENIED');
  const dir=ROOT+'/transport/'+runId,request=JSON.parse(read(dir+'/request.json')),permitBytes=read(ROOT+'/permits/'+runId+'.json'),permit=JSON.parse(permitBytes);
- const gate=JSON.parse(read(ROOT+'/claims/'+runId+'.json')),material=ROOT+'/materials/'+path.basename(permit.instructionsFilePath);
+ const gate=JSON.parse(read(ROOT+'/claims/'+runId+'.json')),material=ROOT+'/materials/'+path.basename(permit.instructionsFilePath),materialBytes=read(material);
  if(request.runId!==runId||request.taskId!==permit.taskId||gate.runId!==runId||gate.permitSha256!==sha(permitBytes)||
-    request.inputSha256!==sha(read(dir+'/stdin'))||sha(read(material))!==permit.materialSha256)fail('ROLE_CONTAINER_BINDING_DENIED');
+    request.inputSha256!==sha(read(dir+'/stdin'))||sha(materialBytes)!==permit.materialSha256)fail('ROLE_CONTAINER_BINDING_DENIED');
  validateRoleCall({permit,args:request.args,env:{PAPERCLIP_RUN_ID:permit.runId,PAPERCLIP_AGENT_ID:permit.agentId,
   PAPERCLIP_COMPANY_ID:permit.companyId,PAPERCLIP_TASK_ID:permit.taskId,CODEX_HOME:request.home},cwd:request.cwd,now:Date.now()});
  const cwd=DATA+'/state/'+request.cwd.slice('/paperclip/'.length),name='sa-role-'+runId;
@@ -94,7 +94,7 @@ try{
   provider.push('--env',e);
  }
  provider.push('--entrypoint','node',IMAGE,'/proxy.mjs');exec(provider);exec(['network','connect','--alias','provider',network,broker]);
- fs.writeFileSync(client+'/instructions.md',read(material),{mode:0o600,flag:'wx'});
+ fs.writeFileSync(client+'/instructions.md',materialBytes,{mode:0o600,flag:'wx'});
  exec(['exec','super-agent-paperclip-eval-paperclip-1','chown','-R','1000:1000',
   '/paperclip/control/research-pm/transport/'+runId+'/client',request.cwd]);
  const seccomp=app.HostConfig.SecurityOpt.find(x=>x.startsWith('seccomp='));
@@ -133,13 +133,13 @@ try{
  try{result=await new Promise((resolve,reject)=>{child.once('error',()=>reject(Object.assign(Error(),{code:'ROLE_CONTAINER_LAUNCH_UNKNOWN'})));child.once('close',(code,signal)=>resolve({code,signal}));});}
  finally{clearInterval(timer);process.off('SIGTERM',cancel);process.off('SIGINT',cancel);}
  if(pending)consume(pending);
+ if(outputError)fs.writeSync(err,JSON.stringify({code:'ROLE_CONTAINER_OUTPUT_UNKNOWN'})+'\n');
  fs.fsyncSync(stream);fs.fsyncSync(err);
- if(outputError)fail('ROLE_CONTAINER_OUTPUT_UNKNOWN');
  if(result.signal||!Number.isInteger(result.code))fail('ROLE_CONTAINER_RESULT_UNKNOWN');
  terminal=true;
- durable(dir+'/result.json',{runId,exitCode:result.code,signal:null,cancelled,timedOut:result.code===124,image:IMAGE,
+ durable(dir+'/result.json',{runId,exitCode:outputError?1:result.code,signal:null,cancelled,outputUnknown:outputError,timedOut:result.code===124,image:IMAGE,
   stdoutSha256:sha(fs.readFileSync(dir+'/stdout')),stderrSha256:sha(fs.readFileSync(dir+'/stderr')),at:new Date().toISOString()});
- console.log(JSON.stringify({runId,exitCode:result.code,image:IMAGE,network:'isolated-with-scoped-provider'}));
+ console.log(JSON.stringify({runId,exitCode:outputError?1:result.code,outputUnknown:outputError,image:IMAGE,network:'isolated-with-scoped-provider'}));
 }catch(e){console.error(JSON.stringify({code:/^ROLE_[A-Z_]+$/.test(e.code??e.message)?(e.code??e.message):'ROLE_CONTAINER_UNKNOWN',runId}));process.exitCode=1;}
 finally{
  for(const fd of [input,stream,err])if(fd!==undefined)fs.closeSync(fd);
