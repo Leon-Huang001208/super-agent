@@ -2,6 +2,7 @@
 
 | 子系统 | 本仓库入口 | 维护与验证 |
 |---|---|---|
+| Research / PM 必需材料 | `bridge/role-materials.mjs`、`bridge/role-preparation.mjs` | 部署清单、摘要、引用和目录链预检；项目及角色私有知识按版本读取。离线候选，尚未接入原生执行器。见[本轮设计与现场核查](plans/research-pm-m1.md)。 |
 | 容器与存储 | `compose.yaml`、`docker/Dockerfile.runtime`、`scripts/sa` | 专用 APFS、只读根、固定镜像、日志和缺盘拒绝；Docker 回归 |
 | 镜像复用与退役 | `scripts/runtime-image.mjs`、`scripts/runtime-image-closeout.mjs`、`scripts/runtime-image-closeout-docker.mjs` | `image-build` 按完整 ID、内容指纹和用途标签复用，`image-audit` 只读清点。`image-closeout` 保护被容器、启动配置和用途标签引用的镜像，允许按 ID 核对退役的无标签登记项。离线夹具覆盖标签移除、漂移、轮换和归档验证，见 `tests/runtime-image.test.mjs`、`tests/runtime-image-closeout.test.mjs`、`tests/runtime-image-closeout-docker.test.mjs`。 |
 | 依赖与候选 | `docker/package*.json`、`evaluation/candidate.json` | 固定版本与完整性；候选校验不等于安装或业务验收 |
