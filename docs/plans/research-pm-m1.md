@@ -55,3 +55,7 @@ Native的受管wrapper将授权的stdio委派给临时任务容器。此传输�
 预算分母明确区分。每任务最多6次Native外层调用（包括环境探针），每个工具run的provider broker最多转发64次responses。固定session header不证明请求来自原CLI，不能宣称任意shell请求均可归因给某个工具；计数以broker实际转发次数和Native记录核对。用户的上海每日10个新任务与全局单任务执行继续使用原AdmissionMeter。
 
 测试已证明初始隔离桥中两套DB5432与应用3100不可达、应用密码/socket/宿主HOME不可见。新任务内部网络和受控TLS出口需在实际运行中再次验证。公开HTTPS出口按IP拒绝私网目标；未知或取消发布持久取消意图，原锁保留，不自动重发。
+
+## 现场接线修正
+
+Native托管订阅拒绝Agent配置内的原始-c参数，故Agent仅声明原生支持的sandbox参数，已授权的工具和传输参数由可信任务执行层施加。原生验证还需明确引用已有master key文件，不能创建替代key。以bind挂载替换CLI wrapper时必须保留可执行位；镜像构建中的chmod不能替代宿主文件的模式验证。前两次环境预检均没有hello provider claim，按原操作证据收存，未作模型通过证据。

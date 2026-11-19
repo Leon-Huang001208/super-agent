@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
+export const NATIVE_ROLE_MANAGED_ARGS = Object.freeze(['--sandbox', 'workspace-write']);
 export const NATIVE_ROLE_EXTRA_ARGS = Object.freeze(['--sandbox', 'workspace-write',
   '-c', 'features.shell_tool=true', '-c', 'features.unified_exec=true',
   '-c', 'features.apply_patch_freeform=true', '-c', 'features.apps=true', '-c', 'features.plugins=true',
@@ -34,7 +35,7 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
           config.engine !== 'cli' || config.command !== '/opt/super-agent/bin/codex' ||
           config.model !== 'gpt-6.1-sol' || config.modelReasoningEffort !== 'low' ||
           config.dangerouslyBypassApprovalsAndSandbox !== false || config.dangerouslyBypassSandbox !== false ||
-          !isDeepStrictEqual(config.extraArgs, [...NATIVE_ROLE_EXTRA_ARGS, '-c', 'web_search="live"']) ||
+          !isDeepStrictEqual(config.extraArgs, NATIVE_ROLE_MANAGED_ARGS) ||
           config.search !== true || ctx.runtime?.sessionId ||
           ctx.runtime?.sessionParams?.sessionId ||
           ['OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'].some(key => config.env?.[key])) {

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import { randomUUID,createHash } from 'node:crypto';
 import { AdmissionMeter } from '../bridge/admission.mjs';
-import { NATIVE_ROLE_EXTRA_ARGS } from '../bridge/native-role-adapter.mjs';
+import { NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
 const ROOT='/paperclip/control/research-pm',PKG='/opt/paperclip/node_modules';
 const COMPANY='85f89b59-f73a-450d-8676-4afcab409fb0',OWNER='n6MxHj1whoJQggkbVPBdXUpybvBaa7RI';
 const sha=x=>createHash('sha256').update(x).digest('hex');
@@ -29,19 +29,21 @@ try{
  if(action==='provision'){
   if(fs.existsSync(ROOT+'/registry.json'))fail('ROLE_ACCEPTANCE_ALREADY_PROVISIONED');
   const intentFile=ROOT+'/provision.intent.json';
-  if(fs.existsSync(intentFile))fail('ROLE_ACCEPTANCE_PROVISION_RECONCILIATION_REQUIRED');
-  const ids={projectId:randomUUID(),taskId:randomUUID(),researchId:randomUUID(),pmId:randomUUID()};
-  fs.writeFileSync(intentFile,JSON.stringify(ids)+'\n',{flag:'wx',mode:0o600});
+  const resume=process.argv[3]==='--resume-provision';
+  if(fs.existsSync(intentFile)&&!resume)fail('ROLE_ACCEPTANCE_PROVISION_RECONCILIATION_REQUIRED');
+  const ids=resume?read(intentFile):{projectId:randomUUID(),taskId:randomUUID(),researchId:randomUUID(),pmId:randomUUID()};
+  if(!resume)fs.writeFileSync(intentFile,JSON.stringify(ids)+'\n',{flag:'wx',mode:0o600});
   const {projectService}=await import(PKG+'/@paperclipai/server/dist/services/projects.js');
-  const project=await projectService(db).create(COMPANY,{id:ids.projectId,name:'Personal Automation M1',description:'Scoped Research and PM acceptance. No RWB code or deployment.',status:'in_progress'});
+  const project=await projectService(db).getById(ids.projectId)??await projectService(db).create(COMPANY,{id:ids.projectId,name:'Personal Automation M1',description:'Scoped Research and PM acceptance. No RWB code or deployment.',status:'in_progress'});
+  if(project.id!==ids.projectId||project.companyId!==COMPANY||project.name!=='Personal Automation M1')fail('ROLE_ACCEPTANCE_PROJECT_CHANGED');
   const {taskId,researchId,pmId}=ids;
   const description='调研个人自动化中台如何支持公开来源研究到需求草案交付。仅使用公开官方来源，比较来源证据、需求假设、验收与记忆版本；不进行访谈，不修改RWB。依赖由Docker管理，Paperclip是唯一任务控制面。';
-  const task=await issueSvc.create(COMPANY,{id:taskId,projectId:project.id,title:'M1 Research to PM real acceptance',description,
+  const task=await issueSvc.getById(taskId)??await issueSvc.create(COMPANY,{id:taskId,projectId:project.id,title:'M1 Research to PM real acceptance',description,
     status:'todo',priority:'medium',responsibleUserId:OWNER,createdByUserId:OWNER,actorResponsibleUserId:OWNER,trustExplicitResponsibleUserId:true,
     idempotencyKey:'sa-research-pm-m1-20261119:A',allowDuplicate:false});
-  if(task.id!==taskId)fail('ROLE_ACCEPTANCE_TASK_ID_CHANGED');
+  if(task.id!==taskId||task.projectId!==project.id||task.description!==description||task.responsibleUserId!==OWNER)fail('ROLE_ACCEPTANCE_TASK_ID_CHANGED');
   meter=new AdmissionMeter({filename:'/paperclip/control/admission.sqlite',allowedProjectIds:[project.id],log});
-  const receipt=read('/paperclip/logs/host-storage.json');
+  const receipt=read('/host-evidence/host-storage.json');
   const lease=meter.reserveTask({taskId,projectId:project.id,storageReceipt:receipt});
   if(!lease.allowed)fail('ROLE_ACCEPTANCE_ADMISSION_DENIED');
   const registry={schemaVersion:1,enabled:true,companyId:COMPANY,ownerId:OWNER,projectId:project.id,
@@ -78,7 +80,7 @@ try{
   const agent=await agentSvc.requestHire(COMPANY,{id,name:'M1 '+roleName,role:roleName==='research'?'researcher':'pm',title:roleName,
     adapterType:'codex_local',adapterConfig:{engine:'cli',command:'/opt/super-agent/bin/codex',cwd:ROOT+'/workspaces/'+roleName,
       instructionsFilePath:ROOT+'/materials/'+id+'.md',model:'gpt-6.1-sol',modelReasoningEffort:'low',search:true,
-      dangerouslyBypassApprovalsAndSandbox:false,dangerouslyBypassSandbox:false,extraArgs:[...NATIVE_ROLE_EXTRA_ARGS,'-c','web_search="live"'],
+      dangerouslyBypassApprovalsAndSandbox:false,dangerouslyBypassSandbox:false,extraArgs:[...NATIVE_ROLE_MANAGED_ARGS],
       env:{SUPER_AGENT_ROLE_ENABLED:'true',SUPER_AGENT_ROLE_AGENT_ID:id}},
     runtimeConfig:{heartbeat:{enabled:false,wakeOnDemand:true,maxConcurrentRuns:1,maxDailyRuns:6},aiConnection:{mode:'responsible_user',method:'subscription',provider:'openai'}},
     status:'idle',spentMonthlyCents:0,budgetMonthlyCents:0},{createdByUserId:OWNER,responsibleUserId:OWNER});

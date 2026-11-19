@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { isSubscriptionAuth } from './codex-hello-gate.mjs';
 import { executeIsolatedRole } from '../bridge/role-isolated-transport.mjs';
-import { NATIVE_ROLE_EXTRA_ARGS } from '../bridge/native-role-adapter.mjs';
+import { NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
@@ -38,7 +38,7 @@ export function validateRoleCall({ permit, args, env, cwd, now }) {
       env.PAPERCLIP_RUN_ID !== permit.runId || env.PAPERCLIP_AGENT_ID !== permit.agentId ||
       env.PAPERCLIP_COMPANY_ID !== permit.companyId || env.PAPERCLIP_TASK_ID !== permit.taskId ||
       !new RegExp('^/tmp/paperclip-ai-'+permit.companyId+'-'+permit.credentialGrantId+'-[A-Za-z0-9]+/provider$').test(env.CODEX_HOME ?? '')) fail('ROLE_GATE_SCOPE_DENIED');
-  const base = ['exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"',...NATIVE_ROLE_EXTRA_ARGS,'-c','web_search="live"','-'];
+  const base = ['exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"',...NATIVE_ROLE_MANAGED_ARGS,'-'];
   const allowed = [base, [...base.slice(0,2),'--skip-git-repo-check',...base.slice(2)]]
     .map(value => ['--search', ...value]);
   if (!Array.isArray(args) || !allowed.some(value => JSON.stringify(value) === JSON.stringify(args))) fail('ROLE_GATE_ARGUMENTS_DENIED');
