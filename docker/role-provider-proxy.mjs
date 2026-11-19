@@ -21,7 +21,9 @@ const server=http.createServer(async(req,res)=>{
   if(Date.now()>config.expiresAt)return fail(res,403,'ROLE_PROXY_EXPIRED');
   const url=new URL(req.url,'http://local');
   const modelPath=req.method==='POST'&&url.pathname==='/backend-api/codex/responses';
-  const metadata=req.method==='GET'&&['/backend-api/codex/models','/backend-api/wham/usage'].includes(url.pathname);
+  const metadata=(req.method==='GET'&&['/backend-api/codex/models','/backend-api/wham/usage'].includes(url.pathname))||
+    (['GET','POST'].includes(req.method)&&url.pathname==='/backend-api/wham/accounts/check');
+  if(req.method==='POST'&&url.pathname==='/backend-api/codex/analytics-events/events'){res.writeHead(204);res.end();return;}
   if(!modelPath&&!metadata){audit({code:'ROLE_PROXY_PATH_DENIED',path:url.pathname});return fail(res,403,'ROLE_PROXY_PATH_DENIED');}
   if(url.pathname.endsWith('/responses')){
    const current=req.headers.session_id??req.headers['x-codex-session-id'];

@@ -49,10 +49,14 @@ try{
  for(const p of [client,proxy,audit])if(!fs.existsSync(p))fs.mkdirSync(p,{mode:0o700});
  const key=resumeSetup?JSON.parse(read(proxy+'/config.json')).key:randomBytes(32).toString('hex');
  if(!resumeSetup)durable(proxy+'/config.json',{runId,key,expiresAt:Date.now()+660000});
+ const selectedAuth=JSON.parse(read(dir+'/provider/auth.json'));
+ const selectedClaims=JSON.parse(Buffer.from(selectedAuth.tokens.id_token.split('.')[1],'base64url').toString());
+ const accountId=selectedAuth.tokens.account_id??selectedClaims['https://api.openai.com/auth']?.chatgpt_account_id;
+ if(typeof accountId!=='string'||!accountId)fail('ROLE_CONTAINER_PROVIDER_ACCOUNT_DENIED');
  const payload={iss:'https://auth.openai.com',sub:'role-'+runId,exp:Math.floor(Date.now()/1000)+3600,iat:Math.floor(Date.now()/1000),
-  email:'role@local.invalid','https://api.openai.com/auth':{chatgpt_account_id:'role-'+runId,chatgpt_user_id:'role-'+runId,chatgpt_plan_type:'plus'}};
+  email:'role@local.invalid','https://api.openai.com/auth':{chatgpt_account_id:accountId,chatgpt_user_id:'role-'+runId,chatgpt_plan_type:'plus'}};
  const jwt=Buffer.from('{"alg":"RS256","typ":"JWT"}').toString('base64url')+'.'+Buffer.from(JSON.stringify(payload)).toString('base64url')+'.eA';
- if(!resumeSetup)durable(client+'/auth.json',{auth_mode:'chatgpt',tokens:{access_token:key,refresh_token:'role-no-refresh',id_token:jwt,account_id:'role-'+runId},last_refresh:new Date().toISOString()});
+ if(!resumeSetup)durable(client+'/auth.json',{auth_mode:'chatgpt',tokens:{access_token:key,refresh_token:'role-no-refresh',id_token:jwt,account_id:accountId},last_refresh:new Date().toISOString()});
  network='sa-role-net-'+runId;broker='sa-role-provider-'+runId;
  exec(['network','create','--internal','--subnet','10.203.240.0/28','--label','io.super-agent.task=sa-research-pm-m1-20261119',network]);
  const base=['--pull','never','--platform','linux/arm64','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',
