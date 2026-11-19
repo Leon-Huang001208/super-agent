@@ -89,7 +89,7 @@ try{
   const r=read(ROOT+'/registry.json'),roleName=process.argv[3],entry=r.agents.find(x=>x.profile.role===roleName);
   if(!entry)fail('ROLE_ACCEPTANCE_ROLE_DENIED');
   const taskId=r.taskId,agentId=entry.profile.agentId;
-  await issueSvc.update(taskId,{assigneeAgentId:agentId,status:'todo'});
+  await issueSvc.update(taskId,{assigneeAgentId:agentId,assigneeUserId:null,status:'todo'});
   const task=await issueSvc.getById(taskId);
   const op={id:randomUUID(),kind:'run',taskId,agentId,role:roleName};
   r.operations.push(op);write(ROOT+'/registry.json',r);

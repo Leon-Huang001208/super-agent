@@ -4,6 +4,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { createNativeRoleAdapter } from './native-role-adapter.mjs';
 import { withRoleCall } from './role-call-budget.mjs';
 import { createRolePreparation } from './role-preparation.mjs';
+import { settleNativeRole } from './role-native-settlement.mjs';
 
 const ROOT='/paperclip/control/research-pm',PKG='/opt/paperclip/node_modules';
 const sha=x=>createHash('sha256').update(x).digest('hex');
@@ -106,7 +107,17 @@ export async function installNativeRoles() {
                 return checked.onLog(stream,chunk);
               }});
               if(knownUnstarted(result))return {...result,resultJson:{...result.resultJson,executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
-              return result;
+              return settleNativeRole({binding:r.binding,result,log,transaction:async fn=>{
+                const {schema:s,orm:o,db}=await database();
+                return db.transaction(async tx=>{
+                  const issues=(await import(PKG+'/@paperclipai/server/dist/services/issues.js')).issueService(tx);
+                  return fn({lock:async()=>{
+                    const [task]=await tx.select().from(s.issues).where(o.eq(s.issues.id,r.binding.taskId)).for('update');
+                    const [run]=await tx.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,r.binding.runId));
+                    return {task,run};
+                  },addCompletion:(id,body,actor)=>issues.addComment(id,body,actor,{completionReply:true}),handBack:(id,patch)=>issues.update(id,patch)});
+                });
+              }});
             },
             completed:result=>(result?.exitCode===0&&!result.signal&&!result.timedOut&&!result.errorCode)||knownUnstarted(result)});
         }});
