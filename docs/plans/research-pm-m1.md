@@ -35,3 +35,23 @@ PM Skill 的跨设备参考包须先核对声明的 ZIP SHA、六成员白名单
 2026-11-19 原挂载由本人通过 Finder 成功恢复，APFS UUID 0A71984A-FF62-4B30-8E23-D91478C246F8。评估db及app按原ID恢复，所有执行/调度开关false。评估69条run均终态，但manual in_review与active旧恢复动作仍需保全，不把无running视为业务完成。飞书覆盖层121+1文件摘要全部通过。PM ZIP的15960字节、声明SHA和六成员已核对，落在本任务assets下，尚未实际加载。用户另授权迁移窗口独占运行环境，本窗口已交接并暂停运行写入。
 
 新增 native-role-adapter 为原生 codex_local execute 的预检包装候选，保留原ctx、身份及回调，禁止直接CLI替换、API回退和resume旧session。现行应用尚未导入该包装；需迁移窗口释放后，在受控配置中完成原生注册表与prepareRole装配及真实工具核验。新增合同测试在迁移期间暂未执行。
+
+## 真实运行候选的工具约束
+
+新角色保留原 codex 命令路径。wrapper 仅在原生注入角色标记且存在精确 run 许可时进入新增 gate，旧 hello/Chief 分支保留。新 gate 固定个人订阅模型/low、read-only sandbox、禁用 shell/unified_exec/apply_patch/apps/plugins；Research 仅开公开网页搜索，PM 关闭网页搜索。角色材料和研究结果由原生适配器注入，原生任务/运行/会话继续归 Paperclip。每 run 独占 claim，重复或未知结果不得重发。真实模型工具枚举、搜索来源和拒绝证据尚待验收。
+
+2026-11-19 存储迁移已完成并正式交还窗口。WorkDisk运行镜像与原逻辑APFS UUID保持，两库隔离还原通过。原生角色装配选用 Paperclip registerServerAdapter 包装已有 codex_local execute/testEnvironment。探针也须有Root操作许可、共用原 AdmissionMeter 的上海日限10及全局租约，每任务共6次物理调用，probe/run共用单活调用锁。确定未执行的拒绝释放本次调用锁，执行后未知结果保留待核。角色开关与旧Chief/hello各自限定。
+
+CLI 0.159.0实际features list确认shell_tool、apps、plugins为false；unified_exec显示true，即使显式设false也未改变。不能据此宣称执行工具已全面隔离，真实会话须以实际工具行为记录，并仅使用独立哨兵夹具验证，禁止读取真实秘密。新wrapper命令仍为原路径，新增lane要求精确Native run/task/agent/company、订阅home/grant和材料SHA。
+
+## 工具范围的最新本人授权
+
+2026-11-19本人要求对Research/PM开放shell、文件补丁、Apps和Plugins并全部测试。此授权覆盖本轮受控工具矩阵；候选现使用workspace-write、shell/unified_exec/apps/plugins及网络搜索，写入仅用于任务目录和独立哨兵。安装、连接、配置开启和真实工具调用分开记录；缺少连接或授权时保留受限，不把模型文字声明当机械拒绝。前文只读小工具集方案已被本段取代。
+
+## 全工具执行的隔离与计数
+
+Native的受管wrapper将授权的stdio委派给临时任务容器。此传输不创建第二任务、运行或会话存储。应用和模型均不挂Docker socket；宿主仅以既有Docker CLI管理一次调用的隔离资源。任务容器不挂应用state、宿主HOME或其他角色知识，网络仅连接私有任务网。任务外的临时provider broker持有Native选择的订阅授权；模型只拿限时opaque授权，原授权不从任务回写。固定订阅后端使用同一模型及low，不转付费API。
+
+预算分母明确区分。每任务最多6次Native外层调用（包括环境探针），每个工具run的provider broker最多转发64次responses。固定session header不证明请求来自原CLI，不能宣称任意shell请求均可归因给某个工具；计数以broker实际转发次数和Native记录核对。用户的上海每日10个新任务与全局单任务执行继续使用原AdmissionMeter。
+
+测试已证明初始隔离桥中两套DB5432与应用3100不可达、应用密码/socket/宿主HOME不可见。新任务内部网络和受控TLS出口需在实际运行中再次验证。公开HTTPS出口按IP拒绝私网目标；未知或取消发布持久取消意图，原锁保留，不自动重发。

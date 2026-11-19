@@ -52,6 +52,7 @@ function anchors(body) {
     const slug = m[1].toLowerCase().replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}_\-\s]/gu, '').trim().replace(/\s/g, '-');
     const count = seen.get(slug) ?? 0; result.add(count ? `${slug}-${count}` : slug); seen.set(slug, count + 1);
   }
+  for (const m of markdownWithoutCode(body).matchAll(/^ {0,3}<a\s+(?:id|name)=(["'])([A-Za-z][A-Za-z0-9_-]*)\1\s*><\/a>\s*$/gm)) result.add(m[2]);
   return result;
 }
 

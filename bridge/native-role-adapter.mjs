@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
+export const NATIVE_ROLE_EXTRA_ARGS = Object.freeze(['--sandbox', 'workspace-write',
+  '-c', 'features.shell_tool=true', '-c', 'features.unified_exec=true',
+  '-c', 'features.apply_patch_freeform=true', '-c', 'features.apps=true', '-c', 'features.plugins=true',
+  '-c', 'sandbox_workspace_write.network_access=true', '-c', 'enable_request_compression=false',
+  '-c', 'hide_agent_reasoning=true', '-c', 'show_raw_agent_reasoning=false']);
+
+
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 
 /**
@@ -27,8 +34,8 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
           config.engine !== 'cli' || config.command !== '/opt/super-agent/bin/codex' ||
           config.model !== 'gpt-6.1-sol' || config.modelReasoningEffort !== 'low' ||
           config.dangerouslyBypassApprovalsAndSandbox !== false || config.dangerouslyBypassSandbox !== false ||
-          !isDeepStrictEqual(config.extraArgs, ['--sandbox', 'read-only']) ||
-          config.search !== (profile.role === 'research') || ctx.runtime?.sessionId ||
+          !isDeepStrictEqual(config.extraArgs, [...NATIVE_ROLE_EXTRA_ARGS, '-c', 'web_search="live"']) ||
+          config.search !== true || ctx.runtime?.sessionId ||
           ctx.runtime?.sessionParams?.sessionId ||
           ['OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'].some(key => config.env?.[key])) {
         fail('NATIVE_ROLE_SCOPE_DENIED');

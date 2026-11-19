@@ -18,8 +18,8 @@ export function createRolePreparation({ readContext, readKnowledge, log }) {
           !profile || profile.agentId !== binding.agentId || profile.projectId !== binding.projectId ||
           !['research', 'pm'].includes(profile.role) || profile.engine !== 'codex_local' ||
           profile.model !== 'gpt-6.1-sol' || profile.reasoningEffort !== 'low' ||
-          profile.dangerouslyBypassApprovalsAndSandbox !== false || profile.sandbox !== 'read-only' ||
-          !Array.isArray(profile.tools) || profile.tools.some(tool => !['read_materials', 'read_sources'].includes(tool))) {
+          profile.dangerouslyBypassApprovalsAndSandbox !== false || !['read-only', 'workspace-write'].includes(profile.sandbox) ||
+          !Array.isArray(profile.tools) || profile.tools.some(tool => !['read_materials', 'read_sources', 'shell', 'apply_patch', 'apps', 'plugins'].includes(tool))) {
         fail('ROLE_PREPARE_SCOPE_DENIED');
       }
       const validate = value => {

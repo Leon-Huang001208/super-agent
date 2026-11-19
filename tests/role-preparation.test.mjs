@@ -37,7 +37,7 @@ test('new run preparation binds Native identity, materials, knowledge and fixed 
   changed = true;
   await assert.rejects(prepare(input),/VERSION_CHANGED/);
   await assert.rejects(prepare({...input,binding:{...binding,ownerId:'other'}}),/NATIVE_BINDING_DENIED/);
-  await assert.rejects(prepare({...input,profile:{...profile,tools:['shell']}}),/SCOPE_DENIED/);
+  await assert.rejects(prepare({...input,profile:{...profile,tools:['arbitrary_admin_tool']}}),/SCOPE_DENIED/);
   fs.writeFileSync(root+'/SKILL.md','tampered');
   await assert.rejects(prepare(input),/DIGEST_MISMATCH/);
   assert.ok(events.some(e=>e.code==='ROLE_PREPARE_READY'));

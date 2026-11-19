@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createNativeRoleAdapter } from '../bridge/native-role-adapter.mjs';
+import { createNativeRoleAdapter, NATIVE_ROLE_EXTRA_ARGS } from '../bridge/native-role-adapter.mjs';
 
 test('Native adapter port prepares mandatory materials before exactly one original execute call', async () => {
   const binding = {runId:'run',agentId:'agent',companyId:'company',projectId:'project',taskId:'task',ownerId:'owner',inputRevision:'revision'};
@@ -8,7 +8,7 @@ test('Native adapter port prepares mandatory materials before exactly one origin
   const ctx = {runId:'run',agent:{id:'agent',companyId:'company'},runtime:{sessionId:null},
     context:{issueId:'task',projectId:'project',responsibleUserId:'owner',inputRevision:'revision'},
     config:{engine:'cli',command:'/opt/super-agent/bin/codex',model:'gpt-6.1-sol',modelReasoningEffort:'low',
-      dangerouslyBypassApprovalsAndSandbox:false,dangerouslyBypassSandbox:false,extraArgs:['--sandbox','read-only'],
+      dangerouslyBypassApprovalsAndSandbox:false,dangerouslyBypassSandbox:false,extraArgs:[...NATIVE_ROLE_EXTRA_ARGS,'-c','web_search="live"'],
       search:true,instructionsFilePath:'/materials/instructions.md'}};
   let calls = 0, blocked = false, mutate = false;
   const adapter = createNativeRoleAdapter({
