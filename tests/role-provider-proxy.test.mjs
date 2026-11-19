@@ -23,6 +23,7 @@ test('provider broker rejects wrong token, other routes, other model/session and
  assert.equal((await request('/api/companies')).status,403);
  assert.equal((await request('/backend-api/codex/responses')).status,403);
  assert.equal((await request('/backend-api/codex/responses','synthetic-role-key','two','gpt-6.1-sol')).status,403);
+  assert.equal((await fetch('http://127.0.0.1:8090/backend-api/codex/responses',{method:'POST',headers:{authorization:'Bearer synthetic-role-key','session-id':'two','content-type':'application/json'},body:JSON.stringify({model:'gpt-6.1-sol',reasoning:{effort:'low'}})})).status,403);
  const denied=await new Promise(resolve=>{
   const socket=net.connect(8090,'127.0.0.1',()=>socket.write('CONNECT 127.0.0.1:5432 HTTP/1.1\r\nHost: 127.0.0.1:5432\r\n\r\n'));
   socket.once('data',data=>{socket.destroy();resolve(data.toString());});socket.setTimeout(2000,()=>{socket.destroy();resolve('timeout');});
