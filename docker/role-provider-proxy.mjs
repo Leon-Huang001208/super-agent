@@ -55,6 +55,7 @@ const handler=async(req,res)=>{
 };
 const server=http.createServer(handler);
 const tls=fs.existsSync(configRoot+'/tls.key')?https.createServer({key:fs.readFileSync(configRoot+'/tls.key'),cert:fs.readFileSync(configRoot+'/tls.crt')},handler):null;
+tls?.on('tlsClientError',error=>audit({code:'ROLE_PROXY_TLS_CLIENT_ERROR',errorCode:error.code}));
 server.on('connect',async(req,client,head)=>{
  try{
   const value=new URL('https://'+req.url),port=Number(value.port||443);

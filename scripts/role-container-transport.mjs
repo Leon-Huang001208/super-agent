@@ -64,10 +64,18 @@ try{
  if(!resumeSetup)durable(client+'/models.json',catalog);
  else if(sha(read(client+'/models.json'))!==sha(Buffer.from(JSON.stringify(catalog)+'\n')))fail('ROLE_CONTAINER_CATALOG_CHANGED');
  const containerProxy='/paperclip/control/research-pm/transport/'+runId+'/proxy';
- if(!resumeSetup)exec(['exec','super-agent-paperclip-eval-paperclip-1','openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1',
-  '-keyout',containerProxy+'/tls.key','-out',containerProxy+'/tls.crt','-subj','/CN=provider','-addext','subjectAltName=DNS:provider']);
+ if(!resumeSetup){
+  exec(['exec','super-agent-paperclip-eval-paperclip-1','openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1',
+   '-keyout',containerProxy+'/ca.key','-out',containerProxy+'/ca.crt','-subj','/CN=Task-local role CA']);
+  exec(['exec','super-agent-paperclip-eval-paperclip-1','openssl','req','-newkey','rsa:2048','-nodes',
+   '-keyout',containerProxy+'/tls.key','-out',containerProxy+'/tls.csr','-subj','/CN=provider']);
+  fs.writeFileSync(proxy+'/leaf.ext','subjectAltName=DNS:provider\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n',{mode:0o600,flag:'wx'});
+  exec(['exec','super-agent-paperclip-eval-paperclip-1','openssl','x509','-req','-in',containerProxy+'/tls.csr',
+   '-CA',containerProxy+'/ca.crt','-CAkey',containerProxy+'/ca.key','-CAcreateserial','-out',containerProxy+'/tls.crt','-days','1','-extfile',containerProxy+'/leaf.ext']);
+  fs.chmodSync(proxy+'/ca.key',0o600);fs.chmodSync(proxy+'/ca.crt',0o600);
+ }
  fs.chmodSync(proxy+'/tls.key',0o600);fs.chmodSync(proxy+'/tls.crt',0o600);
- if(!resumeSetup)fs.writeFileSync(client+'/trust.pem',exec(['exec','super-agent-paperclip-eval-paperclip-1','cat','/etc/ssl/certs/ca-certificates.crt'])+read(proxy+'/tls.crt'),{mode:0o600,flag:'wx'});
+ if(!resumeSetup)fs.writeFileSync(client+'/trust.pem',exec(['exec','super-agent-paperclip-eval-paperclip-1','cat','/etc/ssl/certs/ca-certificates.crt'])+read(proxy+'/ca.crt'),{mode:0o600,flag:'wx'});
  network='sa-role-net-'+runId;broker='sa-role-provider-'+runId;
  if(resumeSetup){
   const found=JSON.parse(exec(['network','ls','--filter','name=^'+network+'$','--format','json']).trim()||'null');
@@ -94,7 +102,7 @@ try{
   '--mount','type=bind,source='+client+',target='+request.home,
   '--mount','type=bind,source='+material+',target='+permit.instructionsFilePath+',readonly',
   '--mount','type=bind,source='+DATA+'/dependencies-paperclip-taskguard4,target=/opt/paperclip,readonly',
-  '--env','HOME=/tmp/role-home','--env','CODEX_HOME='+request.home,'--env','LANG=C.UTF-8','--env','SSL_CERT_FILE='+request.home+'/trust.pem',
+  '--env','HOME=/tmp/role-home','--env','CODEX_HOME='+request.home,'--env','LANG=C.UTF-8','--env','SSL_CERT_FILE='+request.home+'/trust.pem','--env','CODEX_CA_CERTIFICATE='+request.home+'/trust.pem',
   '--env','HTTP_PROXY=http://provider:8090','--env','HTTPS_PROXY=http://provider:8090','--env','NO_PROXY=provider'];
  if(seccomp){const file=dir+'/seccomp.json';fs.writeFileSync(file,seccomp.slice(8),{mode:0o600,flag:'wx'});args.push('--security-opt','seccomp='+file);}
  args.push('--entrypoint','/usr/bin/timeout',IMAGE,'--signal=TERM','--kill-after=4s','600','/opt/paperclip/node_modules/.bin/codex',
