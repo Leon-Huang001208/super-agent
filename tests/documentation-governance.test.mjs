@@ -95,3 +95,11 @@ test('candidate policy cannot exempt existing base mappings without review', t =
   assert.equal(checkDocumentation(f.root, { changedFiles: ['src/a.mjs', 'docs/architecture.md'], baselineManifest }).ok, true);
   assert.ok(codes(checkDocumentation(f.root, { baselineManifest: {} })).includes('INVALID_BASELINE_MANIFEST'));
 });
+
+test('explicit standalone HTML anchors resolve, while fenced and inline examples do not', t => {
+  const f=fixture(t);
+  f.write('docs/architecture.md', '# Architecture\n<a id="named"></a>\n[valid](#named)\n');
+  assert.equal(checkDocumentation(f.root).ok,true);
+  f.write('docs/architecture.md', '# Architecture\n`<a id="inline"></a>`\n\n```html\n<a id="fenced"></a>\n```\n[missing](#inline)\n[missing](#fenced)\n');
+  assert.equal(codes(checkDocumentation(f.root)).filter(c=>c==='LINK_ANCHOR_MISSING').length,2);
+});

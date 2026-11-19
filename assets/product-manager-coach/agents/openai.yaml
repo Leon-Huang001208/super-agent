@@ -1,0 +1,7 @@
+interface:
+  display_name: "产品经理教练"
+  short_description: "零基础产品经理教练：从客户问题、需求取舍到金融软件交付与复盘"
+  default_prompt: "请用 $product-manager-coach 带我从当前产品问题开始，解释必要概念，帮我做一个有依据的决定并产出可使用的材料。"
+
+policy:
+  allow_implicit_invocation: true

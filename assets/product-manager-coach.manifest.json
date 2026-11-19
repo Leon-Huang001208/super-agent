@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "sourceZipSha256": "533c4945507b442c0cacec020745b816a8e9c9803381f9a152a4dfc2597fe3ef",
+  "sourceZipBytes": 15960,
+  "files": [
+    {
+      "path": "SKILL.md",
+      "bytes": 6128,
+      "sha256": "248c4ec630aada30ed7a1020af2f411b29584ae95851d59dc9df7fe4f45d5983"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4141,
+      "sha256": "8de89546f3bead8a3934f473a9dc895d4eed787bf5ee55ec0c0cf00f60157c54"
+    },
+    {
+      "path": "agents/openai.yaml",
+      "bytes": 376,
+      "sha256": "c1913636b7ac1bf7b5db3410b03ce8d20625ceece898b5bcc62c71f41c5f1657"
+    },
+    {
+      "path": "references/modes.md",
+      "bytes": 6616,
+      "sha256": "caf691b1a292533bd7002a07d584bbe45b2c8a31d96aa712ab55e96241cc8fd0"
+    },
+    {
+      "path": "references/templates.md",
+      "bytes": 5330,
+      "sha256": "3fcbafc74ebe461550b3c8b3154d9d6b29a47fa829f08aeb88c865a8771ca94a"
+    },
+    {
+      "path": "references/finance.md",
+      "bytes": 4530,
+      "sha256": "2651e3c26bf9f0835a573623d1b8426859695654da453328c605669e2102b479"
+    }
+  ]
+}

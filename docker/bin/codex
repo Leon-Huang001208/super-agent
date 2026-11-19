@@ -6,6 +6,12 @@ case "${1:-}" in
     ;;
   *)
     sa_bin_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    if [ "${SUPER_AGENT_ROLE_ENABLED:-false}" = true ] && [ -n "${SUPER_AGENT_ROLE_PROBE_ID:-}" ]; then
+      exec node /opt/super-agent/role/docker/role-probe.mjs "$@"
+    fi
+    if [ "${SUPER_AGENT_ROLE_ENABLED:-false}" = true ] && [ -n "${PAPERCLIP_RUN_ID:-}" ] && [ -f "/paperclip/control/research-pm/permits/${PAPERCLIP_RUN_ID}.json" ]; then
+      exec node /opt/super-agent/role/docker/role-codex-gate.mjs "$@"
+    fi
     if [ "${SUPER_AGENT_CHIEF_WEB_ENABLED:-false}" = true ] && [ -n "${PAPERCLIP_RUN_ID:-}" ] && [ -f "/paperclip/control/chief-web/permits/${PAPERCLIP_RUN_ID}.json" ]; then
       exec node "$sa_bin_dir/../codex-chief-web-gate.mjs" "$@"
     fi
