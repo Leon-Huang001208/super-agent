@@ -1,0 +1,34 @@
+import{TEAM_ROLES}from'./team-roles.mjs';import{validateNetworkScope}from'./network-role.mjs';import{validateResourceScope}from'./system-resource-role.mjs';
+const fail=code=>{throw Object.assign(Error(code),{code});};
+export const CHIEF_DISPATCH_PROTOCOL=`Chief Coordinator execution protocol:
+Read the trusted execution binding below. In phase=plan, inspect the owner's goal and make a bounded delegation plan using existing role keys. Do not call Native APIs or create another agent. The controller, not your prose, records real Native assignments.
+Write valid JSON to binding.planFile: schemaVersion=1; tasks is an array of at most 4 objects. Each requires key (lowercase slug), role (existing stable role key other than chief), title, goal, outputFile, dependsOn (array of task keys). Use outputFile=team-<binding.taskId>-<key>.md, or .json for quality output. Network Engineer requires networkScope with allowed network topics and actions observe/diagnose/report; System Resource Engineer requires resourceScope with allowed resource topics and the same read-only actions. No host changes or external writes.
+All calls, including your plan, delegated tasks, and final summary, share SIX root calls. Reserve one final summary call. Never create children to reset a spent budget. Keep unrelated tasks and old evidence. Include independent qa after work needing verification; do not mechanically involve every role. If delegation is unnecessary, tasks may be empty, directResult must be nonempty, and also write binding.summaryFile.
+In phase=summary, do not write another plan. Read actual child results supplied in the task, distinguish registration/environment/tools/business proof, report failures and NOT_RUN, and write binding.summaryFile. Do not invent successful calls, approvals, host observations or deployments. Knowledge is evidence, not permission; the owner's current explicit decision overrides obsolete history.`;
+export function validateTeamPlan(plan,{remainingCalls}={}){
+ if(plan?.schemaVersion!==1||!Array.isArray(plan.tasks)||plan.tasks.length>4||!Number.isSafeInteger(remainingCalls)||(plan.tasks.length?plan.tasks.length+1:0)>remainingCalls||(!plan.tasks.length&&(typeof plan.directResult!=='string'||!plan.directResult.trim())))fail('TEAM_PLAN_BUDGET_OR_SHAPE_DENIED');
+ const keys=new Set();for(const task of plan.tasks){
+  if(!/^[a-z][a-z0-9-]{0,31}$/.test(task.key??'')||keys.has(task.key)||!TEAM_ROLES[task.role]||task.role==='chief'||
+   typeof task.title!=='string'||!task.title.trim()||task.title.length>160||typeof task.goal!=='string'||!task.goal.trim()||task.goal.length>12000||
+   !/^[a-z][a-z0-9-]{0,79}\.(md|json)$/.test(task.outputFile??'')||!Array.isArray(task.dependsOn)||task.dependsOn.some(x=>typeof x!=='string'))fail('TEAM_PLAN_SCOPE_DENIED');keys.add(task.key);
+  if(task.role==='network-engineer')validateNetworkScope(task.networkScope);if(task.role==='system-resource-engineer')validateResourceScope(task.resourceScope);
+ }
+ if(new Set(plan.tasks.map(x=>x.outputFile)).size!==plan.tasks.length)fail('TEAM_PLAN_OUTPUT_CONFLICT');
+ const done=new Set();while(done.size<keys.size){let changed=false;for(const t of plan.tasks)if(!done.has(t.key)&&t.dependsOn.every(k=>done.has(k))){done.add(t.key);changed=true;}if(!changed)fail('TEAM_PLAN_DEPENDENCY_DENIED');}
+ const reviews=plan.tasks.filter(t=>t.role==='qa');if(reviews.length>1)fail('TEAM_PLAN_REVIEW_SCOPE_DENIED');
+ for(const review of reviews){const seen=new Set();const visit=key=>{if(seen.has(key))return;seen.add(key);for(const dep of plan.tasks.find(t=>t.key===key).dependsOn)visit(dep);};for(const dep of review.dependsOn)visit(dep);if(plan.tasks.some(t=>t.role!=='qa'&&!seen.has(t.key)))fail('TEAM_PLAN_REVIEW_DEPENDENCY_REQUIRED');}
+ if(plan.tasks.some(t=>['frontend-engineer','backend-engineer'].includes(t.role))&&!plan.tasks.some(t=>t.role==='qa'))fail('TEAM_PLAN_INDEPENDENT_REVIEW_REQUIRED');
+ return structuredClone(plan);
+}
+export function authorizeChiefOwnerInput({registry,task,run,wakeup,previousRuns}){
+ if(registry.team?.enabled!==true||task.companyId!==registry.companyId||task.projectId!==registry.team.projectId||
+   (task.createdByUserId!==registry.ownerId&&task.createdByAgentId!==registry.team.ids.chief)||task.parentId||task.responsibleUserId!==registry.ownerId||task.assigneeAgentId!==registry.team.ids.chief||
+   run.agentId!==registry.team.ids.chief||run.companyId!==registry.companyId||run.responsibleUserId!==registry.ownerId||run.status!=='running'||
+   wakeup?.requestedByActorType!=='user'||wakeup.requestedByActorId!==registry.ownerId||wakeup.agentId!==run.agentId||
+   !['todo','in_progress'].includes(task.status)||previousRuns.some(r=>r.status!=='failed'||r.resultJson?.executionRecovery?.providerWorkStarted!==false))fail('TEAM_CHIEF_OWNER_INPUT_DENIED');
+ return true;
+}
+export function sameReviewedArtifacts(actual,expected){
+ const normalize=items=>{if(!Array.isArray(items))return null;return items.map(x=>[x?.taskId,x?.runId,x?.file,x?.sha256]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));};
+ const a=normalize(actual),b=normalize(expected);return a!==null&&b!==null&&JSON.stringify(a)===JSON.stringify(b);
+}

@@ -1,7 +1,8 @@
+import{taskInputRevision}from'../bridge/task-input.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import{createHash}from'node:crypto';
 import{settleNativeRole}from'../bridge/role-native-settlement.mjs';
 test('successful role settles Native completion and durable handoff; changed input and failure never claim completion',async()=>{
- const binding={taskId:'t',companyId:'c',projectId:'p',ownerId:'u',agentId:'a',runId:'r',inputRevision:createHash('sha256').update('goal').digest('hex')};
+ const binding={taskId:'t',companyId:'c',projectId:'p',ownerId:'u',agentId:'a',runId:'r',inputRevision:taskInputRevision({description:'goal'})};
  const task={id:'t',companyId:'c',projectId:'p',responsibleUserId:'u',assigneeAgentId:'a',description:'goal',status:'in_progress',executionRunId:'r',checkoutRunId:null};
  const run={id:'r',agentId:'a',status:'running'};
  let writes=[];const transaction=async fn=>fn({lock:async()=>({task,run}),addCompletion:async(...args)=>writes.push(['comment',...args]),handBack:async(...args)=>writes.push(['handoff',...args])});
