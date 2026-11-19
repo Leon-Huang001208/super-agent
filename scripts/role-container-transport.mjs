@@ -57,6 +57,11 @@ try{
   email:'role@local.invalid','https://api.openai.com/auth':{chatgpt_account_id:accountId,chatgpt_user_id:'role-'+runId,chatgpt_plan_type:'plus'}};
  const jwt=Buffer.from('{"alg":"RS256","typ":"JWT"}').toString('base64url')+'.'+Buffer.from(JSON.stringify(payload)).toString('base64url')+'.eA';
  if(!resumeSetup)durable(client+'/auth.json',{auth_mode:'chatgpt',tokens:{access_token:key,refresh_token:'role-no-refresh',id_token:jwt,account_id:accountId},last_refresh:new Date().toISOString()});
+ // The bundled catalog is data from this exact installed CLI, not a provider call.
+ // Avoid a hard-coded models refresh sending the opaque token directly upstream.
+ const catalog=JSON.parse(exec(['exec','super-agent-paperclip-eval-paperclip-1','/opt/paperclip/node_modules/.bin/codex','debug','models','--bundled']));
+ if(!Array.isArray(catalog.models)||!catalog.models.length)fail('ROLE_CONTAINER_CATALOG_DENIED');
+ durable(client+'/models.json',catalog);
  network='sa-role-net-'+runId;broker='sa-role-provider-'+runId;
  exec(['network','create','--internal','--subnet','10.203.240.0/28','--label','io.super-agent.task=sa-research-pm-m1-20261119',network]);
  const base=['--pull','never','--platform','linux/arm64','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',
@@ -83,7 +88,7 @@ try{
   '--env','HTTP_PROXY=http://provider:8090','--env','HTTPS_PROXY=http://provider:8090','--env','NO_PROXY=provider'];
  if(seccomp){const file=dir+'/seccomp.json';fs.writeFileSync(file,seccomp.slice(8),{mode:0o600,flag:'wx'});args.push('--security-opt','seccomp='+file);}
  args.push('--entrypoint','/usr/bin/timeout',IMAGE,'--signal=TERM','--kill-after=4s','600','/opt/paperclip/node_modules/.bin/codex',
-  ...normalizeNativeRoleArgs(request.args).slice(0,-1),'--skip-git-repo-check',...NATIVE_ROLE_EXTRA_ARGS.slice(2),'-c','chatgpt_base_url="http://provider:8090/backend-api"','-');
+  ...normalizeNativeRoleArgs(request.args).slice(0,-1),'--skip-git-repo-check',...NATIVE_ROLE_EXTRA_ARGS.slice(2),'-c','model_catalog_json='+JSON.stringify(request.home+'/models.json'),'-c','chatgpt_base_url="http://provider:8090/backend-api"','-');
  if(fs.existsSync(dir+'/cancel.json'))fail('ROLE_CONTAINER_CANCELLED_BEFORE_START');
  input=fs.openSync(dir+'/stdin','r');stream=fs.openSync(dir+'/stdout','wx',0o600);err=fs.openSync(dir+'/stderr','wx',0o600);
  let cancelled=false,stopping=false;

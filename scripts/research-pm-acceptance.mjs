@@ -82,7 +82,7 @@ try{
       instructionsFilePath:ROOT+'/materials/'+id+'.md',model:'gpt-6.1-sol',modelReasoningEffort:'low',search:true,
       dangerouslyBypassApprovalsAndSandbox:false,dangerouslyBypassSandbox:false,extraArgs:[...NATIVE_ROLE_MANAGED_ARGS],
       env:{SUPER_AGENT_ROLE_ENABLED:'true',SUPER_AGENT_ROLE_AGENT_ID:id}},
-    runtimeConfig:{heartbeat:{enabled:false,wakeOnDemand:true,maxConcurrentRuns:1,maxDailyRuns:6},aiConnection:{mode:'responsible_user',method:'subscription',provider:'openai'}},
+    runtimeConfig:{heartbeat:{enabled:false,wakeOnDemand:true,maxConcurrentRuns:1,maxDailyRuns:60},aiConnection:{mode:'responsible_user',method:'subscription',provider:'openai'}},
     status:'idle',spentMonthlyCents:0,budgetMonthlyCents:0},{createdByUserId:OWNER,responsibleUserId:OWNER});
   console.log(JSON.stringify({agentId:agent.id,status:agent.status,lifecycle:agent.lifecycleState}));
  }else if(action==='run'){

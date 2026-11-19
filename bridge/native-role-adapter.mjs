@@ -5,7 +5,7 @@ export const NATIVE_ROLE_MANAGED_ARGS = Object.freeze(['--sandbox', 'workspace-w
 export const NATIVE_ROLE_EXTRA_ARGS = Object.freeze(['--sandbox', 'workspace-write',
   '-c', 'features.shell_tool=true', '-c', 'features.unified_exec=true',
   '-c', 'features.apply_patch_freeform=true', '-c', 'features.apps=true', '-c', 'features.plugins=true',
-  '-c', 'sandbox_workspace_write.network_access=true', '-c', 'enable_request_compression=false',
+  '-c', 'sandbox_workspace_write.network_access=true', '-c', 'features.enable_request_compression=false',
   '-c', 'hide_agent_reasoning=true', '-c', 'show_raw_agent_reasoning=false']);
 
 
