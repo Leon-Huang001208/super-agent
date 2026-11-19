@@ -1,3 +1,4 @@
+import{taskInputRevision}from'./task-input.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
@@ -5,6 +6,8 @@ import { createNativeRoleAdapter } from './native-role-adapter.mjs';
 import { withRoleCall } from './role-call-budget.mjs';
 import { createRolePreparation } from './role-preparation.mjs';
 import { settleNativeRole } from './role-native-settlement.mjs';
+import { validateNetworkScope } from './network-role.mjs';
+import { validateResourceScope } from './system-resource-role.mjs';
 
 const ROOT='/paperclip/control/research-pm',PKG='/opt/paperclip/node_modules';
 const sha=x=>createHash('sha256').update(x).digest('hex');
@@ -29,7 +32,7 @@ function registered(agentId) {
   return {registry,role};
 }
 let connection;
-async function database() {
+export async function database() {
   if(connection)return connection;
   const password=fs.readFileSync('/paperclip/secrets/postgres-password','utf8').trim();
   const schema=await import(PKG+'/@paperclipai/db/dist/index.js');
@@ -52,6 +55,10 @@ export async function installNativeRoles() {
   registry.registerServerAdapter({...original,
     async execute(ctx) {
       if(ctx.config?.env?.SUPER_AGENT_ROLE_ENABLED!=='true')return original.execute(ctx);
+      if(!ctx.context?.roleOperationId&&process.env.SUPER_AGENT_TEAM_COORDINATOR_ENABLED==='true'){
+        try{ctx=await(await import('./team-native-runtime.mjs')).admitChiefInput(ctx,{database});}
+        catch(error){return {exitCode:1,signal:null,timedOut:false,errorCode:/^(?:TEAM|NATIVE_ROLE)_[A-Z_]+$/.test(error.code??error.message)?(error.code??error.message):'NATIVE_ROLE_PREFLIGHT_FAILED',errorMessage:'The controlled Chief intake did not admit this execution.',resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};}
+      }
       const readRegistration=async()=>{
         const {role,registry:r}=registered(ctx.agent.id);
         const {schema:s,orm:o,db}=await database();
@@ -59,13 +66,25 @@ export async function installNativeRoles() {
         const [run]=await db.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,ctx.runId));
         const [agent]=await db.select().from(s.agents).where(o.eq(s.agents.id,ctx.agent.id));
         const operation=r.operations?.find(x=>x.kind==='run'&&x.role===role.profile.role&&x.id===ctx.context.roleOperationId&&x.taskId===issue?.id&&x.agentId===ctx.agent.id);
+        if(role.profile.role==='network-engineer')validateNetworkScope(operation?.networkScope);
+        if(role.profile.role==='system-resource-engineer')validateResourceScope(operation?.resourceScope);
+        if(operation?.rootTaskId&&operation.rootTaskId!==issue?.id&&
+           (issue?.parentId!==operation.rootTaskId||r.taskRoots?.[issue.id]!==operation.rootTaskId))fail('NATIVE_ROLE_ROOT_BINDING_DENIED');
+        if(operation?.rootTaskId&&operation.rootTaskId!==issue?.id){
+          const[parent]=await db.select().from(s.issues).where(o.eq(s.issues.id,operation.rootTaskId));
+          if(!parent||parent.companyId!==r.companyId||parent.projectId!==issue.projectId||parent.responsibleUserId!==r.ownerId||parent.assigneeUserId!==r.ownerId||parent.assigneeAgentId||parent.status!=='in_review'||taskInputRevision(parent)!==operation.rootInputRevision)fail('NATIVE_ROLE_ROOT_AUTHORITY_CHANGED');
+        }
+        if(role.profile.role==='qa'&&operation?.reviewedArtifacts){
+          for(const ref of operation.reviewedArtifacts){const[reviewed]=await db.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,ref.runId));if(!reviewed||reviewed.status!=='succeeded'||reviewed.agentId===ctx.agent.id||reviewed.companyId!==r.companyId||reviewed.issueId!==ref.taskId)fail('NATIVE_ROLE_INDEPENDENT_REVIEW_DENIED');}
+        }
         const active=await db.select({id:s.heartbeatRuns.id}).from(s.heartbeatRuns)
           .where(o.inArray(s.heartbeatRuns.status,['running','queued','scheduled_retry']));
         if(!operation||active.some(x=>x.id!==ctx.runId)||!issue||!run||!agent||!r.tasks.includes(issue.id)||issue.companyId!==r.companyId||issue.projectId!==role.profile.projectId||
            issue.responsibleUserId!==r.ownerId||issue.assigneeAgentId!==agent.id||run.agentId!==agent.id||run.companyId!==r.companyId||
            run.responsibleUserId!==r.ownerId||run.issueId!==issue.id||run.status!=='running'||agent.adapterType!=='codex_local')fail('NATIVE_ROLE_DATABASE_BINDING_DENIED');
         return {binding:{companyId:r.companyId,projectId:issue.projectId,taskId:issue.id,agentId:agent.id,runId:run.id,
-          ownerId:r.ownerId,inputRevision:sha(issue.description??'')},profile:role.profile,materialRoot:ROOT+'/materials',manifest:role.manifest};
+          ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:role.profile,materialRoot:ROOT+'/materials',manifest:role.manifest,
+          rootTaskId:operation.rootTaskId??issue.id,phase:operation.phase,additionalInput:operation.additionalInput,reviewedArtifacts:operation.reviewedArtifacts,teamRoster:role.profile.role==='chief'?r.team?.ids:undefined};
       };
       const readContext=async()=>{
         const r=await readRegistration();
@@ -124,7 +143,7 @@ export async function installNativeRoles() {
       try{return await wrapped(ctx);}
       catch(error){
         if(nativeEntered)throw error;
-        const code=/^NATIVE_ROLE_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
+        const code=/^(?:NATIVE_ROLE|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
         return {exitCode:1,signal:null,timedOut:false,errorCode:code,errorMessage:code,
           resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
       }

@@ -1,3 +1,4 @@
+import{taskInputRevision}from'./task-input.mjs';
 import {createHash} from 'node:crypto';
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 
@@ -13,7 +14,7 @@ export async function settleNativeRole({binding,result,transaction,log}) {
     [task.executionRunId,task.checkoutRunId].some(id=>id&&id!==binding.runId)||
     task.id!==binding.taskId||task.companyId!==binding.companyId||task.projectId!==binding.projectId||
     task.responsibleUserId!==binding.ownerId||task.assigneeAgentId!==binding.agentId||
-    createHash('sha256').update(task.description??'').digest('hex')!==binding.inputRevision||
+    taskInputRevision(task)!==binding.inputRevision||
     run.id!==binding.runId||run.agentId!==binding.agentId||run.status!=='running')fail('NATIVE_ROLE_SETTLEMENT_CHANGED');
   await port.addCompletion(task.id,result.summary,{agentId:binding.agentId,runId:binding.runId});
   // in_review plus a real user owner is Native's durable waiting path. It is

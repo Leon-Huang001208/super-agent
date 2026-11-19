@@ -13,6 +13,8 @@
 - [验收运行手册](acceptance-runbook.md)：受控真实任务与证据契约。
 - [架构决策](decisions/0001-paperclip-and-delivery.md)：路线选择、权限分层和重开条件。
 
+- [专职网络工程师](network-engineer.md)：Tailscale、代理、设备、网关与路由的职责和授权边界。
+
 ## 带日期的状态与证据
 
 - [治理建设状态](governance-status-20261104.md)：本轮源码、远端、运行与验收分别记录。
@@ -25,3 +27,5 @@
 - [原型保全](prototype-checkpoint.md)、[选型分析](paperclip-assessment.md)。
 
 当前规范以项目规则及现行专题文档为准；代码证明实现，精确候选的回执证明验证，实时活动观察证明可否运行。冲突时记录未知并追查拥有该事实的来源，不把计划或旧 PASS 提升为现状。
+
+- [Team roles](team.md)：已确认的11角色、英文全称、汇报关系及职责边界。

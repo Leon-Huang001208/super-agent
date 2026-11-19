@@ -24,7 +24,7 @@ test 在无网络容器中运行回归检查。preflight 记录容器事实，�
 ## 边界与文档
 
 - 首个项目为 ResearchWorkbench；Codex 开发和独立评审，Claude 手动选择。
-- 上海日限 10 个新任务，全局单写，最多两轮修复。RWB 代办止于 PR；本项目自身在 CI、独立评审和分支保护满足后可自动合并。
+- 不设每日新任务数量硬上限，保留原模型调用预算、全局单写，最多两轮修复。RWB 代办止于 PR；本项目自身在 CI、独立评审和分支保护满足后可自动合并。
 - 数据、凭据和日志在外置SSD的专用APFS卷，秘密不入仓库。
 - 当前真实验收固定既有订阅 `gpt-6.1-sol` / `low`；[产品目标](docs/product.md)、[验收手册](docs/acceptance-runbook.md)、[运行维护](docs/operations.md)。
 - [文档治理](docs/documentation-governance.md)、[Docker 验证基线](docs/paperclip-evaluation.md)、[旧交接快照](docs/current-handoff.md)。

@@ -17,6 +17,9 @@ export async function withRoleCall({registry,operation,log,perform,completed}, {
   if(!operation||!uuid.test(operation.id??'')||!uuid.test(operation.taskId??'')||
      !['probe','run'].includes(operation.kind)||typeof perform!=='function'||typeof completed!=='function')fail('ROLE_CALL_CONFIGURATION_DENIED');
   const lease=registry.lease;
+  const budgetTaskId=operation.rootTaskId??operation.taskId;
+  if(!uuid.test(budgetTaskId)||operation.rootTaskId&&
+    (registry.taskRoots?.[operation.taskId]!==budgetTaskId||!registry.tasks?.includes(budgetTaskId)))fail('ROLE_CALL_ROOT_DENIED');
   if(lease?.taskId!==operation.taskId||!uuid.test(lease.projectId??''))fail('ROLE_CALL_LEASE_DENIED');
   const databaseStat=fs.lstatSync(admissionFile);
   if(!databaseStat.isFile()||databaseStat.isSymbolicLink()||(databaseStat.mode&0o077))fail('ROLE_CALL_LEASE_DENIED');
@@ -27,7 +30,7 @@ export async function withRoleCall({registry,operation,log,perform,completed}, {
     write(lock,{nonce,operationId:operation.id,taskId:operation.taskId});
     let safe=true;
     try {
-      const directory=root+'/budget/'+operation.taskId;
+      const directory=root+'/budget/'+budgetTaskId;
       const stat=fs.lstatSync(directory);
       if(!stat.isDirectory()||stat.isSymbolicLink()||stat.uid!==0||(stat.mode&0o777)!==0o700)fail('ROLE_CALL_BUDGET_DENIED');
       const names=fs.readdirSync(directory);
