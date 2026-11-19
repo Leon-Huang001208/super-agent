@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const requiredCases=['same-candidate','host-runtime','read-only-task','worktree-code-task','skills-loaded','private-read-denied','network-denied','daily-task-limit','duplicate-event','followup-same-task','writer-exclusion','restart-reconciliation','ci-wait-releases-worker','decision-version-and-replay','lost-external-result','required-ci-checks','feishu-loop','rwb-documentation-pr'];
+const requiredCases=['same-candidate','host-runtime','read-only-task','worktree-code-task','skills-loaded','private-read-denied','network-denied','daily-task-accounting','duplicate-event','followup-same-task','writer-exclusion','restart-reconciliation','ci-wait-releases-worker','decision-version-and-replay','lost-external-result','required-ci-checks','feishu-loop','rwb-documentation-pr'];
 export function atLeast(actual, minimum) {
   const a=actual.replace(/^v/,'').split('.').map(Number), b=minimum.split('.').map(Number);
   if(a.length<3 || a.some(x=>!Number.isInteger(x))) return false;
@@ -15,7 +15,7 @@ export function atLeast(actual, minimum) {
 export function checkCandidate(candidate) {
   if(candidate.package!=='paperclipai'||candidate.acceptance!=='NOT_RUN'||!/^[a-f0-9]{40}$/.test(candidate.releaseGitSha)||!/^sha512-[A-Za-z0-9+/]+=*$/.test(candidate.npmIntegrity))throw new Error('INVALID_CANDIDATE');
   const a=candidate.adapterRequirements,l=candidate.limits;
-  if(a.dangerouslyBypassApprovalsAndSandbox!==false||a.apiFallback!==false||a.fastMode!==false||a.maximumAction!=='pull_request'||l.concurrentWriters!==1||l.newTasksPerShanghaiDay!==10||l.maxFixRounds!==2||!Number.isSafeInteger(l.minFreeBytes)||l.minFreeBytes<5*1024**3||!Number.isSafeInteger(l.installReserveBytes)||l.installReserveBytes<1024**3)throw new Error('UNSAFE_EVALUATION_PROFILE');
+  if(a.dangerouslyBypassApprovalsAndSandbox!==false||a.apiFallback!==false||a.fastMode!==false||a.maximumAction!=='pull_request'||l.concurrentWriters!==1||l.newTasksPerShanghaiDay!==null||l.maxFixRounds!==2||!Number.isSafeInteger(l.minFreeBytes)||l.minFreeBytes<5*1024**3||!Number.isSafeInteger(l.installReserveBytes)||l.installReserveBytes<1024**3)throw new Error('UNSAFE_EVALUATION_PROFILE');
   if(candidate.deploymentMode!=='authenticated'||candidate.exposure!=='private'||candidate.bind!=='127.0.0.1'||candidate.port!==8097||candidate.tailscaleHttpsPort!==8443)throw new Error('UNSAFE_DEPLOYMENT_PROFILE');
   if(candidate.distribution!=='docker-only'||!/^node@sha256:[a-f0-9]{64}$/.test(candidate.nodeImage)||!/^postgres@sha256:[a-f0-9]{64}$/.test(candidate.postgresImage)||candidate.dockerProject!=='super-agent-paperclip-eval')throw new Error('INVALID_RUNTIME_PROFILE');
   if(a.provider!=='codex'||a.model!=='gpt-6.1-sol'||a.reasoningEffort!=='low'||candidate.codexCliVersion!=='0.159.0')throw new Error('INVALID_EXECUTOR_PROFILE');

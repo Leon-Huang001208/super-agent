@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { isSubscriptionAuth } from './codex-hello-gate.mjs';
 import { executeIsolatedRole } from '../bridge/role-isolated-transport.mjs';
 import { NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
+import {ROLE_KEYS} from '../bridge/role-labels.mjs';
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
@@ -37,7 +38,7 @@ export function normalizeNativeRoleArgs(args) {
 }
 
 export function validateRoleCall({ permit, args, env, cwd, now }) {
-  if (!permit || permit.schemaVersion !== 1 || !['research', 'pm'].includes(permit.role) ||
+  if (!permit || permit.schemaVersion !== 1 || !ROLE_KEYS.includes(permit.role) ||
       !['runId','taskId','agentId','companyId','projectId','credentialGrantId'].every(k => uuid.test(permit[k] ?? '')) ||
       permit.model !== 'gpt-6.1-sol' || permit.reasoningEffort !== 'low' || permit.apiFallback !== false ||
       !Number.isSafeInteger(permit.expiresAt) || !Number.isSafeInteger(now) ||

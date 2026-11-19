@@ -2,6 +2,8 @@
 import fs from 'node:fs';
 import { randomUUID,createHash } from 'node:crypto';
 import { AdmissionMeter } from '../bridge/admission.mjs';
+import {ROLE_DISPLAY_NAMES} from '../bridge/role-labels.mjs';
+import {TEAM_ROLES} from '../bridge/team-roles.mjs';
 import { NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
 const ROOT='/paperclip/control/research-pm',PKG='/opt/paperclip/node_modules';
 const COMPANY='85f89b59-f73a-450d-8676-4afcab409fb0',OWNER='n6MxHj1whoJQggkbVPBdXUpybvBaa7RI';
@@ -77,9 +79,11 @@ try{
   if(existing.length)fail('ROLE_ACCEPTANCE_HIRE_ALREADY_EXISTS');
   const {companyService}=await import(PKG+'/@paperclipai/server/dist/services/companies.js');
   await companyService(db).update(COMPANY,{status:'active'},{actorType:'user',actorId:OWNER});
-  const nativeRole={research:'researcher',pm:'pm','network-engineer':'engineer'}[roleName];
+  const nativeRole=TEAM_ROLES[roleName]?.nativeRole;
   if(!nativeRole)fail('ROLE_ACCEPTANCE_ROLE_DENIED');
-  const agent=await agentSvc.requestHire(COMPANY,{id,name:roleName==='network-engineer'?'Network Engineer':'M1 '+roleName,role:nativeRole,title:roleName==='network-engineer'?'专职网络工程师':roleName,
+  const displayName=ROLE_DISPLAY_NAMES[roleName];
+  const agent=await agentSvc.requestHire(COMPANY,{id,name:displayName,role:nativeRole,title:displayName,
+    reportsTo:TEAM_ROLES[roleName].parent?r.team?.ids?.[TEAM_ROLES[roleName].parent]??null:null,
     adapterType:'codex_local',adapterConfig:{engine:'cli',command:'/opt/super-agent/bin/codex',cwd:ROOT+'/workspaces/'+roleName,
       instructionsFilePath:ROOT+'/materials/'+id+'.md',model:'gpt-6.1-sol',modelReasoningEffort:'low',search:true,
       dangerouslyBypassApprovalsAndSandbox:false,dangerouslyBypassSandbox:false,extraArgs:[...NATIVE_ROLE_MANAGED_ARGS],
@@ -91,11 +95,14 @@ try{
   const r=read(ROOT+'/registry.json'),roleName=process.argv[3],entry=r.agents.find(x=>x.profile.role===roleName);
   if(!entry)fail('ROLE_ACCEPTANCE_ROLE_DENIED');
   const taskId=r.taskId,agentId=entry.profile.agentId;
-  await issueSvc.update(taskId,{assigneeAgentId:agentId,assigneeUserId:null,status:'todo'});
-  const task=await issueSvc.getById(taskId);
-  if(task.projectId!==entry.profile.projectId)fail('ROLE_ACCEPTANCE_PROJECT_DENIED');
+  const task=await db.transaction(async tx=>{
+    const [current]=await tx.select().from(schema.issues).where(orm.eq(schema.issues.id,taskId)).for('update');
+    if(!current||current.companyId!==COMPANY||current.projectId!==entry.profile.projectId||current.responsibleUserId!==OWNER||['done','cancelled'].includes(current.status))fail('ROLE_ACCEPTANCE_PROJECT_DENIED');
+    const service=(await import(PKG+'/@paperclipai/server/dist/services/issues.js')).issueService(tx);
+    return service.update(taskId,{assigneeAgentId:agentId,assigneeUserId:null,status:'todo'});
+  });
   const op={id:randomUUID(),kind:'run',taskId,agentId,role:roleName,
-    ...(roleName==='network-engineer'?{networkScope:r.networkScope}:{})};
+    ...(roleName==='network-engineer'?{networkScope:r.networkScope}:roleName==='system-resource-engineer'?{resourceScope:r.resourceScope}:{})};
   r.operations.push(op);write(ROOT+'/registry.json',r);
   const comment=await issueSvc.addComment(taskId,'按本人在Codex主聊天的续接授权继续本轮'+roleName+'验收；先前预检失败已核对未发生角色provider调用，当前使用修正的原生配置。',{userId:OWNER});
   const {heartbeatService}=await import(PKG+'/@paperclipai/server/dist/services/heartbeat.js');

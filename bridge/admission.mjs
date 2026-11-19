@@ -135,8 +135,8 @@ export class AdmissionMeter {
         return { allowed: false, taskId: id, existing: true, reconciliationRequired: true };
       }
       if (!prior) {
-        const count = this.#db.prepare('SELECT COUNT(*) AS count FROM admission_meter WHERE first_day=?').get(day).count;
-        if (count >= 10) throw failure('ADMISSION_DAILY_LIMIT');
+        // The owner removed the daily new-task count cap. Keep the dated ledger
+        // for audit/deduplication; the global lease and call budgets remain.
         this.#db.prepare('INSERT INTO admission_meter(task_id,project_id,first_day) VALUES(?,?,?)').run(id, project, day);
       }
       const nonce = randomBytes(32).toString('hex');

@@ -28,7 +28,7 @@ Paperclip 保留 project、Agent、task、run、session 和订阅身份的唯一
 
 ## 额度和恢复
 
-原 AdmissionMeter 继续按上海日限10个新任务、全局一个执行租约；每任务六个 Native 外层调用槽，probe/run共用单活调用锁。每工具 run 最多转发64次 responses。Native 的 maxDailyRuns60只是角色调度上限，不替代任务日限和调用槽。session header 不证明请求来自某个工具，计数以 Native 与 broker 回执核对。
+早期实际验收沿用上海日限10；其后本人明确取消每日新任务数量硬上限。原AdmissionMeter继续保留上海日期统计、去重和全局一个执行租约；每任务六个 Native 外层调用槽，probe/run共用单活调用锁。每工具 run 最多转发64次 responses。Native 的 maxDailyRuns60只是角色调度上限，是模型运行额度，和任务数量无关；不取消调用槽。session header 不证明请求来自某个工具，计数以 Native 与 broker 回执核对。
 
 原预检任务保留失败记录；本人已允许使用新任务和新会话。现任务为 45441b41-b420-4fb8-b2a0-70bf9b38f928。已核实没有 provider 请求的旧预检失败不能写成真实模型通过；旧许可、预算和核对摘要原样保留。已启动但未知的结果不能自动重试或重发。
 

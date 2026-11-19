@@ -49,7 +49,7 @@ try{
  for(const p of [client,proxy,audit])if(!fs.existsSync(p))fs.mkdirSync(p,{mode:0o700});
  const key=resumeSetup?JSON.parse(read(proxy+'/config.json')).key:randomBytes(32).toString('hex');
  if(!resumeSetup)durable(proxy+'/config.json',{runId,key,expiresAt:Date.now()+660000,
-  mcpAllowedTools:['research','pm'].includes(permit.role)?['sites.check_slug_availability','plugin_management.search_plugins']:[]});
+  mcpAllowedTools:['research','pm'].includes(permit.role)?['sites.check_slug_availability','plugin_management.search_plugins','github.get_repo']:[]});
  const selectedAuth=JSON.parse(read(dir+'/provider/auth.json'));
  const selectedClaims=JSON.parse(Buffer.from(selectedAuth.tokens.id_token.split('.')[1],'base64url').toString());
  const accountId=selectedAuth.tokens.account_id??selectedClaims['https://api.openai.com/auth']?.chatgpt_account_id;

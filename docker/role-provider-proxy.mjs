@@ -45,9 +45,13 @@ const handler=async(req,res)=>{
    if(req.method==='POST'){
     const message=JSON.parse(body),method=message.method;
     const catalogs=['initialize','notifications/initialized','ping','tools/list','resources/list','resources/templates/list','prompts/list'];
-    const safeTools=['sites.check_slug_availability','plugin_management.search_plugins'];
+    const safeTools=['sites.check_slug_availability','plugin_management.search_plugins','github.get_repo'];
     if(!catalogs.includes(method)&&!(method==='tools/call'&&safeTools.includes(message.params?.name)&&config.mcpAllowedTools?.includes(message.params.name))){
      audit({code:'ROLE_PROXY_MCP_ACTION_DENIED'});return fail(res,403,'ROLE_PROXY_MCP_ACTION_DENIED');
+    }
+    if(method==='tools/call'&&message.params.name==='github.get_repo'){
+     const args=message.params.arguments;
+     if(args?.repository_full_name!=='Leon-Huang001208/super-agent'||Object.keys(args).some(k=>k!=='repository_full_name'))return fail(res,403,'ROLE_PROXY_MCP_REPOSITORY_DENIED');
     }
     audit({code:'ROLE_PROXY_MCP_REQUEST',method,tool:method==='tools/call'?message.params.name:undefined});
    }
@@ -65,7 +69,7 @@ const handler=async(req,res)=>{
   res.writeHead(upstream.status,out);
   if(upstream.body)for await(const bytes of upstream.body){if(res.destroyed){controller.abort();break;}res.write(Buffer.from(bytes));}
   res.end();audit({code:'ROLE_PROXY_COMPLETED',path:url.pathname,status:upstream.status,requestCount:count});
- }catch(e){audit({code:'ROLE_PROXY_UPSTREAM_UNKNOWN',errorType:e.name});if(!res.headersSent)fail(res,502,'ROLE_PROXY_UPSTREAM_UNKNOWN');else res.destroy();}
+ }catch(e){audit({code:'ROLE_PROXY_UPSTREAM_UNKNOWN',path:new URL(req.url,'http://local').pathname,method:req.method,errorType:e.name});if(!res.headersSent)fail(res,502,'ROLE_PROXY_UPSTREAM_UNKNOWN');else res.destroy();}
 };
 const server=http.createServer(handler);
 const tls=fs.existsSync(configRoot+'/tls.key')?https.createServer({key:fs.readFileSync(configRoot+'/tls.key'),cert:fs.readFileSync(configRoot+'/tls.crt')},handler):null;

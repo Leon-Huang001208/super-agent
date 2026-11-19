@@ -13,6 +13,10 @@ test('role gate rejects expanded tools, old sessions, API fallback and mismatche
     CODEX_HOME:'/tmp/paperclip-ai-'+id+'-'+id+'-abcdef/provider'};
   const input={permit,args,env,cwd:permit.cwd,now:100000};
   assert.equal(validateRoleCall(input),permit);
+  const networkPermit={...permit,role:'network-engineer'};
+  assert.equal(validateRoleCall({...input,permit:networkPermit}),networkPermit);
+  const resourcePermit={...permit,role:'system-resource-engineer'};
+  assert.equal(validateRoleCall({...input,permit:resourcePermit}),resourcePermit);
   const prefix=['-c','features.shell_snapshot=false','-c','shell_environment_policy.inherit="all"','-c',
     'shell_environment_policy.ignore_default_excludes=true','-c','shell_environment_policy.include_only=["PATH","HOME"]'];
   assert.equal(validateRoleCall({...input,args:[...prefix,...args]}),permit);

@@ -6,6 +6,7 @@ import { withRoleCall } from './role-call-budget.mjs';
 import { createRolePreparation } from './role-preparation.mjs';
 import { settleNativeRole } from './role-native-settlement.mjs';
 import { validateNetworkScope } from './network-role.mjs';
+import { validateResourceScope } from './system-resource-role.mjs';
 
 const ROOT='/paperclip/control/research-pm',PKG='/opt/paperclip/node_modules';
 const sha=x=>createHash('sha256').update(x).digest('hex');
@@ -61,6 +62,7 @@ export async function installNativeRoles() {
         const [agent]=await db.select().from(s.agents).where(o.eq(s.agents.id,ctx.agent.id));
         const operation=r.operations?.find(x=>x.kind==='run'&&x.role===role.profile.role&&x.id===ctx.context.roleOperationId&&x.taskId===issue?.id&&x.agentId===ctx.agent.id);
         if(role.profile.role==='network-engineer')validateNetworkScope(operation?.networkScope);
+        if(role.profile.role==='system-resource-engineer')validateResourceScope(operation?.resourceScope);
         const active=await db.select({id:s.heartbeatRuns.id}).from(s.heartbeatRuns)
           .where(o.inArray(s.heartbeatRuns.status,['running','queued','scheduled_retry']));
         if(!operation||active.some(x=>x.id!==ctx.runId)||!issue||!run||!agent||!r.tasks.includes(issue.id)||issue.companyId!==r.companyId||issue.projectId!==role.profile.projectId||
@@ -126,7 +128,7 @@ export async function installNativeRoles() {
       try{return await wrapped(ctx);}
       catch(error){
         if(nativeEntered)throw error;
-        const code=/^(?:NATIVE_ROLE|NETWORK_ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
+        const code=/^(?:NATIVE_ROLE|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
         return {exitCode:1,signal:null,timedOut:false,errorCode:code,errorMessage:code,
           resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
       }

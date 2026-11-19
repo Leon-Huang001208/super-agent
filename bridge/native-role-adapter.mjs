@@ -67,7 +67,7 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
       // or implement an alternative credential/session store here.
       return await nativeExecute({...ctx, ...original, config:{...config,promptTemplate}});
     } catch (error) {
-      const code = /^(?:NATIVE_ROLE|ROLE_PREPARE|ROLE_MATERIAL|ROLE_KNOWLEDGE|NETWORK_ROLE)_[A-Z_]+$/.test(error?.code ?? '')
+      const code = /^(?:NATIVE_ROLE|ROLE_PREPARE|ROLE_MATERIAL|ROLE_KNOWLEDGE|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error?.code ?? '')
         ? error.code : 'NATIVE_ROLE_RESULT_UNKNOWN';
       log({ code, runId: ctx?.runId });
       fail(code);

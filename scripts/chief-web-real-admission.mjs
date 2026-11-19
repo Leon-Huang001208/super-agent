@@ -5,7 +5,6 @@ import { AdmissionMeter } from '../bridge/admission.mjs';
 
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const sha = /^[a-f0-9]{64}$/;
-const shanghaiDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' });
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 
 /** Use the existing shared SQLite meter. The private handoff owns lease evidence. */
@@ -26,12 +25,6 @@ export function createChiefWebRealAdmission({ databasePath, projectId, verifyLeg
     const db = new DatabaseSync(databasePath, { readOnly: true, timeout: 5000 });
     try {
       if (db.prepare('SELECT task_id FROM admission_lease WHERE slot=1').get()) fail('CHIEF_WEB_REAL_SHARED_LEASE_BUSY');
-      const date = shanghaiDay.formatToParts(now());
-      const parts = Object.fromEntries(date.map(part => [part.type, part.value]));
-      const day = parts.year + '-' + parts.month + '-' + parts.day;
-      if (db.prepare('SELECT COUNT(*) AS count FROM admission_meter WHERE first_day=?').get(day).count >= 10) {
-        fail('CHIEF_WEB_REAL_DAILY_LIMIT');
-      }
     } finally { db.close(); }
   }
 
