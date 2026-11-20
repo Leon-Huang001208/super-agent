@@ -76,6 +76,15 @@ function dispatchFixture(role) {
   return {ctx,registration,reviewedArtifacts,execute,getDispatched:()=>dispatched,getCalls:()=>calls};
 }
 
+test('Chief receives the trusted current budget after earlier failures, ignoring caller-supplied budget prose',async()=>{
+ const f=dispatchFixture('chief');f.registration.phase='plan';f.registration.callBudget={maximum:6,usedBeforeCurrent:2,currentCallNumber:3,remainingAfterCurrent:3,maxPlanTasks:2};f.ctx.context.callBudget={maximum:99,maxPlanTasks:20};let prompt;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Assigned role',log(){},readRegistration:async()=>f.registration,
+  prepareRole:async()=>({binding:f.registration.binding,sessionMode:'new',knowledge:[],config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:false}}),
+  nativeExecute:async value=>{prompt=value.config.promptTemplate;return {exitCode:0};}});
+ assert.equal((await execute(f.ctx)).exitCode,0);assert.ok(prompt.includes('"remainingAfterCurrent":3,"maxPlanTasks":2'));assert.match(prompt,/failed earlier calls remain spent/);assert.ok(!prompt.includes('"maximum":99'));
+ f.registration.callBudget.maxPlanTasks=4;await assert.rejects(execute(f.ctx),/NATIVE_ROLE_BUDGET_DENIED/);
+});
+
 test('actual QA dispatch carries a trusted strict output contract and exact artifact binding',async()=>{
   const f=dispatchFixture('qa');
   await f.execute(f.ctx);

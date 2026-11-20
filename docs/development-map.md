@@ -1,5 +1,7 @@
 # 开发地图
 
+Native HTTPS、每 run 证书/信任、TLS ready 与 MCP CA 传播的合同及测试见[HTTPS 恢复专题](plans/native-https-recovery.md)。Chief 首计划第二次 Native retry 同时维护队列选择、严格物理失败证明、旧锁归档、M2 settled 观察及可信剩余预算提示；只改传输或只让队列消费均不构成完整修复。Mac 宿主检查与 Linux 离线 CI 分别留证。
+
 ## Document Specialist
 
 角色键/职业说明/能力/公司技能矩阵新增`document-specialist`；`document-runtime`为原生子进程定位已有文档Python/LibreOffice，并使用本run字体配置，原11岗不注入。回归覆盖12岗完整名册、9项技能及PDF来源、Doc→QA和原控制预算/交接格式、Native材料/知识/调用门，以及工具发现和运行私有缓存。安装脚本与正式接入仍依主窗口窗口，不把源码定义当Native已就绪。
@@ -44,6 +46,8 @@
 `role-instruction-paths.mjs`把Managed入口与company、Agent、role绑定，复用Native已登记的本run材料副本及baseline；按当前或历史manifest匹配当次摘要。调用门和宿主传输使用完整路径及内容摘要，不再用同名文件的basename定位。网页后续保存不修改已经固定的Native副本。旧UUID许可的原路径合同继续保留。
 
 ## Chief 网页续接策略
+
+`chief-bootstrap-retry.mjs`独立处理首个Root Chief plan在Gate claim/provider之前失败的既有Native首次retry。`native-role-runtime`先尝试按真实Native关系绑定retry，再执行普通初次Chief准入；`role-native-retry-consumer`只把唯一匹配的queued原run交回Native消费者。目标回归覆盖无roleOperationId的真实原始context、旧预算保留、owner/input/lease/permit及物理否定证据、queued选择与不创建额外run。原work子任务的transport/flow恢复合同仍由`role-native-retry.mjs`负责。Gate回归另覆盖Native合法bypass顺序与权限扩展拒绝；实机首次计划及后续M2业务仍须另验。
 
 `bridge/chief-web-pilot.mjs` 是 #261 的限定操作策略。入口接收服务器已认证的本人会话和命令。调用方提供持久事务接口，在原 Paperclip 任务锁下读取绑定、版本、消息和历史操作，并原子记录意图与控制门。该接口只保留关联与回执，任务状态以 Paperclip 为准。
 

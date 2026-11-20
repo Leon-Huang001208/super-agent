@@ -2,6 +2,8 @@
 
 ## 现行规则与设计
 
+- [Native HTTPS 与原 Chief 计划恢复](plans/native-https-recovery.md)：每 run 的 loopback TLS、可信 CA、原首计划第二次 Native 重试、预算与失败证据。
+
 - [Document Specialist](plans/document-specialist.md)：新增文档岗的职责、9项技能、现有工具链与单岗接入/验证边界。
 
 - [Mac原生执行和公司技能分配](plans/native-skills-20261120.md)：11角色的执行策略、技能来源、持续授权和本轮验收边界。

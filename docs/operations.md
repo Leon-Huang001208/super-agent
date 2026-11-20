@@ -6,6 +6,8 @@
 
 ## 原生Agent切换
 
+Native HTTPS 与原首计划恢复按[专题合同](plans/native-https-recovery.md)进行。不能把 `chatgpt_base_url` 指向 HTTP loopback 来适配要求 HTTPS origin 的 CLI，也不能关 TLS 验证或直接绕过 broker。证书、CLI/Node 信任和就绪端口均限本 run；先用无模型握手与恢复合同验证。第二次 Chief retry 仅接原 Native 已有行的明确 HTTPS-origin/零 response 失败，旧锁先按真实证据归档、预算不退款，未知结果不重复 POST。
+
 保持原AI连接时，配置更新不应触发无许可generic hello。固定源的进程内AI equality修复只纠正键顺序误判，不能关闭真实连接变更验证；源SHA漂移应停止装配。首次分配官方paperclip操作包也须有Native版本快照，包含其全部references/scripts，不能仅把SKILL.md登记为完整能力。
 
 安装版公司Skill列表是轻量视图，不携带完整metadata。同步只为本次审查清单命中的sourceLocator读取已认证详情，核对id/company/sourceLocator后补充reviewedSource；不把列表缺字段当成审查记录丢失，也不批量拉取无关技能的正文。
@@ -13,6 +15,8 @@
 实际安装版的本地目录导入不会自动建立currentVersion。同步工具对新导入和已导入但缺版本的包，先核验完整目录，再通过原生`POST /companies/:companyId/skills/:skillId/versions`创建唯一缺失快照，回读逐文件比对后才分配；已有版本不覆盖。`--asset-root`和`--package-root`必须指向公司已登记workspace或受管Skill目录中的任务专用暂存，不能放宽后端目录边界。并存的GitHub自动导入条目保留，优先选本轮已审查的固定版本。
 
 当前飞书监听要求team已启用才能启动。暂停派发维护时先在本次Compose中暂时关闭飞书监听，应用保持可访问；完成配置和验收后恢复原team状态及监听开关，不能把team暂停和原监听启用同时作为应用启动配置。
+
+已登记但首Chief计划在Gate启动provider前失败的目标，不重发飞书消息或执行补收apply。先保存真实失败与Native既有retry、原budget/operation/permit/Admission及无host启动证据，修复参数契约和bootstrap恢复后再处理原run。现役源码、已安装adapter与宿主resident须匹配；合法Native bypass顺序由调用门识别，不能改回Docker或关闭策略来试通。若全局scheduler关闭，原`scheduled_retry`需要通过Native限定Issue的retry-now/promote接口进入原队列；不打开全局scheduler，不在未装配受控adapter的管理Node中直接执行原始adapter。未启动的scheduled retry不是活动模型，但仍是必须保留并纳入交接的Native状态，切换前须确认没有执行/claim及没有其他工作占用，并保存原恢复关系。
 
 本轮经本人授权采用[Mac原生执行和公司Skill](plans/native-skills-20261120.md)。切换前暂停新派发，核对Native无running/queued/scheduled_retry、无本次活动调用，保全当前Compose、registry、Agent配置及Managed指令版本。通过验证的源码候选与宿主执行器必须一致，不能只修改UI中的bypass开关。
 

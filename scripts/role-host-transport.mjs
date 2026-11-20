@@ -15,6 +15,7 @@ import {prepareRoleProjectWorkspace,createHostCapabilityExecutor} from '../bridg
 import {serveHostCapabilityCalls} from '../bridge/role-host-call-queue.mjs';
 import {prepareDocumentRuntimeEnvironment} from '../bridge/document-runtime.mjs';
 import {roleHostMcpConfigArgs} from './role-host-mcp-config.mjs';
+import {createNativeRoleTls} from './role-proxy-tls.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0';
 const ROOT=DATA+'/state/control/research-pm';
 const fail=code=>{throw Object.assign(Error(code),{code});};
@@ -35,11 +36,16 @@ export function transportExecutor(request,permit){
 }
 export function nativeRoleCliArgs({permit,client,instructionPath,endpoint,hostTools=[],mcpScriptPath=fileURLToPath(new URL('../docker/role-host-mcp-server.mjs',import.meta.url))}){
  if(!isMacNative(permit))fail('ROLE_HOST_EXECUTION_POLICY_DENIED');
- const address=new URL(endpoint);if(address.protocol!=='http:'||address.hostname!=='127.0.0.1'||address.pathname!=='/backend-api')fail('ROLE_HOST_BROKER_ENDPOINT_DENIED');
+ const address=new URL(endpoint);if(address.protocol!=='https:'||address.hostname!=='127.0.0.1'||address.pathname!=='/backend-api'||address.username||address.password||address.search||address.hash)fail('ROLE_HOST_BROKER_ENDPOINT_DENIED');
  const settings=NATIVE_ROLE_EXTRA_ARGS.slice(2).filter((value,index,array)=>value!=='sandbox_workspace_write.network_access=true'&&!(value==='-c'&&array[index+1]==='sandbox_workspace_write.network_access=true'));
  return ['--search','exec','--json','--ignore-user-config','--skip-git-repo-check','--model',permit.model,'-c','model_reasoning_effort="low"',
   '--dangerously-bypass-approvals-and-sandbox',...settings,
   '-c','model_catalog_json='+JSON.stringify(client+'/models.json'),'-c','chatgpt_base_url='+JSON.stringify(endpoint),
+  // The broker implements Responses SSE; the built-in provider may initiate WebSocket GETs.
+  '-c','model_provider="paperclip_broker"','-c','model_providers.paperclip_broker.name="Paperclip task broker"',
+  '-c','model_providers.paperclip_broker.base_url='+JSON.stringify(endpoint+'/codex'),
+  '-c','model_providers.paperclip_broker.wire_api="responses"','-c','model_providers.paperclip_broker.requires_openai_auth=true',
+  '-c','model_providers.paperclip_broker.supports_websockets=false',
   '-c','model_instructions_file='+JSON.stringify(instructionPath),
   ...roleHostMcpConfigArgs(hostTools,{scriptPath:mcpScriptPath,nodePath:process.execPath,endpoint:endpoint+'/role-host-mcp'}),'-'];
 }
@@ -150,7 +156,7 @@ function proxyEnvironment(){
 async function waitBroker(readyFile,child,runId){
  for(let i=0;i<100;i++){
   if(child.exitCode!==null||child.signalCode)fail('ROLE_HOST_BROKER_LAUNCH_FAILED');
-  if(fs.existsSync(readyFile)){const ready=JSON.parse(read(readyFile));if(ready.runId!==runId||ready.host!=='127.0.0.1'||!Number.isInteger(ready.port)||ready.port<1)fail('ROLE_HOST_BROKER_READY_DENIED');return 'http://127.0.0.1:'+ready.port+'/backend-api';}
+  if(fs.existsSync(readyFile)){const ready=JSON.parse(read(readyFile));if(ready.runId!==runId||ready.protocol!=='https:'||ready.host!=='127.0.0.1'||!Number.isInteger(ready.port)||ready.port<1||ready.port>65535)fail('ROLE_HOST_BROKER_READY_DENIED');return 'https://127.0.0.1:'+ready.port+'/backend-api';}
   await new Promise(resolve=>setTimeout(resolve,50));
  }fail('ROLE_HOST_BROKER_READY_TIMEOUT');
 }
@@ -211,9 +217,10 @@ export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/le
  for(const [from,to]of mappings)input=input.replaceAll(from,to);
  // Native instructions already have an immutable run copy. Preserve the original stdio and record only its digest.
  fs.writeFileSync(dir+'/host-stdin',input,{flag:'wx',mode:0o600});
+ const tls=createNativeRoleTls({proxyRoot:proxy,clientRoot:client});
  const readyFile=proxy+'/ready.json',runtime=fileURLToPath(new URL('../',import.meta.url));let broker,brokerGroup,hostTimer,terminal=false;
  try{
-  broker=spawn(process.execPath,[runtime+'docker/role-provider-proxy.mjs'],{detached:true,stdio:['ignore','ignore','ignore'],env:{PATH:process.env.PATH,...proxyEnvironment(),SUPER_AGENT_ROLE_PROXY_ROOT:proxy,SUPER_AGENT_ROLE_PROXY_AUDIT:audit,SUPER_AGENT_ROLE_PROXY_AUTH_FILE:dir+'/provider/auth.json',SUPER_AGENT_ROLE_PROXY_LISTEN_HOST:'127.0.0.1',SUPER_AGENT_ROLE_PROXY_PORT:'0',SUPER_AGENT_ROLE_PROXY_READY_FILE:readyFile}});
+  broker=spawn(process.execPath,[runtime+'docker/role-provider-proxy.mjs'],{detached:true,stdio:['ignore','ignore','ignore'],env:{PATH:process.env.PATH,...proxyEnvironment(),SUPER_AGENT_ROLE_PROXY_ROOT:proxy,SUPER_AGENT_ROLE_PROXY_AUDIT:audit,SUPER_AGENT_ROLE_PROXY_AUTH_FILE:dir+'/provider/auth.json',SUPER_AGENT_ROLE_PROXY_LISTEN_HOST:'127.0.0.1',SUPER_AGENT_ROLE_PROXY_PORT:'0',SUPER_AGENT_ROLE_PROXY_TLS_PORT:'0',SUPER_AGENT_ROLE_PROXY_READY_PROTOCOL:'https',SUPER_AGENT_ROLE_PROXY_READY_FILE:readyFile}});
   await new Promise((resolve,reject)=>{broker.once('spawn',resolve);broker.once('error',()=>reject(Object.assign(Error('ROLE_HOST_BROKER_LAUNCH_FAILED'),{code:'ROLE_HOST_BROKER_LAUNCH_FAILED'})));});
   brokerGroup=ownedProcessGroup(broker,{directory:dir,prefix:'broker-process',command:process.execPath});durable(dir+'/broker-process.json',brokerGroup.record);
   const endpoint=await waitBroker(readyFile,broker,runId);
@@ -221,14 +228,14 @@ export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/le
   const documentEnvironment=prepareDocumentRuntimeEnvironment({role:permit.role,runDirectory:client});
   if(permit.role==='document-specialist')documentEnvironment.PAPERCLIP_DOCUMENT_ENGINEERING_RULES=path.join(skillAssetRoot,'shared','engineering.md');
   const result=await runNativeRoleProcess({command:codexPath,args:nativeRoleCliArgs({permit,client,instructionPath,endpoint,hostTools}),directory:dir,inputFile:dir+'/host-stdin',cwd,
-   env:{PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:client+'/home',CODEX_HOME:client,CODEX_CONNECTORS_TOKEN:key,ROLE_HOST_MCP_ENDPOINT:endpoint+'/role-host-mcp',...proxyEnvironment(),...documentEnvironment},redactValues:[key],onCancel:()=>controller.abort()});
+   env:{PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:client+'/home',CODEX_HOME:client,CODEX_CONNECTORS_TOKEN:key,ROLE_HOST_MCP_ENDPOINT:endpoint+'/role-host-mcp',SSL_CERT_FILE:tls.trustFile,CODEX_CA_CERTIFICATE:tls.trustFile,NODE_EXTRA_CA_CERTS:tls.caFile,...proxyEnvironment(),...documentEnvironment},redactValues:[key],onCancel:()=>controller.abort()});
   durable(dir+'/native-proof.json',{schemaVersion:1,runId,executor:'macos_native',platform:process.platform,codexPath,cwd,executionPolicy:permit.executionPolicy,skillManifestSha256:roleSkills?.sha256,inputSha256:sha(input),process:JSON.parse(read(dir+'/process.json')),...(permit.role==='document-specialist'?{documentRuntime:{status:documentEnvironment.PAPERCLIP_DOCUMENT_RUNTIME_STATUS,python:documentEnvironment.PAPERCLIP_DOCUMENT_PYTHON,soffice:documentEnvironment.PAPERCLIP_DOCUMENT_SOFFICE,fontConfig:documentEnvironment.FONTCONFIG_FILE}}:{}),at:new Date().toISOString()});
   await stopOwnedGroup(brokerGroup);brokerGroup=null;
   for(const filename of [client+'/auth.json',proxy+'/config.json'])if(fs.existsSync(filename))fs.unlinkSync(filename);
   durable(dir+'/result.json',{runId,...result,executor:'macos_native',stdoutSha256:sha(fs.readFileSync(dir+'/stdout')),stderrSha256:sha(fs.readFileSync(dir+'/stderr')),at:new Date().toISOString()});terminal=true;log({code:'ROLE_HOST_TRANSPORT_COMPLETED',exitCode:result.exitCode});return result;
  }finally{
   clearInterval(hostTimer);controller.abort();if(brokerGroup){try{await stopOwnedGroup(brokerGroup);}catch(error){await stopDirectChild(broker);brokerGroup.persist('unknown');throw error;}}else if(broker&&!terminal){await stopDirectChild(broker);stateFile(dir+'/broker-process-cleanup.json',{schemaVersion:1,status:'unknown',pid:broker.pid,reason:'broker identity inspection failed',at:new Date().toISOString()});}
-  if(terminal)for(const filename of [client+'/auth.json',proxy+'/config.json'])if(fs.existsSync(filename))fs.unlinkSync(filename);
+  if(terminal)for(const filename of [client+'/auth.json',proxy+'/config.json',tls.keyFile])if(fs.existsSync(filename))fs.unlinkSync(filename);
  }
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===path.resolve(process.argv[1]))runHostTransport(process.argv[2]).then(result=>console.log(JSON.stringify({runId:process.argv[2],executor:'macos_native',exitCode:result.exitCode}))).catch(error=>{console.error(JSON.stringify({code:/^ROLE_[A-Z_]+$/.test(error.code??'')?error.code:'ROLE_HOST_TRANSPORT_UNKNOWN',causeCode:/^[A-Z_0-9]+$/.test(error.code??'')?error.code:undefined,runId:process.argv[2]}));process.exitCode=1;});

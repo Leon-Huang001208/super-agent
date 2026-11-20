@@ -9,6 +9,7 @@ import { createChiefContextController } from './chief-context-native.mjs';
 import { chiefFeishuOperation } from './chief-feishu-native.mjs';
 import { taskInputRevision } from './task-input.mjs';
 import { ROLE_ROOT as ROOT, readControl } from './role-control-store.mjs';
+import {readArchivedChiefTransportFailure} from './chief-transport-retry.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -64,6 +65,11 @@ export function observeContextCallEvidence({task,ids,runs,root=ROOT}){
   // PR30 archives only after its Native retry/transport admission has succeeded.
   // Observe that existing proof; this path never wakes a retry or releases a lock.
   function settledFailure({call,run}){
+    if(call.role==='chief'&&call.phase==='plan'&&call.taskId===task.id&&call.rootTaskId===task.id&&call.projectId===task.projectId&&run.companyId===task.companyId){
+      const successor=runs.find(next=>next.retryOfRunId===run.id&&next.scheduledRetryAttempt===2&&
+        (activeStates.includes(next.status)||next.status==='succeeded'||noProvider(next)||settled.has(next.id)));
+      return readArchivedChiefTransportFailure({root,call,run,successor});
+    }
     if(run.status!=='failed'||call.kind!=='run'||call.role==='chief'||call.phase!=='work'||call.projectId!==task.projectId||
       run.companyId!==task.companyId||!Number.isFinite(Date.parse(run.finishedAt))||!Number.isInteger(run.exitCode)||run.exitCode===0)return false;
     const successor=runs.find(next=>next.retryOfRunId===run.id&&next.companyId===run.companyId&&next.issueId===run.issueId&&next.agentId===run.agentId&&

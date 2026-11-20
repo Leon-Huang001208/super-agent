@@ -1,5 +1,7 @@
 # Paperclip 集成架构
 
+Mac 原生 provider 通道采用每 run 的 loopback HTTPS、任务 CA 与原 broker 校验；CLI 与 Node MCP 各自获得对应信任，TLS 实际监听后才可消费就绪记录。原首计划已启动 CLI 但在 HTTPS-origin 检查前未发模型 response 的已结算失败，通过窄的第二次 Native retry 合同恢复，保留旧失败与原根预算；不改写 Native NoProvider 字段。见[原生 HTTPS 与首计划恢复](plans/native-https-recovery.md)。
+
 ## 当前原生执行改造
 
 固定安装版Agent路由将Zod投影后的AI绑定与JSONB对象作字符串比较，键顺序不同会误触发订阅变更验证。`role-ai-binding-hook`在进程内按精确源SHA将唯一比较替换为语义深比较；真实绑定变化、兼容性、身份和认证校验全部保留，安装包磁盘不修改。`loadServer`先装ChiefWeb hook、再装AI hook，统一导入、验证和逆序注销，避免提前缓存其他模式的待修改模块。
@@ -82,6 +84,10 @@ flowchart LR
 调用已启动而结果未知时保留原 attempt 和租约，核对 Native run、journal、PR 和通知回执后再决定下一步；不能自动恢复许可、重跑模型或重复发布。CI 等待释放执行资源与重新取得写入许可必须有真实证据。
 
 Native内置重试队列拥有后继run。`role-native-retry.mjs`只在该run进入原Adapter执行前，按数据库的`retryOfRunId`和`scheduledRetryAttempt`绑定新的物理调用operation；不创建任务、run或另一个重试队列。父run必须已失败结束，私有host传输必须明确非unknown、未超时、未取消且stdout/stderr摘要匹配，原操作预算、输入、根/子任务、锁和已释放的Native环境租约逐项对应。证据缺失或存在其他活动执行时拒绝，不清理未知锁。
+
+首个Chief计划尚未进入provider而被参数门拒绝时，没有child flow或host传输回执，使用独立的bootstrap恢复合同。只接受Native已登记的首次retry、原根chief/plan操作、明确的`ROLE_GATE_ARGUMENTS_DENIED`且`claimed=false`与Native bootstrap/NoProvider证据；原operation、permit、输入、本人来源、项目、Admission nonce和已花的一次预算保持对应。重试先绑定再决定是否初次admit，避免缺少`roleOperationId`的Native原始context误入新目标准入。已有任务和run不重建，旧预算不退款；实际执行新attempt时按原六次上限计入第二槽。provider已启动、状态未知或已有flow不进入此分支。
+
+参数门同时接受受信Mac原生策略下Native adapter在model前输出bypass的合法顺序，保留原有尾部managed参数顺序。仅匹配固定model、reasoning、search、可选skip-git与唯一策略参数；不允许重复bypass、额外配置、resume或将原生bypass用于旧Docker策略。该兼容不改变角色、材料、订阅或任务范围校验。
 
 核明后先把父run的失败产物和旧call锁保存到私有只读archive，再保留原phase Admission nonce，追加新operation与flow的`attemptHistory`。原Native行、旧operation、旧预算文件和session不修改；新slot仍由`withRoleCall`实际进入时计入原根六次预算，最多接两次Native修复attempt。模型只获得一段同任务恢复上下文，不获得重试工具或队列控制权。
 

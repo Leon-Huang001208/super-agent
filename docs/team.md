@@ -2,6 +2,8 @@
 
 ## 通用岗位说明与默认能力
 
+本人于2026-11-20明确后续网络问题交由Network Engineer牵头。Chief将DNS、代理/VPN、TLS/HTTPS、证书、路由、网关及连接故障交该岗负责；需要应用协议或代码改动时，网络岗协调Architect及对应开发岗，交独立QA验收。此分工不改变原汇报关系、项目权限或根调用预算，源码模板与Native材料发布分别验证。
+
 现役材料的岗位修订以`assets/role-profiles/<role>/AGENTS.md`和`CAPABILITIES.md`为可审查模板，专业Skill通过带摘要的方法包提供。各岗说明完整列出输入、职责、协作、步骤、工具触发、交付物和完成/失败标准；Tool即工具，Skill是方法，Apps/插件提供连接与能力。
 
 共同基础能力包含项目材料读取、shell/patch、公开来源读取与证据记录。Research优先检索/文档，PM优先产品/KPI，Designer优先Figma/设计审查，Architect负责边界与取舍，前后端分别实现，QA独立评审，Ops使用受管交付及服务工具，Network/Resources使用真实宿主工具。Chief可随已授权任务补充其他岗位能力，项目和任务约束继续适用。
