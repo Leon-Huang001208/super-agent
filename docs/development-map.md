@@ -2,6 +2,8 @@
 
 ## Mac原生执行和公司Skill
 
+`docker/role-ai-binding-hook.mjs`修复固定Native路由的未变订阅误判；`server-entry.loadServer`与ChiefWeb在同一装配点加载/验证/注销，`role-preload`不预先导入路由。回归覆盖JSONB键顺序、真实provider/method/connection变化、源漂移、组合模块缓存及实际安装源字节合同。Dockerfile与受管镜像输入清单同步分发新helper。
+
 `readCompanyRoleLibrary`组合Native轻量list与本次来源的detail，保持审查优先级和真实API字段一致。回归使用省略metadata的列表payload，验证已审查版本选择及详情身份漂移拒绝。
 
 真实本地包导入的版本创建及恢复由`sync-company-role-skills`使用Native版本API完成，测试覆盖currentVersion缺失与重入不增版本。审查过的目录别名（如Vercel React入口名不同）在岗位分配与运行条件过滤中一致处理；来源并存时不删除其他条目。

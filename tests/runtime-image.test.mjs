@@ -93,6 +93,7 @@ test('runtime copies fingerprint the Chief app hook, policy and native UI source
   const f = fixture(t);
   const paths = [
     'docker/chief-web-app-hook.mjs',
+    'docker/role-ai-binding-hook.mjs',
     'bridge/chief-web-pilot.mjs',
     'bridge/chief-web-evaluation.mjs',
     'bridge/chief-web-recovery-cli.mjs',
