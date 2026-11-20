@@ -25,8 +25,9 @@
 ## 工具触发与依赖
 
 通用MCP只开放目录中带annotations.readOnlyHint=true的插件发现与GitHub只读工具。GitHub写入及交付走项目已有宿主受管入口，MCP不直接开放merge。
+当前Native项目登记repository.fullName后，可用host.github_read经宿主现有gh认证读取该仓库的PR、Issue及分支状态/SHA；不复制凭据，不接受其他仓库、任意URL或写入方法。目录发现不代表连接成功，分页截断及当前状态证据不代表代码、CI或业务验收。
 岗位按真实目录匹配MCP namespace：codex_document_control；调用前检查具体方法、输入、连接和范围。
-宿主候选工具：host.project_inspect、host.project_check、host.project_git。这些名称表示岗位候选权限；是否已经接通须看实际目录与传输，具体仓库、动作、路径和服务参数仍由当前任务约束。
+宿主候选工具：host.project_inspect、host.project_check、host.project_git、host.github_read。这些名称表示岗位候选权限；是否已经接通须看实际目录与传输，具体仓库、动作、路径和服务参数仍由当前任务约束。
 
 projectContext.hostMcpServers登记本岗位可用的服务和方法时，才能提供host.mcp_call；services仅描述项目服务，不能替代具体MCP登记。
 Skill完整只读包在独立资产目录，CODEX_HOME/skills入口指向所需包；包内相对引用、必要references/scripts及每文件摘要保留。未配置的可选技能或工具仍不可调用。

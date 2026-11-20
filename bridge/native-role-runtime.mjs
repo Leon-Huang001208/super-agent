@@ -125,7 +125,7 @@ export function restrictNativeRoleAuthority({registry,task,projectContext,effect
     context.delivery={maximumAction:'artifact'};context.checks=[];context.hostActions=[];context.hostMcpServers=[];
     authorizedHostActions=[];
     if(capabilities){
-      const hostReadOnly=new Set(['host.project_inspect','host.network_observe','host.resources_observe']);
+      const hostReadOnly=new Set(['host.project_inspect','host.github_read','host.network_observe','host.resources_observe']);
       capabilities.hostAllowedTools=(capabilities.hostAllowedTools??[]).filter(name=>hostReadOnly.has(name));
       const readOnly=new Set(toolCatalog.filter(tool=>tool.annotations?.readOnlyHint===true).map(tool=>tool.name));
       capabilities.mcpAllowedTools=(capabilities.mcpAllowedTools??[]).filter(name=>readOnly.has(name));

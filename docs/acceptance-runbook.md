@@ -2,6 +2,10 @@
 
 ## 真实交付中的持续迭代
 
+GitHub连接须区分宿主认证可用与Native任务内可用。匿名403/额度耗尽时保留实际响应，不认定仓库缺失；接通登记仓库GET工具后，由真实Research/QA任务读取当前PR、Issue和head，记录工具来源与观察时间。单独CLI测试不能冒充Native已调用。
+
+同Root质量续接另验：旧5次等实际调用文件字节不变，complex12记录不退款；同一resume ID只记录一次Native恢复事件，提交失败无提前发布，文件投影丢失只对账。下一轮仍使用原Research/开发及QA子任务、新operation/run/session和独有输出，旧NEEDS_WORK及通知保持；第三轮、未知传输、输入变化、未释放租约均拒绝。源码夹具不替代真实原任务续接结果。
+
 RWB每个有效工作项沿原Issue/NativeTask/分支/PR推进，重复或已覆盖项以实际包含/替代证据对账，不盲目全部合并。以当前候选的适用检查、独立QA、PR/CI、按依赖批次部署及业务结果分别验收；其他聊天持有的部署窗口先交接。FinGPT保持已定顺序及其独立provider费用预算，Codex根调用分档不替代该预算。
 
 至少一个实际可修复的QA问题需证明：同Root和原开发/QA子Task、原输入hash不变，原NEEDS_WORK/产物仍在，新增fix与独立reQA操作/run/session，当前reviewedArtifacts排除旧QA，PASS绑定新候选。不得为验收故意破坏现有产品；使用真实发现或离线故障夹具验证故障分支。离线驱动通过不等于真实任务已跑。
