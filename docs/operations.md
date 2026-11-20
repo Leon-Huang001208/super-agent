@@ -12,6 +12,8 @@
 
 宿主检查与MCP使用异步子进程，取消或超时只终止本调用独立进程组；旧已开始而结果未知的动作保留原run目录和started记录，不重新执行。原生QA绑定真实Git候选与检查记录，发布继续使用目标项目已登记受管入口和允许动作。
 
+任务CLI保持`approval_policy=never`。`role-host-mcp-config.mjs`将本run宿主executor实际暴露的工具逐项设为`mcp_servers.role_host.tools.<原工具名>.approval_mode="approve"`，服务器默认仍为`prompt`；带点工具名通过TOML quoted key保留原名。该设置只消除已授权专用通道的重复交互，Native许可、broker及宿主执行器仍校验每次调用，不批准未知工具或其他服务器。CLI 0.159的`mcp get --json`不输出审批字段，验证须读取实际`config/read`结果，不能只凭配置解析成功。字段定义见[固定版本官方schema](https://github.com/openai/codex/blob/rust-v0.159.0/codex-rs/core/config.schema.json)。
+
 没有项目自有交付入口时，Native metadata可显式登记`delivery: {adapter: "managed-project", maximumAction: "pull_request"}`，使用本仓库固定manager/Harness。任务代码工作树在已登记的Projects根创建，prepare生成integration候选；QA须在该精确SHA运行登记checks并通过Native结果收存，再允许同一任务发布PR。此适配器不自动合并。`maximumAction: "artifact"`仅建立任务工作树和报告，不开始完整发布流程。CLI通过stdin接收私有许可：`node scripts/role-project-delivery.mjs --request-stdin`；检查及候选错误沿原host调用返回。
 
 ## 角色指令迁移与保存

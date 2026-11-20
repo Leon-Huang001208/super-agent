@@ -3,6 +3,7 @@ import fs from'node:fs';import path from'node:path';import{createHash,randomUUID
 import{AdmissionMeter}from'./admission.mjs';import{ROLE_ROOT as R,readControl,writeControl,editRoleRegistry}from'./role-control-store.mjs';
 import{authorizeChiefOwnerInput,validateTeamPlan,validateTeamCodeCandidate,validateTeamQaResult,validateTeamCheckEvidence,codeReviewForTeamStep}from'./team-plan.mjs';import{TEAM_ROLES,validateTeamRoster}from'./team-roles.mjs';
 import{readRoleProjectContext}from'./role-project-context.mjs';
+import{validateNativeRoleRetry,advanceNativeRetryFlow,archiveNativeRetryFailure,clearArchivedRetryLock,rebindNativeRetryContext,NATIVE_RETRY_CONTEXT}from'./role-native-retry.mjs';
 const P='/opt/paperclip/node_modules',sha=b=>createHash('sha256').update(b).digest('hex');
 const fail=code=>{throw Object.assign(Error(code),{code});};
 const log=e=>fs.appendFileSync(R+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...e})+'\n',{mode:0o600});
@@ -37,7 +38,70 @@ function artifact(r,name,{notBefore=0,runId}={}){
 }
 async function ports(database){const data=await database();const issue=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(data.db);const heartbeat=(await import(P+'/@paperclipai/server/dist/services/heartbeat.js')).heartbeatService(data.db);return {...data,issue,heartbeat};}
 async function getRunForOp(p,op){const file=R+'/operations/'+op.id+'.json';let id=op.acceptedRunId;if(fs.existsSync(file))id=readControl(file).runId;if(!id){const[w]=await p.db.select().from(p.schema.agentWakeupRequests).where(p.orm.eq(p.schema.agentWakeupRequests.idempotencyKey,'team-operation:'+op.id));id=w?.runId;}if(!id)return null;const[run]=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.eq(p.schema.heartbeatRuns.id,id));return run;}
-async function requireNoPendingOwnerInput(p,r,taskId){const rows=await p.db.select({id:p.schema.agentWakeupRequests.id}).from(p.schema.agentWakeupRequests).where(p.orm.and(p.orm.eq(p.schema.agentWakeupRequests.companyId,r.companyId),p.orm.eq(p.schema.agentWakeupRequests.requestedByActorType,'user'),p.orm.inArray(p.schema.agentWakeupRequests.status,['queued','deferred_issue_execution']),p.orm.sql`${p.schema.agentWakeupRequests.payload}->>'issueId' = ${taskId}`)).limit(1);if(rows.length)fail('TEAM_PENDING_OWNER_INPUT');}
+/** Bind only an already-running Native retry row; this never schedules or wakes a run. */
+export async function bindNativeRetryAttempt(ctx,{database}){
+ const p=await database(),[observed]=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.eq(p.schema.heartbeatRuns.id,ctx.runId));
+ if(!observed?.retryOfRunId)return ctx;
+ try{return await p.db.transaction(async tx=>{
+  const{s,o}= {s:p.schema,o:p.orm},[run]=await tx.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,ctx.runId)).for('update');
+  const[parentRun]=await tx.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,run.retryOfRunId)).for('update');
+  const r=readControl(R+'/registry.json');
+  if(run.agentId!==ctx.agent.id||run.issueId!==ctx.context?.issueId||!parentRun)fail('TEAM_NATIVE_RETRY_CONTEXT_CHANGED');
+  const candidates=[];
+  for(const value of r.operations.filter(value=>value.kind==='run'&&value.taskId===run.issueId&&value.agentId===run.agentId)){
+   const file=R+'/operations/'+value.id+'.json';
+   if(fs.existsSync(file)&&readControl(file).runId===parentRun.id)candidates.push(value);
+  }
+  if(candidates.length!==1)fail('TEAM_NATIVE_RETRY_PARENT_OPERATION_DENIED');
+  const operation=candidates[0],existing=r.operations.find(value=>value.acceptedRunId===run.id&&value.retryOfRunId===parentRun.id);
+  if(existing&&fs.existsSync(R+'/budget/'+operation.rootTaskId+'/'+existing.id+'.json'))fail('TEAM_NATIVE_RETRY_ALREADY_STARTED');
+  const[task]=await tx.select().from(s.issues).where(o.eq(s.issues.id,run.issueId)).for('update');
+  const[rootTask]=await tx.select().from(s.issues).where(o.eq(s.issues.id,operation.rootTaskId)).for('update');
+  const files=fs.readdirSync(R+'/team/workflows').filter(name=>name.endsWith('.json')).map(name=>R+'/team/workflows/'+name).filter(file=>readControl(file).rootTaskId===operation.rootTaskId);
+  if(files.length!==1)fail('TEAM_NATIVE_RETRY_FLOW_CHANGED');
+  const file=files[0],flow=readControl(file),entry=flow.taskEntries.find(value=>value.id===task.id);
+  const lockPath=R+'/call.lock',archiveLock=R+'/team/native-retries/'+parentRun.id+'/call.lock.json';
+  if(!fs.existsSync(lockPath)&&(!existing||flow.dispatches?.[entry?.key]?.operationId!==existing.id||!flow.attemptHistory?.[entry.key]?.some(value=>value.runId===parentRun.id&&value.retryRunId===run.id)))fail('TEAM_NATIVE_RETRY_LOCK_DENIED');
+  const callLock=readControl(fs.existsSync(lockPath)?lockPath:archiveLock);
+  const directory=R+'/transport/'+parentRun.id,transportResult=readControl(directory+'/result.json');
+  const outputHash=name=>{const full=directory+'/'+name,stat=fs.lstatSync(full);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.uid!==0||(stat.mode&0o077))fail('TEAM_NATIVE_RETRY_TRANSPORT_DENIED');return sha(fs.readFileSync(full));};
+  const activeRuns=await tx.select({id:s.heartbeatRuns.id,status:s.heartbeatRuns.status}).from(s.heartbeatRuns).where(o.inArray(s.heartbeatRuns.status,['running','queued','scheduled_retry']));
+  const leases=await tx.select({heartbeatRunId:s.environmentLeases.heartbeatRunId,status:s.environmentLeases.status,releasedAt:s.environmentLeases.releasedAt,cleanupStatus:s.environmentLeases.cleanupStatus}).from(s.environmentLeases).where(o.or(o.eq(s.environmentLeases.heartbeatRunId,parentRun.id),o.isNull(s.environmentLeases.releasedAt),o.eq(s.environmentLeases.status,'pending_cleanup'),o.eq(s.environmentLeases.cleanupStatus,'failed')));
+  const binding=validateNativeRoleRetry({registry:r,flow,rootTask,task,operation,run,parentRun,existingOperation:existing,callLock,
+   budgetCount:budgetUsed(rootTask.id),budgetRecord:readControl(R+'/budget/'+rootTask.id+'/'+operation.id+'.json'),operationBinding:readControl(R+'/operations/'+operation.id+'.json'),
+   transportResult,stdoutSha256:outputHash('stdout'),stderrSha256:outputHash('stderr'),activeRuns,leases});
+  await requireNoPendingOwnerInput({...p,db:tx},r,rootTask.id);
+  await requireNoPendingOwnerInput({...p,db:tx},r,task.id);
+  const meter=meterFor(r,task.projectId);try{if(!meter.verifyLease(r.lease).allowed)fail('TEAM_NATIVE_RETRY_PHASE_LEASE_CHANGED');}finally{meter.close();}
+  const permit=readControl(R+'/permits/'+parentRun.id+'.json');
+  if(permit.runId!==parentRun.id||permit.taskId!==task.id||permit.agentId!==operation.agentId||permit.companyId!==r.companyId||permit.projectId!==task.projectId||permit.ownerId!==r.ownerId||permit.inputRevision!==operation.inputRevision)fail('TEAM_NATIVE_RETRY_PARENT_PERMIT_CHANGED');
+  let failedArtifact;
+  const artifactFile=entry&&path.join(permit.cwd,entry.outputFile);
+  if(artifactFile&&fs.existsSync(artifactFile)){
+   const original=artifact(r,entry.outputFile,{runId:parentRun.id,notBefore:Date.parse(parentRun.startedAt)});
+   if(fs.statSync(artifactFile).mtimeMs>Date.parse(parentRun.finishedAt)+2000)fail('TEAM_NATIVE_RETRY_ARTIFACT_CHANGED');
+   const data=fs.readFileSync(artifactFile);if(sha(data)!==original.sha256)fail('TEAM_NATIVE_RETRY_ARTIFACT_CHANGED');
+   failedArtifact={file:entry.outputFile,data};
+  }
+  const archive=archiveNativeRetryFailure({root:R,parentRun,operation,callLock,artifact:failedArtifact,log});
+  const additionalInput=operation.additionalInput?.includes(NATIVE_RETRY_CONTEXT)?operation.additionalInput:(operation.additionalInput??'')+'\n'+NATIVE_RETRY_CONTEXT;
+  const next=existing??{...operation,id:randomUUID(),acceptedRunId:run.id,retryOfOperationId:operation.id,retryOfRunId:parentRun.id,nativeRetryAttempt:run.scheduledRetryAttempt,additionalInput};
+  const updated=advanceNativeRetryFlow(flow,binding,{operation:next,parentRun,evidence:{...archive,transportResultSha256:sha(fs.readFileSync(directory+'/result.json')),stdoutSha256:transportResult.stdoutSha256,stderrSha256:transportResult.stderrSha256}});
+  editRoleRegistry(current=>{
+   if(current.lease?.nonce!==r.lease.nonce||current.lease.taskId!==task.id||![operation.id,next.id].includes(current.lease.operationId))fail('TEAM_NATIVE_RETRY_PHASE_LEASE_CHANGED');
+   if(!current.operations.some(value=>value.id===next.id))current.operations.push(next);
+   current.lease={...current.lease,operationId:next.id};return current;
+  });
+  writeControl(file,updated);
+  clearArchivedRetryLock({root:R,callLock,archive,allowAlreadyCleared:Boolean(existing),log});
+  log({code:'TEAM_NATIVE_RETRY_BOUND',runId:run.id,parentRunId:parentRun.id,operationId:next.id,retryOfOperationId:operation.id,taskId:task.id,rootTaskId:rootTask.id,nativeRetryAttempt:run.scheduledRetryAttempt});
+  return rebindNativeRetryContext(ctx,next);
+ });}catch(error){
+  const code=/^(?:TEAM_NATIVE_RETRY_[A-Z_]+|TEAM_PENDING_OWNER_INPUT)$/.test(error?.code??'')?error.code:'TEAM_NATIVE_RETRY_PREFLIGHT_FAILED';
+  log({code,runId:ctx.runId});fail(code);
+ }
+}
+export async function requireNoPendingOwnerInput(p,r,taskId){const rows=await p.db.select({id:p.schema.agentWakeupRequests.id}).from(p.schema.agentWakeupRequests).where(p.orm.and(p.orm.eq(p.schema.agentWakeupRequests.companyId,r.companyId),p.orm.eq(p.schema.agentWakeupRequests.requestedByActorType,'user'),p.orm.inArray(p.schema.agentWakeupRequests.status,['queued','deferred_issue_execution']),p.orm.sql`${p.schema.agentWakeupRequests.payload}->>'issueId' = ${taskId}`)).limit(1);if(rows.length)fail('TEAM_PENDING_OWNER_INPUT');}
 async function releaseKnownIdle(p,r){
  if(fs.existsSync(R+'/call.lock'))return false;const meter=meterFor(r);try{
  if(!r.lease||!meter.verifyLease(r.lease).allowed)return true;
