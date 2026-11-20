@@ -81,3 +81,7 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 `team-result-notification.mjs`复用已有飞书SDK和本人绑定，持久化结果outbox；发送成功不重复调用，未知结果停止等待核对。`scripts/role-transport-resident.mjs`是既有宿主Node的Docker管理传输与只读宿主快照，模型及产品协调逻辑仍在Docker。只读Snapshot不授予系统修改权，使用WorkDisk/原数据卷前核对固定UUID。新宿主开机服务不在本轮配置。
 
 `team-configure.mjs`明确新角色paused纯登记，保护原ID/配置/材料；`team-bootstrap.mjs`串行复用原Native lifecycle，保留真实探针与无新探针的区别。296项当前离线回归已通过；Native11配置及8新探针通过，新的Chief联合闭环尚未作为通过记录。
+
+## Chief 飞书入口
+
+`bridge/chief-feishu-intake.mjs`校验SDK来源的本人单聊、固定应用/租户及消息摘要；`chief-feishu-native.mjs`将登记、发送和唤醒认领保存到Native事务/activity ledger。`chief-feishu-service.mjs`复用已固定的1.76.0 SDK与原连接工厂，默认关闭，唯一主进程监听；不新增依赖、调度器或任务库。测试覆盖身份负例、源消息冲突、并发去重、合理等待、陈旧输入及未知结果不能重发。真实连接、本人发送、Chief分派和通知必须另验。
