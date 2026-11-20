@@ -15,7 +15,7 @@ test('provider broker rejects wrong token, other routes, other model/session and
  fs.writeFileSync(root+'/auth.json',JSON.stringify({tokens:{access_token:'synthetic-provider-token',id_token:jwt,account_id:'synthetic'}}));
  const child=spawn(process.execPath,['docker/role-provider-proxy.mjs'],{cwd:process.cwd(),env:{...process.env,
   SUPER_AGENT_ROLE_PROXY_ROOT:root,SUPER_AGENT_ROLE_PROXY_AUDIT:root},stdio:'ignore'});
- t.after(()=>child.kill('SIGTERM'));
+ t.after(async()=>{if(child.exitCode===null){const exited=new Promise(resolve=>child.once('exit',resolve));child.kill('SIGTERM');await exited;}});
  let ready=false;for(let i=0;i<100;i++){try{await fetch('http://127.0.0.1:8090/');ready=true;break;}catch{await new Promise(r=>setTimeout(r,10));}}
  assert.equal(ready,true);
  const hostPermit={runId:'synthetic',taskId:'task',projectId:'project',effectiveCapabilities:{hostAllowedTools:['host.project_check']}};
@@ -42,4 +42,24 @@ test('provider broker rejects wrong token, other routes, other model/session and
  assert.match(denied,/403/);
  const audit=fs.readFileSync(root+'/provider.jsonl','utf8');
  assert.equal(audit.includes('synthetic-provider-token'),false);
+});
+
+test('M2 read-only broker intersects the admitted allowlist, dynamic role discovery and actual read-only annotations',async t=>{
+ const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'role-proxy-readonly-'));t.after(()=>fs.rmSync(root,{recursive:true}));
+ const token='fixture-readonly',tools=[{name:'firecrawl.read',annotations:{readOnlyHint:true}},{name:'firecrawl.write',annotations:{readOnlyHint:false}},
+  {name:'firecrawl.new',annotations:{readOnlyHint:true}},{name:'figma.read',annotations:{readOnlyHint:true}}];
+ const jwt='e30.'+Buffer.from(JSON.stringify({'https://api.openai.com/auth':{chatgpt_account_id:'fixture'}})).toString('base64url')+'.eA';
+ fs.writeFileSync(root+'/config.json',JSON.stringify({key:token,runId:'fixture',taskId:'task',projectId:'project',expiresAt:Date.now()+60000,role:'research',readOnlyToolsOnly:true,
+  effectiveCapabilities:{mcpAllowedTools:['firecrawl.read','firecrawl.write','figma.read']},hostTools:[]}));
+ fs.writeFileSync(root+'/auth.json',JSON.stringify({tokens:{access_token:'fixture-upstream-secret',id_token:jwt,account_id:'fixture'}}));
+ fs.writeFileSync(root+'/upstream.mjs','globalThis.fetch=async(_url,options)=>{const message=JSON.parse(options.body);return new Response(JSON.stringify({jsonrpc:"2.0",id:message.id,result:message.method==="tools/list"?{tools:'+JSON.stringify(tools)+'}:{content:[{type:"text",text:"fixture-read-result"}]}}),{headers:{"content-type":"application/json"}});};');
+ const child=spawn(process.execPath,['--import',root+'/upstream.mjs','docker/role-provider-proxy.mjs'],{cwd:process.cwd(),env:{...process.env,SUPER_AGENT_ROLE_PROXY_ROOT:root,SUPER_AGENT_ROLE_PROXY_AUDIT:root},stdio:'ignore'});
+ t.after(async()=>{if(child.exitCode===null){const exited=new Promise(resolve=>child.once('exit',resolve));child.kill('SIGTERM');await exited;}});
+ let ready=false;for(let i=0;i<100;i++){try{await fetch('http://127.0.0.1:8090/');ready=true;break;}catch{await new Promise(r=>setTimeout(r,10));}}assert.equal(ready,true);
+ const request=message=>fetch('http://127.0.0.1:8090/backend-api/ps/mcp',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,...message})});
+ assert.equal((await request({method:'tools/call',params:{name:'firecrawl.write',arguments:{}}})).status,403);
+ const catalog=await(await request({method:'tools/list'})).json();assert.deepEqual(catalog.result.tools.map(tool=>tool.name),['firecrawl.read']);
+ const read=await request({method:'tools/call',params:{name:'firecrawl.read',arguments:{}}});assert.equal(read.status,200);assert.match(await read.text(),/fixture-read-result/);
+ for(const name of ['firecrawl.write','firecrawl.new','figma.read'])assert.equal((await request({method:'tools/call',params:{name,arguments:{}}})).status,403);
+ const audit=fs.readFileSync(root+'/provider.jsonl','utf8');assert.equal(audit.includes('fixture-upstream-secret'),false);
 });

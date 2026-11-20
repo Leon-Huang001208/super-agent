@@ -1,13 +1,18 @@
 {
   "schemaVersion": 1,
-  "required": ["AGENTS.md", "README.md", "docs/README.md", "docs/product.md", "docs/architecture.md", "docs/development-map.md", "docs/agent-workflow.md", "docs/documentation-governance.md", "docs/operations.md", "docs/acceptance-runbook.md", "docs/decisions/0001-paperclip-and-delivery.md"],
+  "required": ["AGENTS.md", "README.md", "docs/README.md", "docs/product.md", "docs/architecture.md", "docs/development-map.md", "docs/cross-project-context.md", "docs/agent-workflow.md", "docs/documentation-governance.md", "docs/operations.md", "docs/acceptance-runbook.md", "docs/decisions/0001-paperclip-and-delivery.md"],
   "entrypoints": {
     "README.md": ["AGENTS.md", "docs/README.md", "docs/architecture.md", "docs/development-map.md", "docs/agent-workflow.md"],
     "AGENTS.md": ["docs/README.md", "docs/architecture.md", "docs/development-map.md", "docs/agent-workflow.md"],
-    "docs/README.md": ["AGENTS.md", "docs/product.md", "docs/architecture.md", "docs/development-map.md", "docs/agent-workflow.md", "docs/documentation-governance.md", "docs/operations.md", "docs/acceptance-runbook.md", "docs/decisions/0001-paperclip-and-delivery.md"]
+    "docs/README.md": ["AGENTS.md", "docs/product.md", "docs/architecture.md", "docs/development-map.md", "docs/cross-project-context.md", "docs/agent-workflow.md", "docs/documentation-governance.md", "docs/operations.md", "docs/acceptance-runbook.md", "docs/decisions/0001-paperclip-and-delivery.md"]
   },
   "rules": [
     {"prefix": "docs/documentation-governance.json", "docs": ["docs/documentation-governance.md"]},
+    {"prefix": "bridge/context-projects.mjs", "docs": ["docs/cross-project-context.md", "docs/plans/cross-project-context-m2.md"]},
+    {"prefix": "bridge/chief-context-", "docs": ["docs/cross-project-context.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "bridge/project-knowledge-store.mjs", "docs": ["docs/cross-project-context.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "bridge/team-context.mjs", "docs": ["docs/cross-project-context.md", "docs/architecture.md"]},
+    {"prefix": "bridge/role-material-snapshot.mjs", "docs": ["docs/cross-project-context.md", "docs/architecture.md"]},
     {"prefix": "bridge/", "docs": ["docs/architecture.md", "docs/development-map.md", "docs/acceptance-runbook.md"]},
     {"prefix": "assets/", "docs": ["docs/development-map.md", "docs/plans/research-pm-m1.md"]},
     {"prefix": "plugins/", "docs": ["docs/architecture.md", "docs/development-map.md", "docs/acceptance-runbook.md"]},
@@ -16,8 +21,15 @@
     {"prefix": "evaluation/", "docs": ["docs/acceptance-runbook.md", "docs/development-map.md"]},
     {"prefix": "scripts/sa", "docs": ["docs/operations.md", "docs/development-map.md"]},
     {"prefix": "scripts/check-docs.mjs", "docs": ["docs/documentation-governance.md"]},
+    {"prefix": "scripts/context-configure.mjs", "docs": ["docs/cross-project-context.md", "docs/plans/cross-project-context-m2.md"]},
     {"prefix": "scripts/", "docs": ["docs/development-map.md", "docs/operations.md"]},
     {"prefix": "tests/", "docs": ["docs/development-map.md", "docs/documentation-governance.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "tests/context-", "docs": ["docs/cross-project-context.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "tests/chief-context-", "docs": ["docs/cross-project-context.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "tests/project-knowledge-store.test.mjs", "docs": ["docs/cross-project-context.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "tests/team-context.test.mjs", "docs": ["docs/cross-project-context.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "tests/native-role-runtime-context.test.mjs", "docs": ["docs/cross-project-context.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "tests/role-container-materials.test.mjs", "docs": ["docs/cross-project-context.md", "docs/acceptance-runbook.md"]},
     {"prefix": ".github/", "docs": ["docs/agent-workflow.md", "docs/documentation-governance.md"]},
     {"prefix": "package.json", "docs": ["docs/development-map.md"]},
     {"prefix": "tsconfig.json", "docs": ["docs/development-map.md"]}

@@ -6,6 +6,8 @@ import {spawn,spawnSync} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
 import {NATIVE_ROLE_EXTRA_ARGS} from '../bridge/native-role-adapter.mjs';
 import {validateRoleCall,normalizeNativeRoleArgs} from '../docker/role-codex-gate.mjs';
+import {loadRoleMaterials} from '../bridge/role-materials.mjs';
+import {validateRoleMaterialSnapshot,ROLE_MATERIAL_ROOT} from '../bridge/role-material-snapshot.mjs';
 import {hostRoleInstructionPath} from '../bridge/role-instruction-paths.mjs';
 import {materializeRoleSkillBundle,ROLE_SKILL_BUNDLE_SHA256} from '../bridge/role-skill-bundles.mjs';
 import {prepareRoleProjectWorkspace,createHostCapabilityExecutor} from '../bridge/role-host-capabilities.mjs';
@@ -27,11 +29,45 @@ function durable(file,value){
  if(fs.existsSync(file))fail('ROLE_CONTAINER_RESULT_EXISTS');fs.renameSync(tmp,file);
  const p=fs.openSync(path.dirname(file),'r');try{fs.fsyncSync(p);}finally{fs.closeSync(p);}
 }
+/** Project only the approved files, outside every writable HOME alias. No Docker operation is performed here. */
+export function createRoleMaterialProjection({permit,materialRoot,snapshotRoot,clientRoot,resumeSetup=false,kind='project',log}) {
+ try{
+  if(typeof log!=='function')fail('ROLE_CONTAINER_MATERIAL_CONFIG_DENIED');
+  const snapshot=validateRoleMaterialSnapshot(permit);if(!snapshot)fail('ROLE_CONTAINER_MATERIAL_SNAPSHOT_REQUIRED');
+  if(!['project','native-instructions'].includes(kind)||kind==='native-instructions'&&!snapshot.nativeInstructions)fail('ROLE_CONTAINER_MATERIAL_CONFIG_DENIED');
+  const native=kind==='native-instructions'?snapshot.nativeInstructions:null;
+  const manifest=native?{schemaVersion:1,project:snapshot.projectKey,role:snapshot.role,
+   instructionsFilePath:path.posix.relative(native.materialRoot,native.instructionsFilePath),requiredReferences:[],files:native.materialFiles}:snapshot.manifest;
+  for(const root of [materialRoot,snapshotRoot,clientRoot])if(typeof root!=='string'||!path.isAbsolute(root)||path.resolve(root)!==root)fail('ROLE_CONTAINER_MATERIAL_ROOT_DENIED');
+  const overlaps=(a,b)=>a===b||a.startsWith(b+path.sep)||b.startsWith(a+path.sep);
+  if(overlaps(snapshotRoot,clientRoot)||overlaps(snapshotRoot,materialRoot)||
+    fs.realpathSync(path.dirname(snapshotRoot))!==path.dirname(snapshotRoot)||fs.realpathSync(clientRoot)!==clientRoot)fail('ROLE_CONTAINER_MATERIAL_ALIAS_DENIED');
+  const loaded=loadRoleMaterials({root:materialRoot,project:snapshot.projectKey,role:snapshot.role,manifest,log});
+  if(fs.existsSync(snapshotRoot)){if(!resumeSetup)fail('ROLE_CONTAINER_MATERIAL_EXISTS');}else fs.mkdirSync(snapshotRoot,{mode:0o700});
+  const expected=new Map(loaded.files.map(file=>[file.path,file.sha256]));let total=0;
+  const directory=name=>{const s=fs.lstatSync(name);if(!s.isDirectory()||s.isSymbolicLink()||s.uid!==process.getuid()||(s.mode&0o022)||fs.realpathSync(name)!==name)fail('ROLE_CONTAINER_MATERIAL_PATH_DENIED');};
+  directory(snapshotRoot);
+  for(const file of loaded.files){
+   const bytes=read(path.join(materialRoot,file.path));total+=bytes.length;if(total>1048576||sha(bytes)!==file.sha256)fail('ROLE_CONTAINER_MATERIAL_CHANGED');
+   let target=snapshotRoot;const parts=file.path.split('/');for(const part of parts.slice(0,-1)){target=path.join(target,part);if(!fs.existsSync(target)){if(resumeSetup)fail('ROLE_CONTAINER_MATERIAL_INCOMPLETE');fs.mkdirSync(target,{mode:0o700});}directory(target);}target=path.join(target,parts.at(-1));
+   if(fs.existsSync(target)){const s=fs.lstatSync(target);if(!resumeSetup||!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.uid!==process.getuid()||s.size>262144||sha(fs.readFileSync(target))!==file.sha256)fail('ROLE_CONTAINER_MATERIAL_CHANGED');}
+   else{if(resumeSetup)fail('ROLE_CONTAINER_MATERIAL_INCOMPLETE');const fd=fs.openSync(target,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}}
+  }
+  const seen=new Set();const finalize=(name,relative='')=>{directory(name);for(const entry of fs.readdirSync(name,{withFileTypes:true})){const nested=relative?relative+'/'+entry.name:entry.name,full=path.join(name,entry.name);if(entry.isSymbolicLink())fail('ROLE_CONTAINER_MATERIAL_PATH_DENIED');if(entry.isDirectory()){if(![...expected.keys()].some(file=>file.startsWith(nested+'/')))fail('ROLE_CONTAINER_MATERIAL_EXTRA');finalize(full,nested);}else{if(!entry.isFile()||!expected.has(nested)||sha(fs.readFileSync(full))!==expected.get(nested))fail('ROLE_CONTAINER_MATERIAL_EXTRA');seen.add(nested);fs.chmodSync(full,0o444);}}const fd=fs.openSync(name,'r');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}fs.chmodSync(name,0o555);};
+  finalize(snapshotRoot);if(seen.size!==expected.size)fail('ROLE_CONTAINER_MATERIAL_INCOMPLETE');
+  const result={source:snapshotRoot,target:native?.materialRoot??ROLE_MATERIAL_ROOT,readOnly:true,manifestSha256:sha(Buffer.from(JSON.stringify(manifest))),
+    files:loaded.files.map(file=>({path:file.path,sha256:file.sha256}))};
+  log({code:'ROLE_CONTAINER_MATERIALS_PROJECTED',runId:permit.runId,projectId:permit.projectId,role:permit.role,manifestSha256:result.manifestSha256,files:result.files});
+  return result;
+ }catch(error){const code=/^(?:ROLE_CONTAINER_MATERIAL|ROLE_MATERIAL)_[A-Z_]+$/.test(error.code??'')?error.code:'ROLE_CONTAINER_MATERIAL_FAILED';if(typeof log==='function')log({code,runId:permit?.runId});fail(code);}
+}
+if(process.argv[1]&&fileURLToPath(import.meta.url)===path.resolve(process.argv[1])){
 let stream,err,input,network,broker,terminal=false,hostCallsTimer,hostController;
 const log=event=>fs.appendFileSync(ROOT+'/host-transport.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});
 try{
  if(process.platform!=='darwin'||!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(runId??''))fail('ROLE_CONTAINER_ARGUMENT_DENIED');
  const dir=ROOT+'/transport/'+runId,request=JSON.parse(read(dir+'/request.json')),permitBytes=read(ROOT+'/permits/'+runId+'.json'),permit=JSON.parse(permitBytes);
+ const selectedSnapshot=validateRoleMaterialSnapshot(permit);
  validateRoleCall({permit,args:request.args,env:{PAPERCLIP_RUN_ID:permit.runId,PAPERCLIP_AGENT_ID:permit.agentId,
   PAPERCLIP_COMPANY_ID:permit.companyId,PAPERCLIP_TASK_ID:permit.taskId,CODEX_HOME:request.home},cwd:request.cwd,now:Date.now()});
  const gate=JSON.parse(read(ROOT+'/claims/'+runId+'.json')),material=hostRoleInstructionPath(permit.instructionsFilePath,DATA),materialBytes=read(material);
@@ -39,7 +75,7 @@ try{
     request.inputSha256!==sha(read(dir+'/stdin'))||sha(materialBytes)!==permit.materialSha256)fail('ROLE_CONTAINER_BINDING_DENIED');
  const cwd=DATA+'/state/'+request.cwd.slice('/paperclip/'.length),name='sa-role-'+runId;
  const managed=DATA+'/state/instances/default/projects/'+permit.companyId+'/'+permit.projectId+'/_default';
- if(!(cwd.startsWith(ROOT+'/workspaces/')||cwd===managed)||fs.realpathSync(cwd)!==cwd||!fs.lstatSync(cwd).isDirectory())fail('ROLE_CONTAINER_WORKSPACE_DENIED');
+ if((selectedSnapshot?cwd!==managed:!(cwd.startsWith(ROOT+'/workspaces/')||cwd===managed))||fs.realpathSync(cwd)!==cwd||!fs.lstatSync(cwd).isDirectory())fail('ROLE_CONTAINER_WORKSPACE_DENIED');
  if(exec(['ps','-a','--filter','name=^/'+name+'$','--format','{{.ID}}']).trim()||fs.existsSync(dir+'/cancel.json')||fs.existsSync(dir+'/host.claim.json')&&!resumeSetup)fail('ROLE_CONTAINER_REPLAY_OR_CANCEL_DENIED');
  const app=JSON.parse(exec(['inspect','super-agent-paperclip-eval-paperclip-1']))[0];
  if(app.Image!==IMAGE)fail('ROLE_CONTAINER_SOURCE_CHANGED');
@@ -53,6 +89,12 @@ try{
  }else durable(dir+'/host.claim.json',{runId,name,image:IMAGE,at:new Date().toISOString(),network:'isolated-with-scoped-provider'});
  const client=dir+'/client',proxy=dir+'/proxy',audit=dir+'/proxy-audit';
  for(const p of [client,proxy,audit])if(!fs.existsSync(p))fs.mkdirSync(p,{mode:0o700});
+ const materialProjection=selectedSnapshot?createRoleMaterialProjection({permit,materialRoot:ROOT+'/materials',snapshotRoot:dir+'/material-snapshot',clientRoot:client,resumeSetup,
+  log:event=>fs.appendFileSync(dir+'/material-events.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600})}):null;
+ if(materialProjection){const receipt={schemaVersion:1,runId,companyId:permit.companyId,ownerId:permit.ownerId,projectId:permit.projectId,role:permit.role,...(permit.projectWorkspaceId?{projectWorkspaceId:permit.projectWorkspaceId}:{}),...materialProjection};
+  if(resumeSetup){if(sha(read(dir+'/materials-receipt.json'))!==sha(Buffer.from(JSON.stringify(receipt)+'\n')))fail('ROLE_CONTAINER_MATERIAL_RECEIPT_CHANGED');}else durable(dir+'/materials-receipt.json',receipt);}
+ const nativeProjection=selectedSnapshot?.nativeInstructions?createRoleMaterialProjection({permit,kind:'native-instructions',materialRoot:hostRoleInstructionPath(permit.materialRoot,DATA),
+  snapshotRoot:dir+'/native-instructions',clientRoot:client,resumeSetup,log}):null;
  const key=resumeSetup?JSON.parse(read(proxy+'/config.json')).key:randomBytes(32).toString('hex');
  const advanced=Boolean(permit.projectContext&&permit.effectiveCapabilities);
  const workspace=advanced?await prepareRoleProjectWorkspace({permit,controlRoot:ROOT,log}):{available:false};
@@ -61,6 +103,7 @@ try{
  const hostTools=hostExecutor?hostExecutor.listTools():[];
  if(!resumeSetup)durable(proxy+'/config.json',{runId,key,expiresAt:Date.now()+660000,
   role:advanced?permit.role:undefined,taskId:permit.taskId,projectId:permit.projectId,projectContext:permit.projectContext,
+  readOnlyToolsOnly:Boolean(selectedSnapshot&&permit.projectContext?.delivery?.maximumAction==='artifact'),
   additionalCapabilities:permit.additionalCapabilities??[],effectiveCapabilities:permit.effectiveCapabilities,hostTools,
   mcpAllowedTools:permit.effectiveCapabilities?.mcpAllowedTools??[]});
  const selectedAuth=JSON.parse(read(dir+'/provider/auth.json'));
@@ -109,7 +152,7 @@ try{
  }
  provider.push('--entrypoint','node',IMAGE,'/opt/role-runtime/docker/role-provider-proxy.mjs');exec(provider);exec(['network','connect','--alias','provider',network,broker]);
  let instructionMount;
- if(permit.materialFiles){
+ if(!materialProjection&&permit.materialFiles){
   const bundle=client+'/instructions';fs.mkdirSync(bundle,{recursive:true,mode:0o700});
   for(const file of permit.materialFiles){
    const bytes=read(hostRoleInstructionPath(path.posix.join(permit.materialRoot,file.path),DATA));
@@ -119,7 +162,7 @@ try{
    else fs.writeFileSync(target,bytes,{mode:0o600,flag:'wx'});
   }
   instructionMount='type=bind,source='+bundle+',target='+permit.materialRoot+',readonly';
- }else{
+ }else if(!materialProjection){
   if(fs.existsSync(client+'/instructions.md')){if(!resumeSetup||sha(read(client+'/instructions.md'))!==permit.materialSha256)fail('ROLE_CONTAINER_MATERIAL_CHANGED');}
   else fs.writeFileSync(client+'/instructions.md',materialBytes,{mode:0o600,flag:'wx'});
   instructionMount='type=bind,source='+client+'/instructions.md,target='+permit.instructionsFilePath+',readonly';
@@ -154,10 +197,12 @@ try{
   '--tmpfs','/tmp:size=128m,mode=1777','--workdir',request.cwd,
   '--mount','type=bind,source='+cwd+',target='+request.cwd,
   '--mount','type=bind,source='+client+',target='+request.home,
-  '--mount',instructionMount,
   '--mount','type=bind,source='+DATA+'/dependencies-paperclip-taskguard4,target=/opt/paperclip,readonly',
   '--env','HOME=/tmp/role-home','--env','CODEX_HOME='+request.home,'--env','LANG=C.UTF-8','--env','SSL_CERT_FILE='+request.home+'/trust.pem','--env','CODEX_CA_CERTIFICATE='+request.home+'/trust.pem',
   '--env','HTTP_PROXY=http://provider:8090','--env','HTTPS_PROXY=http://provider:8090','--env','NO_PROXY=provider','--env','CODEX_CONNECTORS_TOKEN'];
+ if(materialProjection)args.push('--mount','type=bind,source='+materialProjection.source+',target='+materialProjection.target+',readonly');
+ if(nativeProjection)args.push('--mount','type=bind,source='+nativeProjection.source+',target='+nativeProjection.target+',readonly');
+ else if(!materialProjection)args.push('--mount',instructionMount);
  if(seccomp){const file=dir+'/seccomp.json';fs.writeFileSync(file,seccomp.slice(8),{mode:0o600,flag:'wx'});args.push('--security-opt','seccomp='+file);}
  if(workspace.available)args.push('--mount','type=bind,source='+workspace.codeHostPath+',target=/workspace/project'+(permit.role==='qa'?',readonly':''));
  if(roleSkills)args.push('--mount','type=bind,source='+skillAssetRoot+',target=/opt/role-skill-packages,readonly','--mount','type=bind,source='+client+'/skills,target='+request.home+'/skills,readonly');
@@ -209,11 +254,13 @@ try{
  if(result.signal||!Number.isInteger(result.code))fail('ROLE_CONTAINER_RESULT_UNKNOWN');
  terminal=true;
  durable(dir+'/result.json',{runId,exitCode:outputError?1:result.code,signal:null,cancelled,outputUnknown:outputError,timedOut:result.code===124,image:IMAGE,
-  stdoutSha256:sha(fs.readFileSync(dir+'/stdout')),stderrSha256:sha(fs.readFileSync(dir+'/stderr')),at:new Date().toISOString()});
+   stdoutSha256:sha(fs.readFileSync(dir+'/stdout')),stderrSha256:sha(fs.readFileSync(dir+'/stderr')),at:new Date().toISOString(),
+   ...(materialProjection?{materialManifestSha256:materialProjection.manifestSha256,projectId:permit.projectId}:{} )});
  console.log(JSON.stringify({runId,exitCode:outputError?1:result.code,outputUnknown:outputError,image:IMAGE,network:'isolated-with-scoped-provider'}));
 }catch(e){console.error(JSON.stringify({code:/^ROLE_[A-Z_]+$/.test(e.code??e.message)?(e.code??e.message):'ROLE_CONTAINER_UNKNOWN',runId}));process.exitCode=1;}
 finally{
  if(hostCallsTimer)clearInterval(hostCallsTimer);hostController?.abort();
  for(const fd of [input,stream,err])if(fd!==undefined)fs.closeSync(fd);
  if(terminal){if(broker)exec(['stop','--time','3',broker]);if(network)exec(['network','rm',network]);}
+}
 }

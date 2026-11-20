@@ -12,7 +12,7 @@ export const NATIVE_RETRY_CONTEXT='Resuming the same Native task after a settled
 export function rebindNativeRetryContext(ctx,operation){return {...ctx,context:{...ctx.context,roleOperationId:operation.id}};}
 
 /** Only Native DB columns establish a retry. Caller/model context grants no retry authority. */
-export function validateNativeRoleRetry(f){
+export function validateNativeRoleRetry(f,{settleOnly=false}={}){
  const {registry:r,flow,rootTask:root,task,operation:op,run,parentRun:parent,budgetRecord,operationBinding,callLock,transportResult:t,existingOperation}=f;
  if(!r||!op||op.kind!=='run'||op.role==='chief'||op.phase!=='work'||!run||!parent||run.status!=='running'||
   run.retryOfRunId!==parent.id||!Number.isInteger(run.scheduledRetryAttempt)||run.scheduledRetryAttempt<1||run.scheduledRetryAttempt>2||
@@ -32,7 +32,7 @@ export function validateNativeRoleRetry(f){
  if(!entry||entry.role!==op.role||entry.agentId!==op.agentId||flow.rootTaskId!==root.id||flow.projectId!==task.projectId||flow.summaryRunId||flow.artifacts?.[entry.key]||
   !dispatch||dispatch.taskId!==task.id||dispatch.inputRevision!==op.inputRevision||![op.id,replay?existingOperation.id:null].includes(dispatch.operationId)||
   existingOperation&&!replay)fail('TEAM_NATIVE_RETRY_FLOW_CHANGED');
- if(!Number.isSafeInteger(f.budgetCount)||f.budgetCount<1||f.budgetCount>=6||!budgetRecord||
+ if(!Number.isSafeInteger(f.budgetCount)||f.budgetCount<1||f.budgetCount>(settleOnly?6:5)||!budgetRecord||
   ['id','kind','taskId','rootTaskId','agentId','role','projectId','phase','inputRevision','rootInputRevision'].some(key=>budgetRecord[key]!==op[key])||
   operationBinding?.operationId!==op.id||operationBinding.runId!==parent.id||operationBinding.taskId!==task.id||operationBinding.agentId!==op.agentId)
   fail('TEAM_NATIVE_RETRY_BUDGET_DENIED');
@@ -90,4 +90,27 @@ export function clearArchivedRetryLock({root,callLock,archive,allowAlreadyCleare
  if(!equal(JSON.parse(fs.readFileSync(root+'/call.lock','utf8')),callLock))fail('TEAM_NATIVE_RETRY_LOCK_CHANGED');
  fs.unlinkSync(root+'/call.lock');const fd=fs.openSync(root,'r');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
  log({code:'TEAM_NATIVE_RETRY_SETTLED_LOCK_RELEASED',parentRunId:archive.parentRunId,operationId:callLock.operationId});
+}
+
+/** A Native successor may settle a proved failure while owner control forbids any new provider work. */
+export function settleNativeRetryWithoutProvider({root,reason,artifact,log,...evidence}){
+ if(!['owner_control','owner_input','budget_exhausted'].includes(reason))fail('TEAM_NATIVE_RETRY_SETTLEMENT_DENIED');
+ const binding=validateNativeRoleRetry(evidence,{settleOnly:true});
+ if(!/^[a-f0-9-]{36}$/.test(evidence.run.id))fail('TEAM_NATIVE_RETRY_SETTLEMENT_DENIED');
+ const archive=archiveNativeRetryFailure({root,parentRun:evidence.parentRun,operation:evidence.operation,callLock:evidence.callLock,artifact,log});
+ const file=path.join(archive.directory,'settle-only-'+evidence.run.id+'.json');
+ const receipt={schemaVersion:1,kind:'settle_only',runId:evidence.run.id,parentRunId:evidence.parentRun.id,operationId:evidence.operation.id,
+  taskId:evidence.task.id,rootTaskId:evidence.rootTask.id,companyId:evidence.registry.companyId,agentId:evidence.operation.agentId,
+  inputRevision:evidence.operation.inputRevision,rootInputRevision:evidence.operation.rootInputRevision,lockSha256:archive.lockSha256,reason};
+ writeArchive(file,Buffer.from(JSON.stringify(receipt)+'\n'));
+ const fd=fs.openSync(archive.directory,'r');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+ clearArchivedRetryLock({root,callLock:evidence.callLock,archive,allowAlreadyCleared:true,log});
+ log({code:'TEAM_NATIVE_RETRY_SETTLED_NO_PROVIDER',runId:evidence.run.id,parentRunId:evidence.parentRun.id,operationId:evidence.operation.id,reason});
+ return{binding,archive,receiptFile:file,errorCode:'TEAM_NATIVE_RETRY_SETTLED_NO_PROVIDER'};
+}
+
+/** Additional release proof only; unknown or active attempts never become idle through this helper. */
+export function canReleaseSettledNativeRetryPhase({runs,evidence}){
+ return Array.isArray(runs)&&runs.length>0&&evidence?.unknown===false&&Array.isArray(evidence.settledFailedRunIds)&&runs.every(run=>
+  ['succeeded','failed','cancelled','timed_out'].includes(run.status)&&(run.status==='succeeded'||run.resultJson?.executionRecovery?.providerWorkStarted===false||evidence.settledFailedRunIds.includes(run.id)));
 }
