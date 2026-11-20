@@ -2,6 +2,8 @@
 
 ## 原生Agent切换
 
+Native HTTPS 与原首计划恢复按[专题合同](plans/native-https-recovery.md)进行。不能把 `chatgpt_base_url` 指向 HTTP loopback 来适配要求 HTTPS origin 的 CLI，也不能关 TLS 验证或直接绕过 broker。证书、CLI/Node 信任和就绪端口均限本 run；先用无模型握手与恢复合同验证。第二次 Chief retry 仅接原 Native 已有行的明确 HTTPS-origin/零 response 失败，旧锁先按真实证据归档、预算不退款，未知结果不重复 POST。
+
 保持原AI连接时，配置更新不应触发无许可generic hello。固定源的进程内AI equality修复只纠正键顺序误判，不能关闭真实连接变更验证；源SHA漂移应停止装配。首次分配官方paperclip操作包也须有Native版本快照，包含其全部references/scripts，不能仅把SKILL.md登记为完整能力。
 
 安装版公司Skill列表是轻量视图，不携带完整metadata。同步只为本次审查清单命中的sourceLocator读取已认证详情，核对id/company/sourceLocator后补充reviewedSource；不把列表缺字段当成审查记录丢失，也不批量拉取无关技能的正文。
