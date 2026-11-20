@@ -136,6 +136,21 @@ Paperclip 评估项目名为 `super-agent-paperclip-eval`。专用数据根 `/Vo
 
 ## 故障与回退
 
+### 已知本人消息补收
+
+无回执时先保全原消息与现役状态，检查官方平台消息、SDK 入站、Native intent/registered/ACK/wake。ACK 失败不能推定未登记或零模型；不得要求重复发送、换 message ID 或另建根。并发部署须先按现有运行归属安全交接；保留新 Native Skills、执行策略与专业配置，不能回退旧候选来恢复监听。配置完成后恢复唯一监听、team 状态及对应启动/恢复入口。
+
+对确实未受理的已知 `new` 原目标，管理工具默认只读 preview；只使用服务已有 SDK 1.76.0 和私有绑定，不接受操作者提供原文、sender 或伪造事件：
+
+```sh
+node /opt/super-agent/role/scripts/chief-feishu-recover.mjs \
+  --message-id '<原om消息ID>' --expected-body-sha '<已保存正文UTF-8的SHA256>'
+```
+
+核对原 Owner、既有本人单聊及消息 ID/类型/正文版本后，同命令加 `--apply` 登记。apply 前须当前运行已完成安全交接，M2/team/角色 runtime 与唯一监听开启；不绕部署暂停。命令不启动新 SDK 长连接或调用 drain/wake，真实后续仍受原 Native 全局准入和根预算限制。GET 不提供 SDK eventId 或 chat_type；单聊信任来自既有已认证 Native SDK 登记，禁止借旧 eventId 补造本次事件。
+
+结果及脱敏错误写 `SUPER_AGENT_LOG_ROOT` 或 `/paperclip/logs/chief-feishu-recover.jsonl`。只打印验证摘要、原消息标识及 Native IDs，不打印私聊原文或凭据。未知受理/ACK 沿原操作核对，不能改 claim 或自动补发；摘要变化、删除、错误身份/单聊与非 new 命令零效果拒绝。当前平台正文有编辑标记时只固定已核摘要，不自行改用另一版。该工具不是全历史消息补执行服务。
+
 缺盘、低于 5 GiB、宿主证据失效、租约未知、模型调用额度耗尽、评审缺失、CI 未知及外部结果未知都拒绝继续写入，保存稳定错误码及脱敏日志。不建立替代数据库、不切备用 API。
 
 启动失败先检查精确候选及日志。回退必须重新满足排空和兼容检查；保留上一个已验证镜像及依赖。备份可列目录不等于真实恢复成功；没有演练证据就标明未演练。禁止直接 `down -v`、Docker prune、删数据库或删除不明锁。

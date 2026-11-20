@@ -266,6 +266,24 @@ export async function createChiefContextPaperclipRepository({database,binding,ca
     return port;
   }
   const repository={
+    /** Only an earlier authenticated SDK registration can bind the owner's P2P chat. */
+    async ownerFeishuChatIds(){
+      try{
+        const rows=await db.select().from(s.activityLog).where(o.and(o.eq(s.activityLog.companyId,companyId),
+          o.eq(s.activityLog.action,'team.feishu.registered'),o.eq(s.activityLog.actorType,'user'),o.eq(s.activityLog.actorId,ownerId)));
+        const chats=new Set();
+        for(const row of rows){
+          const value=row.details,p=value?.sourceParams;
+          if(value?.companyId!==companyId||value.ownerId!==ownerId||value.chiefAgentId!==binding.chiefAgentId||
+            p?.source!=='feishu'||p.eventType!=='im.message.receive_v1'||p.appId!==binding.appId||
+            p.tenantKey!==binding.tenantKey||p.ownerOpenId!==binding.ownerOpenId||
+            !/^om_[A-Za-z0-9]+$/.test(p.messageId??'')||!/^oc_[A-Za-z0-9]+$/.test(p.chatId??'')||
+            !digest.test(p.bodySha256??'')||p.bodySha256!==value.bodySha256)continue;
+          chats.add(p.chatId);
+        }
+        return Object.freeze([...chats].sort());
+      }catch(error){await log({code:'CHIEF_CONTEXT_OWNER_CHAT_READ_FAILED'});throw error;}
+    },
     async transaction(key,fn,options={}){
       if(typeof key!=='string'||!/^[a-zA-Z0-9:_-]{1,220}$/.test(key)||typeof fn!=='function')fail('CHIEF_CONTEXT_TRANSACTION_INVALID');
       if(options.db)return fn(await makePort(options.db,key,[],options));

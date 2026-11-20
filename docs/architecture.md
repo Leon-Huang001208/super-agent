@@ -104,3 +104,9 @@ Native内置重试队列拥有后继run。`role-native-retry.mjs`只在该run进
 新任务仅装载本项目共享和本角色私有的当前 owner-confirmed 记忆，不带其他任务对话历史。`remember`、`correct` 和跨项目 `share` 必须来自实际本人指令；历史/查询不确认新内容。旧知识按授权分区投影为 historical-reference，不能自动升级为本人确认；已有确认身份不会被截断查询外的旧值补回。每 run 只读材料快照固定身份和摘要；跨项目旧 manifest 只有显式 generic 才能复用，任务容器不见其他项目材料、宿主 HOME、Docker socket 或 App 数据库秘密。
 
 普通目标不增加审批。`--plan-first` 是本人一次性选择的计划后暂停，`continue` 即按当前要求继续，无需复制 SHA；原项目的真实发布权限仍适用。命令、配置 preview/apply 和验收边界见[跨项目专题](cross-project-context.md)。通用岗位能力、Managed 指令保存和项目交付各自合同继续保留，M2 不能覆盖其现役配置或历史。
+
+## 官方消息来源补收
+
+维护期间没有进入 SDK 的消息不能冒称已有 Native 恢复记录。管理工具对一个明确的原 message ID 重新调用既有固定 app 的官方 `im.message.get`，核对 Owner/open ID、tenant、旧 SDK 已认证 P2P 绑定、text 类型、原时间及预期正文 SHA，仅接纳 `new`。已编辑但摘要仍匹配的版本可验证；删除、正文漂移或无可信单聊均拒绝，且验证失败不登记、不发信。API 来源有独立标记和封闭验证对象，不拼装 SDK envelope 或虚构 eventId。
+
+补收复用原 message ID 的 Native intent/登记/ACK，不直接消费队列、唤醒或创建 run。SDK 与 API 两个已认证来源对同一目标只复用原操作；原 fingerprint 算法不重写，真实来源另记，未认领 ACK 可对账、已认领未知投递不重发。执行仍由原 Native 协调器、项目权限和根预算负责。此路径不是后台轮询或另一套任务台；参见[运维补收](operations.md#已知本人消息补收)。

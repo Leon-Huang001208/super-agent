@@ -4,6 +4,7 @@ import { chiefFeishuOperation } from './chief-feishu-native.mjs';
 import { contextMemoryId } from './chief-context-commands.mjs';
 import { taskInputRevision } from './task-input.mjs';
 import { ROLE_KEYS } from './role-labels.mjs';
+import {isOfficialRecoveredGoal} from './chief-official-message-recovery.mjs';
 
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const digest=/^[a-f0-9]{64}$/;
@@ -55,7 +56,10 @@ export function createChiefContextController({binding,catalog,repository,knowled
       if(input[key]!==trusted[key])fail('CHIEF_CONTEXT_BINDING_DENIED');
     }
     const params=input.sourceParams;
-    if(!object(params)||params.source!=='feishu'||params.eventType!=='im.message.receive_v1')fail('CHIEF_CONTEXT_BINDING_DENIED');
+    // SDK callers retain the existing authenticated transport contract. API recovery is a new goal only,
+    // and accepts the closed verifier's in-process object, never a caller's serialized envelope.
+    const recovered=params?.eventType==='feishu.message_api_recovery'&&input.command.kind==='new'&&isOfficialRecoveredGoal(input);
+    if(!object(params)||params.source!=='feishu'||params.eventType!=='im.message.receive_v1'&&!recovered)fail('CHIEF_CONTEXT_BINDING_DENIED');
     for(const key of ['appId','tenantKey','ownerOpenId','messageId','chatId','bodySha256'])if(params[key]!==input[key])fail('CHIEF_CONTEXT_BINDING_DENIED');
     let value;try{value=frozen(input);}catch{fail('CHIEF_CONTEXT_MESSAGE_INVALID');}
     if(JSON.stringify(value.command).length>24000)fail('CHIEF_CONTEXT_COMMAND_INVALID');
@@ -580,7 +584,7 @@ export function createChiefContextController({binding,catalog,repository,knowled
     return result;
   }
 
-  return Object.freeze({dispatchTrustedCommand,syncTask,checkpoint});
+  return Object.freeze({dispatchTrustedCommand,syncTask,checkpoint,validateTrustedMessage:input=>{messageOf(input);}});
 }
 
 /** Preserve M1 loading: fixed Native packages are imported only after M2 activation. */

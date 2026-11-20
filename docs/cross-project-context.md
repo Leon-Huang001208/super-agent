@@ -92,3 +92,5 @@ node /opt/super-agent/role/scripts/context-configure.mjs --request /paperclip/co
 company/owner/Agent IDs从原registry和Native核对，不由request替换。apply前核对team派发关闭、无活动run/租约/call.lock；preview不写配置。工具保全本次原registry/manifest，按稳定operation保存intent/receipt；部分结果沿原操作对账，不盲建第二个workspace。回退只恢复本次context绑定配置，已创建workspace、材料与来源历史保留，不全局删资源。部署apply及真实返回须另行记录，以上命令示例不表示已经运行。
 
 验收逐项见[真实运行手册](acceptance-runbook.md#m2-跨项目续接与记忆)，源码职责与测试入口见[开发地图](development-map.md)，实施和未完成项见[M2计划](plans/cross-project-context-m2.md)。
+
+本人已发送但维护期间未入站的 new 原目标可经[官方消息补收](operations.md#已知本人消息补收)恢复。默认 preview，显式 apply；原 ID/正文摘要和来源保留，不要求重发、不伪装 SDK 事件、不另建恢复调度器。API 补收不开放 `remember/correct/share/continue`，不会把过去未确认的内容自动写入长期记忆。

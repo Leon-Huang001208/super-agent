@@ -1,11 +1,13 @@
 import { randomUUID, createHash } from 'node:crypto';
 import fs from 'node:fs';
+import {isDeepStrictEqual} from 'node:util';
 import { createProjectCatalog } from './context-projects.mjs';
 import { createProjectKnowledgeStore } from './project-knowledge-store.mjs';
 import { createChiefContextController, chiefContextSourceKey, chiefContextFingerprint } from './chief-context-native.mjs';
 import { createChiefContextPaperclipRepository, contextOwnerSenderFromClient } from './chief-context-paperclip.mjs';
 import { createChiefFeishuNative } from './chief-feishu-native.mjs';
 import { ROLE_ROOT as ROOT } from './role-control-store.mjs';
+import {recoverOfficialChiefGoal} from './chief-official-message-recovery.mjs';
 
 const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
@@ -84,18 +86,82 @@ export async function createChiefContextApplication({database,binding,registry,c
           if(legacy)return Object.freeze({...legacy,legacy:true,reused:true});
           return await rejected(message,message.commandError);
         }
-        return await controller.dispatchTrustedCommand(message);
+        const result=await controller.dispatchTrustedCommand(message);
+        if(result.kind==='new'&&!result.legacy){
+          // Native owns ACK claiming. Re-enter its idempotent registration to fill an unclaimed
+          // post-commit ACK window; an already claimed unknown send is never retried.
+          const intent=await repository.transaction(chiefContextSourceKey(message),tx=>tx.readState('intent'),{chatId:message.chatId});
+          await native.registerTrustedMessage(await repository.goalMessage({snapshot:message,project:intent.project,intent}));
+        }
+        return result;
       }catch(error){const code=knownCode(error);await log({code,messageId:message.messageId});return rejected(message,code);}
   }
+  const origin=message=>message.sourceParams?.eventType;
+  const identities=['appId','tenantKey','ownerOpenId','nativeOwnerId','companyId','projectId','chiefAgentId','messageId','chatId','bodySha256'];
+  const sameGoal=(left,right)=>identities.every(key=>left[key]===right[key])&&left.text===right.text&&isDeepStrictEqual(left.command,right.command);
+  function sameIntent(intent,message){
+    const params=intent.sourceParams;
+    return intent.kind==='new'&&intent.sourceKey===chiefContextSourceKey(message)&&intent.originalText===message.text&&
+      intent.bodySha256===message.bodySha256&&isDeepStrictEqual(intent.command,message.command)&&
+      intent.project?.companyId===binding.companyId&&intent.project.ownerId===binding.nativeOwnerId&&params?.source==='feishu'&&
+      ['appId','tenantKey','ownerOpenId','messageId','chatId','bodySha256'].every(key=>params[key]===message[key])&&
+      ['im.message.receive_v1','feishu.message_api_recovery'].includes(params.eventType);
+  }
+  const official=message=>recoverOfficialChiefGoal({client,binding,messageId:message.messageId,expectedBodySha256:message.bodySha256,
+    getBoundChatIds:()=>repository.ownerFeishuChatIds(),log});
+  async function canonicalGoal(message){
+    const intent=await repository.transaction(chiefContextSourceKey(message),tx=>tx.readState('intent'),{chatId:message.chatId});
+    if(!intent)return message;
+    if(!sameIntent(intent,message))fail('CHIEF_CONTEXT_SOURCE_CONFLICT');
+    if(origin(message)===intent.sourceParams.eventType)return message;
+    let canonical;
+    if(intent.sourceParams.eventType==='feishu.message_api_recovery'){
+      // A late SDK event must not manufacture an API-branded object from a stored JSON record.
+      canonical=await official(message);
+      if(!sameGoal(canonical,message)||chiefContextFingerprint(canonical)!==intent.fingerprint)fail('CHIEF_CONTEXT_SOURCE_CONFLICT');
+    }else{
+      canonical={...message,sourceParams:structuredClone(intent.sourceParams)};
+      if(intent.sourceParams.eventId!==undefined)canonical.eventId=intent.sourceParams.eventId;else delete canonical.eventId;
+      if(chiefContextFingerprint(canonical)!==intent.fingerprint)fail('CHIEF_CONTEXT_SOURCE_CONFLICT');
+    }
+    await log({code:'CHIEF_CONTEXT_GOAL_ORIGIN_REUSED',messageId:message.messageId,incomingOrigin:origin(message),originalOrigin:intent.sourceParams.eventType});
+    return canonical;
+  }
   const inFlight=new Map();
+  async function receiveTrusted(message){
+    currentScope();
+    const newGoal=message.command?.kind==='new'&&!message.commandError;
+    if(newGoal||origin(message)==='feishu.message_api_recovery')controller.validateTrustedMessage(message);
+    const source=chiefContextSourceKey(message),key=source+':'+chiefContextFingerprint(message);
+    const exact=inFlight.get(key);if(exact)return exact.promise;
+    if(newGoal){
+      const active=[...inFlight.values()].find(entry=>entry.source===source&&entry.message.command?.kind==='new'&&origin(entry.message)!==origin(message)&&sameGoal(entry.message,message));
+      if(active){await log({code:'CHIEF_CONTEXT_GOAL_ORIGIN_REUSED',messageId:message.messageId,incomingOrigin:origin(message),originalOrigin:origin(active.message),stage:'in_flight'});return active.promise;}
+    }
+    const entry={source,message,promise:null};
+    // Publish the known in-flight operation before its first await, including canonical Native reads.
+    entry.promise=Promise.resolve().then(async()=>{
+      const canonical=newGoal?await canonicalGoal(message):message;
+      if(newGoal)controller.validateTrustedMessage(canonical);
+      const canonicalKey=source+':'+chiefContextFingerprint(canonical);
+      if(canonicalKey!==key){inFlight.delete(key);entry.message=canonical;inFlight.set(canonicalKey,entry);}
+      return handleTrusted(canonical);
+    });
+    inFlight.set(key,entry);
+    try{return await entry.promise;}finally{for(const [activeKey,value]of inFlight)if(value===entry)inFlight.delete(activeKey);}
+  }
   return Object.freeze({
     catalog,repository,controller,knowledgeStore,
-    async receiveTrusted(message){
+    receiveTrusted,
+    async recoverOfficialGoal(request,{apply=false}={}){
       currentScope();
-      const key=chiefContextSourceKey(message)+':'+chiefContextFingerprint(message);
-      if(inFlight.has(key))return inFlight.get(key);
-      const pending=handleTrusted(message);inFlight.set(key,pending);
-      try{return await pending;}finally{inFlight.delete(key);}
+      if(!request||typeof request!=='object'||Array.isArray(request)||Object.keys(request).some(key=>!['messageId','expectedBodySha256'].includes(key))||typeof apply!=='boolean')fail('CHIEF_MESSAGE_RECOVERY_REQUEST_INVALID');
+      const message=await recoverOfficialChiefGoal({client,binding,...request,getBoundChatIds:()=>repository.ownerFeishuChatIds(),log});
+      currentScope();
+      const summary={mode:apply?'apply':'preview',verified:true,origin:'feishu.message_api_recovery',messageId:message.messageId,bodySha256:message.bodySha256,
+        createdAt:message.createdAt,commandKind:'new',reviewBeforeDispatch:message.command.reviewBeforeDispatch===true};
+      if(!apply)return Object.freeze(summary);
+      return Object.freeze({...summary,result:await receiveTrusted(message)});
     },
     async drain(){currentScope();return native.drain();},
   });

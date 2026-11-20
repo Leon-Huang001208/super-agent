@@ -122,6 +122,8 @@ Native全局scheduler保持原受控关闭状态。恢复既有scheduled retry�
 
 先核对原唯一连接已释放、固定 app/tenant/open ID、Native owner/project/Chief绑定和宿主执行传输健康，再开启专用服务标志。仅在实际 connected 后请本人发送一条新的 `/chief` 目标；不代本人制造入站。保存原消息ID/摘要、Native root、首个Chief run、createdByAgentId的子任务、交接产物及最终通知。重复投递必须返回同一个task；unknown wake/send只能核对原结果，不能重置claim或换ID重试。关闭入口只停止新接收，原任务/调用/活动账本保留。
 
+维护期间未被 SDK 受理的本人原目标，另验官方消息补收：保全实际 API message ID、create/update 时间、body SHA、sender/tenant 与旧 SDK 单聊绑定；preview 前后 Native 任务、ACK 与运行数不增。apply 仅首次登记原 ID 的 new goal，重复 API、SDK/API 交错与并发均复用同一操作；未 claim 的登记 ACK 可以对账，claim 后未知不重发。必须标记为官方 API 验真补收，不写成平台 SDK 重投；无 eventId 就不虚构。原消息即使有编辑标记也须预期摘要匹配，删除或版本漂移零效果拒绝。新任务/模型是否真正执行、最终飞书回执及多轮/记忆业务分别取证，源码夹具不替代本人实机来源。
+
 ## Native内置重试验收
 
 父角色run失败后，先只读核对Native已存在的`scheduled_retry`、父run、attempt序号和原子任务。不得另发manual wake或新建root。本人认证的`POST /issues/:id/scheduled-retry/retry-now`只推进原有run；Agent pause会取消scheduled retry，不能把pause/resume当作原attempt的无损暂停。

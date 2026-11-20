@@ -11,6 +11,7 @@
 | 子系统 | 本仓库入口 | 维护与验证 |
 |---|---|---|
 | M2 项目与本人命令 | `bridge/context-projects.mjs`、`bridge/chief-context-commands.mjs`、`bridge/chief-context-native.mjs` | catalog 绑定 Native project/可选 workspace ID；原 activity 持久化项目/任务选择、补充、暂停、继续与 linked followup。`context-projects`、`chief-context-commands`、`chief-context-native` 同名测试核对契约。 |
+| 本人原消息受控补收 | `bridge/chief-official-message-recovery.mjs`、`scripts/chief-feishu-recover.mjs`、M2 service/repository | 官方 GET 验证原 Owner、既有 SDK 单聊、正文 SHA 与原 ID，只恢复 new goal；默认 preview，不造 SDK 事件或直接 wake。`chief-official-message-recovery`、`chief-feishu-recover-cli` 及既有 context 测试覆盖身份拒绝、跨来源并发、ACK 未知与去重。 |
 | M2 记忆与协调 | `bridge/project-knowledge-store.mjs`、`bridge/team-context.mjs`、`bridge/team-native-runtime.mjs` | owner-confirmed 当前版本按项目共享/角色私有先隔离后检索；新 session 不带旧任务 history；六次同根额度、原操作对账和分代产物保留。对应 `project-knowledge-store`、`team-context` 测试。 |
 | M2 材料与配置 | `bridge/role-material-snapshot.mjs`、`bridge/native-role-runtime.mjs`、`scripts/role-container-transport.mjs`、`scripts/context-configure.mjs` | 专用只读 snapshot，manifest/permit/项目/workspace 同域；配置默认 preview、显式 apply，保留旧 RWB primary/回调。`native-role-runtime-context`、`role-container-materials`、`context-configure` 及既有 gate/adapter/preparation 测试；合同见[跨项目专题](cross-project-context.md)。 |
 | 通用岗位与能力 | `team-roles.mjs`、`role-capabilities.mjs`、`role-skill-bundles.mjs`、`assets/role-profiles/`、`assets/role-skills/` | 11职业说明、默认/补充能力、可复核完整Skill包；入口字节摘要与files聚合摘要分别命名并对实物校验。项目规则按实际提供的文件读取，能力按技术栈/服务选择，安装或缓存存在不能当调用通过。 |
