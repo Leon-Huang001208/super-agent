@@ -1,0 +1,1 @@
+{"methodId":"cross-domain-transfer","version":"1.0.0","permissions":"none","triggerTerms":["跨领域迁移","类比另一个行业","借鉴其他领域","cross-domain"],"antiTriggerTerms":["表面类比","领域完全相同"],"positiveExamples":["做跨领域迁移，从航空安全借鉴故障治理","Use cross-domain transfer and state where the analogy breaks"],"negativeExamples":["只做表面类比，不验证机制","两个方案属于同一领域，直接比较即可"]}

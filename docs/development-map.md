@@ -2,6 +2,11 @@
 
 | 子系统 | 本仓库入口 | 维护与验证 |
 |---|---|---|
+| 通用岗位与能力 | `team-roles.mjs`、`role-capabilities.mjs`、`role-skill-bundles.mjs`、`assets/role-profiles/`、`assets/role-skills/` | 11职业说明、默认/补充能力、可复核完整Skill包。能力按技术栈/服务选择，安装或缓存存在不能当调用通过。 |
+| 跨项目接单 | `role-project-context.mjs`、Native角色及Chief现有入口 | 使用Native workspace.metadata扩展，任务项目决定知识/工作区/交付；官方schema/service合同fixture覆盖真实原始DB和API投影。 |
+| 宿主执行与MCP | `role-host-capabilities.mjs`、`role-host-mcp.mjs`、`role-host-call-queue.mjs`、`docker/role-host-mcp-server.mjs` | 现有传输内执行Git/check/已授权动作及选定stdio MCP；取消清理自有进程组，失败保留有限脱敏诊断。 |
+| 岗位材料发布 | `scripts/publish-role-profiles.mjs` | 暂停新派发后走Native认证HTTP CAS保存AGENTS/CAPABILITIES，原历史及登记同步链保留；不重建Agent。 |
+| 项目交付适配 | `scripts/role-project-delivery.mjs` | 项目已有入口优先；显式选择managed-project时复用固定manager/Harness。prepare后QA检查精确integration候选，发布复用同一PR且不自动合并。`tests/management/role-project-delivery-git.mjs`用本地bare remote验证真实Git行为。 |
 | 可编辑角色指令 | `bridge/role-instruction-store.mjs`、`docker/role-instruction-hook.mjs`、`scripts/migrate-role-instructions.mjs` | 原生Managed目录、保存与登记同步、旧内容保留、失败恢复；`role-instruction-*.test.mjs`覆盖迁移、保存和实际安装源码装配。运行前仍需本人窗口内的实际迁移与认证网页读回。 |
 | 原生角色调用门 | `docker/role-codex-gate.mjs`、`docker/bin/codex` | 精确Native运行许可、单次claim、原订阅与Docker隔离全工具执行。旧hello/Chief入口继续独立；工具逐项结果见本轮设计。 |
 | 角色阶段收尾 | `bridge/role-native-settlement.mjs` | Native事务绑定原输入与run，保存最终回复后交回本人待接手，防止缺失disposition的自动修复；真实合同待验收。 |
@@ -65,7 +70,7 @@ docker run --rm --network none --read-only --tmpfs /tmp:rw,size=64m \
 
 ## 专职网络角色与Apps接线
 
-`bridge/network-role.mjs`定义网络职责、主题和只读动作白名单；`tests/network-role.test.mjs`覆盖跨域、写入请求及知识隔离。role-materials/role-preparation允许network-engineer，Native运行前校验可信operation的networkScope。原验收脚本按对应profile.projectId创建上下文，避免新网络项目误绑定Research项目。
+`bridge/network-role.mjs`定义网络职责、主题和动作范围；修改动作仍须Native许可绑定已授权登记ID，任意命令名不构成授权。`tests/network-role.test.mjs`覆盖范围及知识隔离；host测试覆盖实际执行权限。Native运行前校验可信operation的networkScope。原验收脚本按对应profile.projectId创建上下文，新任务则按当前Native项目解析。
 
 Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避免把真实token交给任务。MCP初始化/目录与本轮两个安全只读测试动作分别受限并留脱敏回执，实际能力以本轮真实结果为准；参见[Research/PM验收](plans/research-pm-m1.md)及[网络职责](network-engineer.md)。
 
@@ -75,7 +80,7 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 
 `bridge/role-labels.mjs`仅统一显示名；Native名称更新复用原ID。岗位拆分与新增执行器必须另外确认，不能从命名映射推断已实施。
 
-`bridge/team-roles.mjs`是11角色职责与层级清单，Native preparation、材料和最终CLI gate共用稳定角色键，避免清单已增加而最终执行门仍拒绝。`tests/team-roles.test.mjs`检查唯一ID、完整英文显示名、架构下属前后端、质量独立汇报及无额外高管岗位。System Resource Engineer单独只读scope，数据库业务/运行/物理资源职责分开。实际Native创建、启用、分派及通知须独立留证。
+`bridge/team-roles.mjs`是11角色职责与层级清单，Native preparation、材料和最终CLI gate共用稳定角色键，避免清单已增加而最终执行门仍拒绝。`tests/team-roles.test.mjs`检查唯一ID、完整英文显示名、架构下属前后端、质量独立汇报及无额外高管岗位。System Resource Engineer使用独立resourceScope，数据库业务/运行/物理资源职责分开。实际Native创建、启用、分派及通知须独立留证。
 
 ## Chief Native控制器
 

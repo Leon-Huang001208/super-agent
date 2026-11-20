@@ -1,0 +1,1 @@
+{"methodId":"expert-perspectives","version":"1.0.0","permissions":"none","triggerTerms":["专家视角","多角色评审","不同专业","expert perspectives"],"antiTriggerTerms":["权威代替证据","单一答案"],"positiveExamples":["从法务、工程和产品专家视角评审方案","Apply expert perspectives without inventing consensus"],"negativeExamples":["用权威代替证据直接下结论","返回一个字段名"]}

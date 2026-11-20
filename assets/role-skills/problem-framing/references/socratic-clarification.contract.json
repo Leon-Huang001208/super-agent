@@ -1,0 +1,1 @@
+{"methodId":"socratic-clarification","version":"1.0.0","permissions":"none","triggerTerms":["澄清","需求不清","目标是什么","ambiguous"],"antiTriggerTerms":["无需澄清","直接执行"],"positiveExamples":["需求不清，请先澄清目标和约束","This is ambiguous; clarify the success criteria"],"negativeExamples":["需求明确，按验收标准实现","请直接执行已经批准的计划"]}

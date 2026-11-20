@@ -10,9 +10,14 @@ import { validateNetworkScope } from './network-role.mjs';
 import { validateResourceScope } from './system-resource-role.mjs';
 import {assertRoleInstructionsReady} from './role-instruction-store.mjs';
 import {resolveRoleInstructionCopy} from './role-instruction-paths.mjs';
+import {readRoleProjectContext} from './role-project-context.mjs';
+import {resolveRoleCapabilities} from './role-capabilities.mjs';
+import {readControl} from './role-control-store.mjs';
+import {validateTeamCodeCandidate} from './team-plan.mjs';
 
 const ROOT='/paperclip/control/research-pm',PKG='/opt/paperclip/node_modules';
 const sha=x=>createHash('sha256').update(x).digest('hex');
+const hashReview=value=>/^[a-f0-9]{64}$/.test(value??'');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 function json(file) {
   const stat=fs.lstatSync(file);
@@ -82,7 +87,8 @@ export async function installNativeRoles() {
         }
         const active=await db.select({id:s.heartbeatRuns.id}).from(s.heartbeatRuns)
           .where(o.inArray(s.heartbeatRuns.status,['running','queued','scheduled_retry']));
-        if(!operation||active.some(x=>x.id!==ctx.runId)||!issue||!run||!agent||!r.tasks.includes(issue.id)||issue.companyId!==r.companyId||issue.projectId!==role.profile.projectId||
+        if(!operation||active.some(x=>x.id!==ctx.runId)||!issue||!run||!agent||!r.tasks.includes(issue.id)||issue.companyId!==r.companyId||
+           issue.projectId!==(operation.projectId??role.profile.projectId)||
            issue.responsibleUserId!==r.ownerId||issue.assigneeAgentId!==agent.id||run.agentId!==agent.id||run.companyId!==r.companyId||
            run.responsibleUserId!==r.ownerId||run.issueId!==issue.id||run.status!=='running'||agent.adapterType!=='codex_local')fail('NATIVE_ROLE_DATABASE_BINDING_DENIED');
         let material={materialRoot:ROOT+'/materials',manifest:role.manifest};
@@ -94,8 +100,27 @@ export async function installNativeRoles() {
           material=resolveRoleInstructionCopy({role,identity:{companyId:r.companyId,agentId:ctx.agent.id,runId:ctx.runId,ownerId:r.ownerId},
             workingCopy,baseline,history:r.materialHistory,executionPath:ctx.config.instructionsFilePath});
         }
+        const projectContext=await readRoleProjectContext({db,schema:s,orm:o,task:issue,companyId:r.companyId,ownerId:r.ownerId,
+          legacyProfile:role.profile,rootTaskId:operation.rootTaskId??issue.id});
+        if(operation.codeCandidate){
+          const[sourceRun]=await db.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,operation.codeCandidate.runId));
+          if(role.profile.role!=='qa')fail('NATIVE_ROLE_CODE_CANDIDATE_DENIED');
+          validateTeamCodeCandidate(operation.codeCandidate,{rootTaskId:operation.rootTaskId??issue.id,projectId:issue.projectId,
+            workspaceHostPath:projectContext.workspace.hostPath,companyId:r.companyId,artifacts:operation.reviewedArtifacts??[],run:sourceRun,qaAgentId:agent.id});
+        }
+        if(operation.codeReview){
+          const review=operation.codeReview,[qaRun]=await db.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,review.runId));
+          if(review.verdict!=='PASS'||review.rootTaskId!==(operation.rootTaskId??issue.id)||review.projectId!==issue.projectId||
+            !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(review.candidateSha??'')||!hashReview(review.artifactSha256)||
+            review.agentId!==r.team?.ids?.qa||!qaRun||qaRun.status!=='succeeded'||qaRun.companyId!==r.companyId||qaRun.agentId!==review.agentId||
+            r.taskRoots?.[qaRun.issueId]!==review.rootTaskId)fail('NATIVE_ROLE_CODE_REVIEW_DENIED');
+        }
+        const capabilityRequests=operation.additionalCapabilities??[];
+        const catalogFile=ROOT+'/apps-tool-catalog.json',catalog=fs.existsSync(catalogFile)?readControl(catalogFile):null;
+        const effectiveCapabilities=resolveRoleCapabilities({role:role.profile.role,additionalCapabilities:capabilityRequests,projectContext,toolCatalog:catalog?.result?.tools??[]});
         return {binding:{companyId:r.companyId,projectId:issue.projectId,taskId:issue.id,agentId:agent.id,runId:run.id,
-          ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:role.profile,...material,
+          ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:{...role.profile,projectId:issue.projectId,projectKey:projectContext.key},...material,
+          projectContext,capabilityRequests,effectiveCapabilities,authorizedHostActions:operation.authorizedHostActions??[],networkScope:operation.networkScope,resourceScope:operation.resourceScope,codeCandidate:operation.codeCandidate,codeReview:operation.codeReview,
           rootTaskId:operation.rootTaskId??issue.id,phase:operation.phase,additionalInput:operation.additionalInput,reviewedArtifacts:operation.reviewedArtifacts,teamRoster:role.profile.role==='chief'?r.team?.ids:undefined};
       };
       const readContext=async()=>{
@@ -117,9 +142,11 @@ export async function installNativeRoles() {
       const wrapped=createNativeRoleAdapter({readRegistration,prepareRole,log,basePromptTemplate:utils.DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
         nativeExecute:async checked=>{
           const r=await readRegistration(),file=checked.config.instructionsFilePath;
-          const executionCwd=checked.context.paperclipWorkspace?.cwd??checked.config.cwd;
           const managedCwd='/paperclip/instances/default/projects/'+r.binding.companyId+'/'+r.binding.projectId+'/_default';
-          if(executionCwd!==managedCwd&&executionCwd!==checked.config.cwd)fail('NATIVE_ROLE_WORKSPACE_DENIED');
+          const executionCwd=managedCwd;
+          fs.mkdirSync(executionCwd,{recursive:true});
+          const execution={...checked,config:{...checked.config,cwd:executionCwd},context:{...checked.context,
+            paperclipWorkspace:{...checked.context.paperclipWorkspace,cwd:executionCwd}}};
           const grantId=grantFor(checked.config.env?.CODEX_HOME,r.binding.companyId);
           const operationFile=ROOT+'/operations/'+ctx.context.roleOperationId+'.json';
           if(fs.existsSync(operationFile)){
@@ -131,12 +158,14 @@ export async function installNativeRoles() {
           const approvedOperation=registered(ctx.agent.id).registry.operations.find(x=>x.id===ctx.context.roleOperationId);
           write(ROOT+'/permits/'+ctx.runId+'.json',{schemaVersion:1,...r.binding,credentialGrantId:grantId,role:r.profile.role,
             model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:Date.now()+300000,cwd:executionCwd,
-            instructionsFilePath:file,materialSha256:required.sha256,
+            instructionsFilePath:file,materialSha256:required.sha256,materialRoot:r.materialRoot,materialFiles:r.manifest.files,
+            rootTaskId:r.rootTaskId,projectContext:r.projectContext,additionalCapabilities:r.capabilityRequests,effectiveCapabilities:r.effectiveCapabilities,
+            authorizedHostActions:r.authorizedHostActions,networkScope:r.networkScope,resourceScope:r.resourceScope,reviewedArtifacts:r.reviewedArtifacts,codeCandidate:r.codeCandidate,codeReview:r.codeReview,
             ...(r.sourceInstructionsFilePath?{materialSourcePath:r.sourceInstructionsFilePath}:{}),
             ...(approvedOperation?.phase==='qa-supplement'?{evidencePacket:{name:'qa-evidence-v2',manifestSha256:approvedOperation.evidenceManifestSha256}}:{})});
           const operation=registered(ctx.agent.id).registry.operations.find(x=>x.kind==='run'&&x.role===r.profile.role&&x.id===ctx.context.roleOperationId&&x.taskId===r.binding.taskId&&x.agentId===r.binding.agentId);
           return withRoleCall({registry:registered(ctx.agent.id).registry,operation,log,
-            perform:async()=>{nativeEntered=true;const result=await original.execute({...checked,onLog:async(stream,chunk)=>{
+            perform:async()=>{nativeEntered=true;const result=await original.execute({...execution,onLog:async(stream,chunk)=>{
                 if(stream==='stderr'&&gateStderr.length<8192)gateStderr+=String(chunk).slice(0,8192-gateStderr.length);
                 return checked.onLog(stream,chunk);
               }});
@@ -158,7 +187,7 @@ export async function installNativeRoles() {
       try{return await wrapped(ctx);}
       catch(error){
         if(nativeEntered)throw error;
-        const code=/^(?:NATIVE_ROLE|ROLE_INSTRUCTION|ROLE_MATERIAL|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
+        const code=/^(?:NATIVE_ROLE|ROLE_PROJECT|ROLE_CAPABILITY|ROLE_INSTRUCTION|ROLE_MATERIAL|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
         return {exitCode:1,signal:null,timedOut:false,errorCode:code,errorMessage:code,
           resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
       }

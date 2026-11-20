@@ -1,0 +1,1 @@
+{"methodId":"dual-layer-explanation","version":"1.0.0","permissions":"none","triggerTerms":["两层解释","直觉和技术","通俗再深入","dual-layer"],"antiTriggerTerms":["只要代码","无需解释"],"positiveExamples":["请用两层解释，先直觉后技术细节","Give a dual-layer explanation for this architecture"],"negativeExamples":["只要代码，无需解释","把这个标题翻译成英文"]}
