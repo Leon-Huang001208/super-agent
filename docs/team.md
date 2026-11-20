@@ -25,9 +25,11 @@
 | Platform Operations Engineer | Chief Coordinator | Docker、服务/CI/CD/监控、持久卷和备份还原 |
 | Network Engineer | Chief Coordinator | 网络、设备、网关、DNS/TLS、Tailscale/UpNet/ShadowRocket |
 | System Resource Engineer | Chief Coordinator | 内盘/两个外盘、卷身份/容量、RAM/Swap、CPU/I/O及资源预算 |
-| Document Specialist | Chief Coordinator | Excel/Word/PPT/Markdown/PDF制作与转换、公式及结构验证、文件和交接清单 |
+| Document Specialist | Chief Coordinator | 常见文本/数据交换/标记文档、LaTeX/BibTeX及Office/PDF制作与转换、结构/编译/渲染验证、文件和交接清单 |
 
-Document Specialist接收任务指定的源文件、内容和交付要求，默认保留原件并输出新版本；Research/PM提供资料与业务口径，Designer提供视觉要求，QA独立验证正式文件交付。控制器仍用md/json清单绑定实际Office/PDF文件，不放宽交接扩展名、四子任务或六次根预算。小型纯文本编辑可由现有岗位直接完成。
+Document Specialist接收任务指定的源文件、内容和交付要求，覆盖TXT/LOG、CSV/TSV、JSON/JSONL、YAML/YML、XML、TOML/INI、Markdown/reST/HTML文档、LaTeX/BibTeX及既有Excel/Word/PPT/PDF。默认保留原件并输出新版本；格式允许时保留编码、BOM、换行、类型、键顺序、注释和元数据，转换差异明确交接，不静默丢失数据。这是代表格式，实际工具和文件可解析性仍须核对。语法/schema有效、内容正确、LaTeX实际编译、公式重算和渲染分别提供证据；依赖缺失写明NOT_RUN并交付可编辑源文件。
+
+Research/PM负责资料来源、结论、指标与业务口径，实质内容变动回交内容负责人；Designer提供视觉要求，QA独立验证正式文件。扩展名不改变职责：应用代码、JSON/YAML部署或运行配置、数据库迁移等语义与行为仍由Backend、DevOps、Architect及相关开发岗按对象归属负责，Document Specialist协助结构、格式与转换。控制器仍用md/json清单绑定实际文件，不放宽交接扩展名、四子任务或六次根预算。小型纯文本编辑可由现有岗位直接完成，不强制增加Agent或模型调用。
 
 本岗默认公司技能为paperclip、handoff、verification-before-completion、xlsx、docx、pptx、pdf、doc-coauthoring、theme-factory。PDF选择既定Anthropic来源；Skills与工具就绪分开核验。既有Codex bundled文档运行时仅注入本岗的原生子进程；不安装新依赖、不修改全局Python或Office配置。扫描OCR与Excel Relay工作簿接入尚未验通时明确NOT_RUN。详见[文档岗实施与接入](plans/document-specialist.md)。
 
