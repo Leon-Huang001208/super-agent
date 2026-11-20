@@ -2,6 +2,8 @@
 
 ## 原生Agent切换
 
+安装版公司Skill列表是轻量视图，不携带完整metadata。同步只为本次审查清单命中的sourceLocator读取已认证详情，核对id/company/sourceLocator后补充reviewedSource；不把列表缺字段当成审查记录丢失，也不批量拉取无关技能的正文。
+
 实际安装版的本地目录导入不会自动建立currentVersion。同步工具对新导入和已导入但缺版本的包，先核验完整目录，再通过原生`POST /companies/:companyId/skills/:skillId/versions`创建唯一缺失快照，回读逐文件比对后才分配；已有版本不覆盖。`--asset-root`和`--package-root`必须指向公司已登记workspace或受管Skill目录中的任务专用暂存，不能放宽后端目录边界。并存的GitHub自动导入条目保留，优先选本轮已审查的固定版本。
 
 当前飞书监听要求team已启用才能启动。暂停派发维护时先在本次Compose中暂时关闭飞书监听，应用保持可访问；完成配置和验收后恢复原team状态及监听开关，不能把team暂停和原监听启用同时作为应用启动配置。

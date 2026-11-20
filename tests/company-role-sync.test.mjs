@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
+import * as skillSync from '../scripts/sync-company-role-skills.mjs';
 
 function fixture(){
  const registry={companyId:'company',ownerId:'owner',team:{enabled:false},agents:Object.keys(TEAM_ROLES).map(role=>({profile:{agentId:role,role,oldPolicyField:'preserved'},manifest:{sentinel:'preserved'}}))};
@@ -95,4 +96,34 @@ test('fresh local imports create and read back a current version without replaci
  const bad=fixture();bad.versions.get('bundle-leader').fileInventory[0].content=Buffer.from('changed').toString('base64');
  await assert.rejects(syncCompanyRoleSkills({...bad,apply:true}),/IMPORTED_VERSION_CHANGED/);
  assert.ok(!bad.calls.some(call=>call.startsWith('version:')||call==='agent'));
+});
+
+test('lightweight Native list is enriched only for inventory-reviewed locators and preserves reviewed source priority',async()=>{
+ const source='/native/staging/packages/copywriting',calls=[];
+ const list=[{id:'reviewed',companyId:'company',key:'reviewed-copy',name:'copywriting',slug:'copywriting',sourceLocator:source},
+  {id:'github',companyId:'company',key:'github-copy',name:'copywriting',slug:'copywriting',sourceLocator:'https://github.com/coreyhaines31/marketingskills'},
+  {id:'other',companyId:'company',key:'other',name:'other',slug:'other',sourceLocator:'/other'}];
+ assert.ok(list.every(skill=>!Object.hasOwn(skill,'metadata')));
+ const request=async route=>{calls.push(route);if(route==='/companies/company/skills')return list;
+  assert.equal(route,'/companies/company/skills/reviewed');return{...list[0],markdown:'large body not needed',metadata:{reviewedSource:{sourceRepo:'coreyhaines31/marketingskills',sourceRef:'a'.repeat(40),sourcePath:'skills/copywriting',sourceUrl:'https://github.com/coreyhaines31/marketingskills/tree/'+('a'.repeat(40))+'/skills/copywriting',review:{verdict:'PASS_STATIC_WITH_NOTES'}}}};};
+ const library=await skillSync.readCompanyRoleLibrary({companyId:'company',request,importSources:[{source}]});
+ assert.deepEqual(calls,['/companies/company/skills','/companies/company/skills/reviewed']);
+ assert.equal(library[0].markdown,undefined);assert.equal(library[1],list[1]);assert.equal(library[2],list[2]);
+ assert.deepEqual(resolveRoleSkillAssignments({role:'pm',onlyNames:['copywriting'],companySkills:library}).desiredSkills,['reviewed-copy']);
+});
+
+test('reviewed Native detail must keep list identity, company and source locator',async()=>{
+ const skill={id:'reviewed',companyId:'company',key:'reviewed-copy',name:'copywriting',slug:'copywriting',sourceLocator:'/native/staging/packages/copywriting'};
+ for(const change of [{id:'other'},{companyId:'foreign'},{sourceLocator:'/different'}]){
+  const request=async route=>route==='/companies/company/skills'?[skill]:{...skill,...change,metadata:{}};
+  await assert.rejects(skillSync.readCompanyRoleLibrary({companyId:'company',request,importSources:[{source:skill.sourceLocator}]}),/COMPANY_ROLE_SYNC_LIBRARY_DETAIL_CHANGED/);
+ }
+});
+
+test('read-only library enrichment without reviewed imports keeps lightweight entries and repeat requests never mutate',async()=>{
+ const list=[{id:'plain',companyId:'company',key:'plain',name:'plain',sourceLocator:'/plain'}],calls=[];
+ const request=async(route,options)=>{assert.equal(options,undefined);calls.push(route);return{items:list};};
+ const first=await skillSync.readCompanyRoleLibrary({companyId:'company',request,importSources:[]});
+ const repeated=await skillSync.readCompanyRoleLibrary({companyId:'company',request,importSources:[]});
+ assert.deepEqual(first,list);assert.deepEqual(repeated,list);assert.deepEqual(calls,['/companies/company/skills','/companies/company/skills']);
 });

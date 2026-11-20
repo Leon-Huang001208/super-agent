@@ -14,6 +14,20 @@ const fail=code=>{throw Object.assign(Error(code),{code});};
 const sha=value=>createHash('sha256').update(value).digest('hex');
 export const NATIVE_ROLE_EXECUTION_POLICY=MACOS_NATIVE_EXECUTION_POLICY;
 
+/** Native list omits metadata; read details only for this inventory's reviewed sources. */
+export async function readCompanyRoleLibrary({companyId,request,importSources=[]}){
+ const route='/companies/'+encodeURIComponent(companyId)+'/skills';
+ const result=await request(route),library=Array.isArray(result)?result:result?.skills??result?.items;
+ if(!Array.isArray(library))fail('COMPANY_ROLE_SYNC_LIBRARY_INVALID');
+ const reviewedLocators=new Set(importSources.map(source=>source.source));
+ return Promise.all(library.map(async skill=>{
+  if(!reviewedLocators.has(skill.sourceLocator))return skill;
+  const detail=await request(route+'/'+encodeURIComponent(skill.id));
+  if(!detail||detail.id!==skill.id||detail.companyId!==companyId||skill.companyId!==companyId||detail.sourceLocator!==skill.sourceLocator)fail('COMPANY_ROLE_SYNC_LIBRARY_DETAIL_CHANGED');
+  return{...skill,metadata:detail.metadata??null};
+ }));
+}
+
 /** Import recursively reads a directory, so verify the exact regular-file set, including hidden files. */
 export function validateReviewedSourceDirectory({source,files}){
  if(!path.isAbsolute(source??'')||!Array.isArray(files)||!files.length)fail('COMPANY_ROLE_SYNC_INVENTORY_INVALID');
@@ -153,7 +167,7 @@ async function main(){
  const log=event=>fs.appendFileSync(controlRoot+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});
  try{
   const result=await syncCompanyRoleSkills({registry,apply,importSources:sources,assetRoot:value('--asset-root')??DEFAULT_ROLE_SKILL_ASSET_ROOT,log,recordReview:api.recordSkillReview,
-   readLibrary:async()=>{const result=await api.request('/companies/'+registry.companyId+'/skills');return Array.isArray(result)?result:result.skills??result.items;},
+   readLibrary:()=>readCompanyRoleLibrary({companyId:registry.companyId,request:api.request,importSources:sources}),
    readAgent:id=>api.request('/agents/'+id),
    readImportedVersion:async id=>(await api.request('/companies/'+registry.companyId+'/skills/'+id))?.currentVersion,
    createImportedVersion:(id,body)=>request('/companies/'+registry.companyId+'/skills/'+id+'/versions','POST',body),
