@@ -73,8 +73,14 @@ export function validateRoleCall({ permit, args, env, cwd, now }) {
       !new RegExp('^/tmp/paperclip-ai-'+permit.companyId+'-'+permit.credentialGrantId+'-[A-Za-z0-9]+/provider$').test(env.CODEX_HOME ?? '')) fail('ROLE_GATE_SCOPE_DENIED');
   args = normalizeNativeRoleArgs(args);
   const base = ['exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"',...roleManagedArgs(permit),'-'];
-  const allowed = [base, [...base.slice(0,2),'--skip-git-repo-check',...base.slice(2)]]
-    .map(value => ['--search', ...value]);
+  const forms = [base, [...base.slice(0,2),'--skip-git-repo-check',...base.slice(2)]];
+  if(roleExecutionPolicy(permit).executor==='macos_native'){
+    // Native emits its registered bypass before the model; extraArgs use the
+    // older trailing position. Match these fixed forms, never reorder configs.
+    const native=['exec','--json',...roleManagedArgs(permit),'--model',permit.model,'-c','model_reasoning_effort="low"','-'];
+    forms.push(native,[...native.slice(0,2),'--skip-git-repo-check',...native.slice(2)]);
+  }
+  const allowed = forms.map(value => ['--search', ...value]);
   if (!Array.isArray(args) || !allowed.some(value => JSON.stringify(value) === JSON.stringify(args))) fail('ROLE_GATE_ARGUMENTS_DENIED');
   return permit;
 }
