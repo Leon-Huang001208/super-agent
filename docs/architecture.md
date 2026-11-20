@@ -1,5 +1,15 @@
 # Paperclip 集成架构
 
+## 通用角色、项目与能力
+
+11角色的职责与专业方法属于岗位，仓库、工作树、规则、checks和交付方式属于当前Native项目。合法项目扩展存放于`project_workspaces.metadata.superAgentProject`，通过原Native API登记；固定安装版的`runtimeConfig`是严格运行环境schema，不承载这份扩展。本人明确项目优先，其次当前/父任务项目，歧义才询问。旧M1记录继续保留。
+
+`role-capabilities.mjs`同时生成岗位说明的能力索引和执行组合。原tools类别保留兼容；实际MCP由岗位默认与任务补充解析，并在broker处按真实目录过滤和校验。GitHub访问绑定本次项目仓库，宿主动作绑定Native许可中的动作ID。AGENTS与Skills提供方法，不能通过文字扩大允许调用范围。
+
+模型继续在独立Docker运行。Native默认目录存放计划/报告/QA等产物；任务Git工作树另挂到`/workspace/project`，QA只读。宿主Git、checks、受管发布与选定本地MCP通过本run stdio MCP及既有宿主传输执行，Task容器只持有opaque token。宿主和provider的真实认证保持原归属。
+
+Skill方法包单独只读挂载，保留包内相对引用与摘要；CODEX_HOME/skills只建立选定入口。运行中实际tools/list、调用结果和缺依赖原因是可用性证据。参见[实施与接口](plans/role-capabilities.md)及[岗位说明](team.md)。
+
 角色指令使用Paperclip原生Managed bundle，每个角色只登记自己的`<role>/AGENTS.md`。原生文件服务的进程内装配保留认证与内容冲突检查，保存前保全旧内容，保存后同步本项目材料manifest和摘要。同步尚未完成时拒绝新执行，恢复仍核对同一次修改；旧角色配置、UUID材料和运行记录保留。参见[角色指令迁移](plans/role-instructions.md)。
 
 ## 组件与数据流

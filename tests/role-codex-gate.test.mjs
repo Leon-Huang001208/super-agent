@@ -43,6 +43,11 @@ test('role gate accepts an exact managed role entry and pins its run copy', () =
     CODEX_HOME:'/tmp/paperclip-ai-'+id+'-'+id+'-abcdef/provider'};
   const input={permit,args,env,cwd:permit.cwd,now:100000};
   assert.equal(validateRoleCall(input),permit);
+  const bundle={...permit,materialRoot:permit.instructionsFilePath.slice(0,-'/research/AGENTS.md'.length),materialFiles:[{path:'research/AGENTS.md',sha256:'a'.repeat(64)},{path:'research/CAPABILITIES.md',sha256:'b'.repeat(64)}],projectContext:{id},effectiveCapabilities:{role:'research',capabilityIds:['research'],hostAllowedTools:[]}};
+  assert.equal(validateRoleCall({...input,permit:bundle}),bundle);
+  assert.throws(()=>validateRoleCall({...input,permit:{...bundle,materialFiles:[...bundle.materialFiles,{path:'../other-role.md',sha256:'c'.repeat(64)}]}}),/SCOPE_DENIED/);
+  assert.throws(()=>validateRoleCall({...input,permit:{...bundle,projectContext:{id:'foreign'}}}),/SCOPE_DENIED/);
+  assert.throws(()=>validateRoleCall({...input,permit:{...bundle,effectiveCapabilities:{role:'qa',capabilityIds:['qa']}}}),/SCOPE_DENIED/);
   for(const change of [
     {role:'pm'},
     {materialSourcePath:source.replace('/research/','/pm/')},

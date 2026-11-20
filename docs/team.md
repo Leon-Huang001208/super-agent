@@ -1,5 +1,13 @@
 # Team roles
 
+## 通用岗位说明与默认能力
+
+现役材料的岗位修订以`assets/role-profiles/<role>/AGENTS.md`和`CAPABILITIES.md`为可审查模板，专业Skill通过带摘要的方法包提供。各岗说明完整列出输入、职责、协作、步骤、工具触发、交付物和完成/失败标准；Tool即工具，Skill是方法，Apps/插件提供连接与能力。
+
+共同基础能力包含项目材料读取、shell/patch、公开来源读取与证据记录。Research优先检索/文档，PM优先产品/KPI，Designer优先Figma/设计审查，Architect负责边界与取舍，前后端分别实现，QA独立评审，Ops使用受管交付及服务工具，Network/Resources使用真实宿主工具。Chief可随已授权任务补充其他岗位能力，项目和任务约束继续适用。
+
+通用正文不写某个业务仓库或主机磁盘身份。RWB限制随对应项目加载；宿主身份、路径和可用工具随宿主上下文提供。模型权限由Native许可、broker及宿主执行入口实施，不由AGENTS自授。源码模板、磁盘发布、新任务加载、真实调用分别验收，见[能力实施计划](plans/role-capabilities.md)。下方带日期的M1登记/验证保留原时点含义。
+
 本人已确认以下11个岗位，显示名使用完整英文、Title Case及空格。复用现有Chief、Research和PM的ID、任务、会话及历史；内部稳定键不因名称变化而重建。不增加CTO、CMO、COO或DBA。
 
 | Display name | Reports to | Deliverable |

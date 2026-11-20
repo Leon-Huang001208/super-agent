@@ -1,0 +1,1 @@
+{"methodId":"horizontal-vertical-analysis","version":"1.0.0","permissions":"none","triggerTerms":["横向纵向","同类比较","时间演变","horizontal and vertical"],"antiTriggerTerms":["单点回答","无需比较"],"positiveExamples":["做横向纵向分析，比较同行并看三年演变","Use horizontal and vertical analysis on these options"],"negativeExamples":["单点回答当前版本号","无需比较，只修复这个错误"]}

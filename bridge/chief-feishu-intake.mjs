@@ -37,7 +37,7 @@ function trustedBinding(value) {
  * Matching envelope fields do not authenticate an arbitrary HTTP/JSON caller.
  * Native owns task creation, source-ID/body conflicts and durable idempotency.
  */
-export function createChiefFeishuIntake({ binding, registerTrustedMessage, log } = {}) {
+export function createChiefFeishuIntake({ binding, registerTrustedMessage, resolveProject, log } = {}) {
   if (typeof registerTrustedMessage !== 'function' || typeof log !== 'function') {
     fail('CHIEF_FEISHU_CONFIGURATION_INVALID');
   }
@@ -68,7 +68,12 @@ export function createChiefFeishuIntake({ binding, registerTrustedMessage, log }
     if (text.length > 16_000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) {
       return reject('CHIEF_FEISHU_MESSAGE_INVALID', message.message_id);
     }
-    const goal = text.slice('/chief'.length).trim();
+    let goal = text.slice('/chief'.length).trim(),projectSelector;
+    if(/^--project(?:\s|$)/.test(goal)){
+      const selected=/^--project\s+(?:"([^"]+)"|'([^']+)'|([^\s"']+))\s+([\s\S]+)$/.exec(goal);
+      if(!selected)return reject('CHIEF_FEISHU_GOAL_INVALID',message.message_id);
+      projectSelector=selected[1]??selected[2]??selected[3];goal=selected[4].trim();
+    }
     if (!goal || goal.length > 12_000) return reject('CHIEF_FEISHU_GOAL_INVALID', message.message_id);
 
     const sender = event.sender;
@@ -94,8 +99,15 @@ export function createChiefFeishuIntake({ binding, registerTrustedMessage, log }
       messageId: message.message_id, chatId: message.chat_id,
       ...(header.event_id !== undefined && { eventId: header.event_id }), bodySha256,
     };
+    let projectId=scope.projectId;
+    if(projectSelector){
+      if(typeof resolveProject!=='function')fail('CHIEF_FEISHU_PROJECT_RESOLVER_REQUIRED');
+      const project=await resolveProject(projectSelector);
+      if(!matches(uuid,project?.id))fail('CHIEF_FEISHU_PROJECT_INVALID');
+      projectId=project.id;
+    }
     const snapshot = frozenCopy({
-      schemaVersion: 1, ...scope, source: 'feishu', externalId: message.message_id,
+      schemaVersion: 1, ...scope,projectId,...(projectSelector?{projectSelector}:{}), source: 'feishu', externalId: message.message_id,
       ...(header.event_id !== undefined && { eventId: header.event_id }),
       messageId: message.message_id, chatId: message.chat_id, text, goal, bodySha256, sourceParams,
     });

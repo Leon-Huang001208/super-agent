@@ -7,6 +7,9 @@ import {createHash,randomBytes} from 'node:crypto';
 import {NATIVE_ROLE_EXTRA_ARGS} from '../bridge/native-role-adapter.mjs';
 import {validateRoleCall,normalizeNativeRoleArgs} from '../docker/role-codex-gate.mjs';
 import {hostRoleInstructionPath} from '../bridge/role-instruction-paths.mjs';
+import {materializeRoleSkillBundle,ROLE_SKILL_BUNDLE_SHA256} from '../bridge/role-skill-bundles.mjs';
+import {prepareRoleProjectWorkspace,createHostCapabilityExecutor} from '../bridge/role-host-capabilities.mjs';
+import {serveHostCapabilityCalls} from '../bridge/role-host-call-queue.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0',ROOT=DATA+'/state/control/research-pm';
 const IMAGE='sha256:ce66c5354e5efdd7279953134cba2a43c16b54e618a9e15ca6eb83e6bcae0c6c';
 const runId=process.argv[2],resumeSetup=process.argv[3]==='--resume-setup',sha=x=>createHash('sha256').update(x).digest('hex'),docker='/usr/local/bin/docker';
@@ -23,7 +26,8 @@ function durable(file,value){
  if(fs.existsSync(file))fail('ROLE_CONTAINER_RESULT_EXISTS');fs.renameSync(tmp,file);
  const p=fs.openSync(path.dirname(file),'r');try{fs.fsyncSync(p);}finally{fs.closeSync(p);}
 }
-let stream,err,input,network,broker,terminal=false;
+let stream,err,input,network,broker,terminal=false,hostCallsTimer,hostController;
+const log=event=>fs.appendFileSync(ROOT+'/host-transport.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});
 try{
  if(process.platform!=='darwin'||!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(runId??''))fail('ROLE_CONTAINER_ARGUMENT_DENIED');
  const dir=ROOT+'/transport/'+runId,request=JSON.parse(read(dir+'/request.json')),permitBytes=read(ROOT+'/permits/'+runId+'.json'),permit=JSON.parse(permitBytes);
@@ -49,8 +53,15 @@ try{
  const client=dir+'/client',proxy=dir+'/proxy',audit=dir+'/proxy-audit';
  for(const p of [client,proxy,audit])if(!fs.existsSync(p))fs.mkdirSync(p,{mode:0o700});
  const key=resumeSetup?JSON.parse(read(proxy+'/config.json')).key:randomBytes(32).toString('hex');
+ const advanced=Boolean(permit.projectContext&&permit.effectiveCapabilities);
+ const workspace=advanced?await prepareRoleProjectWorkspace({permit,controlRoot:ROOT,log}):{available:false};
+ hostController=new AbortController();
+ const hostExecutor=advanced?createHostCapabilityExecutor({permit,workspace,controlRoot:ROOT,dockerContainerName:name,signal:hostController.signal,log}):null;
+ const hostTools=hostExecutor?hostExecutor.listTools():[];
  if(!resumeSetup)durable(proxy+'/config.json',{runId,key,expiresAt:Date.now()+660000,
-  mcpAllowedTools:['research','pm'].includes(permit.role)?['sites.check_slug_availability','plugin_management.search_plugins','github.get_repo']:[]});
+  role:advanced?permit.role:undefined,taskId:permit.taskId,projectId:permit.projectId,projectContext:permit.projectContext,
+  additionalCapabilities:permit.additionalCapabilities??[],effectiveCapabilities:permit.effectiveCapabilities,hostTools,
+  mcpAllowedTools:permit.effectiveCapabilities?.mcpAllowedTools??[]});
  const selectedAuth=JSON.parse(read(dir+'/provider/auth.json'));
  const selectedClaims=JSON.parse(Buffer.from(selectedAuth.tokens.id_token.split('.')[1],'base64url').toString());
  const accountId=selectedAuth.tokens.account_id??selectedClaims['https://api.openai.com/auth']?.chatgpt_account_id;
@@ -85,21 +96,43 @@ try{
  }else exec(['network','create','--internal','--subnet','10.203.240.0/28','--label','io.super-agent.task=sa-research-pm-m1-20261119',network]);
  const base=['--pull','never','--platform','linux/arm64','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',
   '--log-driver','json-file','--log-opt','max-size=2m','--log-opt','max-file=1','--label','io.super-agent.task=sa-research-pm-m1-20261119'];
- const source=fileURLToPath(new URL('../docker/role-provider-proxy.mjs',import.meta.url));
+ const runtimeSource=fileURLToPath(new URL('../',import.meta.url));
  const provider=['run','-d','--rm','--name',broker,...base,'--network','bridge','--pids-limit','64','--memory','256m','--tmpfs','/tmp:size=16m',
   '--mount','type=bind,source='+proxy+',target=/proxy,readonly',
   '--mount','type=bind,source='+dir+'/provider/auth.json,target=/provider-auth.json,readonly','--env','SUPER_AGENT_ROLE_PROXY_AUTH_FILE=/provider-auth.json',
-  '--mount','type=bind,source='+audit+',target=/audit','--mount','type=bind,source='+source+',target=/proxy.mjs,readonly',
+  '--mount','type=bind,source='+audit+',target=/audit','--mount','type=bind,source='+runtimeSource+',target=/opt/role-runtime,readonly',
   '--env','NODE_USE_ENV_PROXY=1'];
  for(const e of app.Config.Env??[])if(/^(HTTP_PROXY|HTTPS_PROXY|NO_PROXY)=/.test(e)){
   const v=e.slice(e.indexOf('=')+1);if(/^https?:/.test(v)){const u=new URL(v);if(u.username||u.password)fail('ROLE_CONTAINER_PROXY_DENIED');}
   provider.push('--env',e);
  }
- provider.push('--entrypoint','node',IMAGE,'/proxy.mjs');exec(provider);exec(['network','connect','--alias','provider',network,broker]);
- if(fs.existsSync(client+'/instructions.md')){if(!resumeSetup||sha(read(client+'/instructions.md'))!==permit.materialSha256)fail('ROLE_CONTAINER_MATERIAL_CHANGED');}
- else fs.writeFileSync(client+'/instructions.md',materialBytes,{mode:0o600,flag:'wx'});
+ provider.push('--entrypoint','node',IMAGE,'/opt/role-runtime/docker/role-provider-proxy.mjs');exec(provider);exec(['network','connect','--alias','provider',network,broker]);
+ let instructionMount;
+ if(permit.materialFiles){
+  const bundle=client+'/instructions';fs.mkdirSync(bundle,{recursive:true,mode:0o700});
+  for(const file of permit.materialFiles){
+   const bytes=read(hostRoleInstructionPath(path.posix.join(permit.materialRoot,file.path),DATA));
+   if(sha(bytes)!==file.sha256)fail('ROLE_CONTAINER_MATERIAL_CHANGED');
+   const target=path.join(bundle,file.path);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});
+   if(fs.existsSync(target)){if(!resumeSetup||sha(read(target))!==file.sha256)fail('ROLE_CONTAINER_MATERIAL_CHANGED');}
+   else fs.writeFileSync(target,bytes,{mode:0o600,flag:'wx'});
+  }
+  instructionMount='type=bind,source='+bundle+',target='+permit.materialRoot+',readonly';
+ }else{
+  if(fs.existsSync(client+'/instructions.md')){if(!resumeSetup||sha(read(client+'/instructions.md'))!==permit.materialSha256)fail('ROLE_CONTAINER_MATERIAL_CHANGED');}
+  else fs.writeFileSync(client+'/instructions.md',materialBytes,{mode:0o600,flag:'wx'});
+  instructionMount='type=bind,source='+client+'/instructions.md,target='+permit.instructionsFilePath+',readonly';
+ }
  exec(['exec','super-agent-paperclip-eval-paperclip-1','chown','-R','1000:1000',
   '/paperclip/control/research-pm/transport/'+runId+'/client',request.cwd]);
+ const skillAssetRoot=fileURLToPath(new URL('../assets/role-skills/',import.meta.url));
+ let roleSkills;
+ if(permit.effectiveCapabilities){
+  if(permit.effectiveCapabilities.skillBundleSha256!==ROLE_SKILL_BUNDLE_SHA256)fail('ROLE_CONTAINER_SKILL_BUNDLE_CHANGED');
+  roleSkills=materializeRoleSkillBundle({codexHome:client,skillNames:permit.effectiveCapabilities.skills.map(skill=>skill.name),assetRoot:skillAssetRoot,packageRoot:'/opt/role-skill-packages'});
+  if(!fs.existsSync(dir+'/role-skills.json'))durable(dir+'/role-skills.json',{...roleSkills,runId});
+  else if(JSON.parse(read(dir+'/role-skills.json')).sha256!==roleSkills.sha256)fail('ROLE_CONTAINER_SKILL_BUNDLE_CHANGED');
+ }
  const seccomp=app.HostConfig.SecurityOpt.find(x=>x.startsWith('seccomp='));
  let evidence;
  if(permit.evidencePacket){
@@ -120,20 +153,29 @@ try{
   '--tmpfs','/tmp:size=128m,mode=1777','--workdir',request.cwd,
   '--mount','type=bind,source='+cwd+',target='+request.cwd,
   '--mount','type=bind,source='+client+',target='+request.home,
-  '--mount','type=bind,source='+client+'/instructions.md,target='+permit.instructionsFilePath+',readonly',
+  '--mount',instructionMount,
   '--mount','type=bind,source='+DATA+'/dependencies-paperclip-taskguard4,target=/opt/paperclip,readonly',
   '--env','HOME=/tmp/role-home','--env','CODEX_HOME='+request.home,'--env','LANG=C.UTF-8','--env','SSL_CERT_FILE='+request.home+'/trust.pem','--env','CODEX_CA_CERTIFICATE='+request.home+'/trust.pem',
   '--env','HTTP_PROXY=http://provider:8090','--env','HTTPS_PROXY=http://provider:8090','--env','NO_PROXY=provider','--env','CODEX_CONNECTORS_TOKEN'];
  if(seccomp){const file=dir+'/seccomp.json';fs.writeFileSync(file,seccomp.slice(8),{mode:0o600,flag:'wx'});args.push('--security-opt','seccomp='+file);}
+ if(workspace.available)args.push('--mount','type=bind,source='+workspace.codeHostPath+',target=/workspace/project'+(permit.role==='qa'?',readonly':''));
+ if(roleSkills)args.push('--mount','type=bind,source='+skillAssetRoot+',target=/opt/role-skill-packages,readonly','--mount','type=bind,source='+client+'/skills,target='+request.home+'/skills,readonly');
+ if(hostTools.length)args.push('--mount','type=bind,source='+path.join(runtimeSource,'docker/role-host-mcp-server.mjs')+',target=/opt/role-host-mcp-server.mjs,readonly');
  if(evidence)args.push('--mount','type=bind,source='+evidence+',target=/qa-evidence,readonly');
  args.push('--entrypoint','/usr/bin/timeout',IMAGE,'--signal=TERM','--kill-after=4s','600','/opt/paperclip/node_modules/.bin/codex',
   ...normalizeNativeRoleArgs(request.args).slice(0,-1),'--skip-git-repo-check',...NATIVE_ROLE_EXTRA_ARGS.slice(2),'-c','model_catalog_json='+JSON.stringify(request.home+'/models.json'),'-c','chatgpt_base_url="https://provider:8091/backend-api"','-');
+ if(workspace.available&&permit.role!=='qa')args.splice(args.length-1,0,'-c','sandbox_workspace_write.writable_roots=["/workspace/project"]');
+ if(hostTools.length)args.splice(args.length-1,0,'-c','mcp_servers.role_host.command="node"','-c','mcp_servers.role_host.args=["/opt/role-host-mcp-server.mjs"]','-c','mcp_servers.role_host.env_vars=["CODEX_CONNECTORS_TOKEN"]','-c','mcp_servers.role_host.tool_timeout_sec=360');
  if(fs.existsSync(dir+'/cancel.json'))fail('ROLE_CONTAINER_CANCELLED_BEFORE_START');
  input=fs.openSync(dir+'/stdin','r');stream=fs.openSync(dir+'/stdout','wx',0o600);err=fs.openSync(dir+'/stderr','wx',0o600);
  let cancelled=false,stopping=false;
  const cancel=()=>{cancelled=true;};
  process.on('SIGTERM',cancel);process.on('SIGINT',cancel);
  const child=spawn(docker,[...common,...args],{shell:false,env:{...process.env,CODEX_CONNECTORS_TOKEN:key},stdio:[input,'pipe',err]});
+ const hostCallsRoot=audit+'/host-calls';
+ if(hostExecutor)hostCallsTimer=setInterval(()=>void serveHostCapabilityCalls({root:hostCallsRoot,permit,executor:hostExecutor,log}).catch(error=>{
+  log({code:'HOST_CALL_QUEUE_FAILED',runId,errorCode:error.code??'HOST_CALL_QUEUE_FAILED'});
+ }),50);
  // Deterministic management probe in this disposable task container. It does
  // not ask the model to violate its own tool policy or touch the host filesystem.
  let osProbe;
@@ -154,11 +196,12 @@ try{
  });
  const timer=setInterval(()=>{
   if(fs.existsSync(dir+'/cancel.json')||outputError)cancelled=true;
+  if(cancelled&&!hostController.signal.aborted)hostController.abort();
   if(cancelled&&!stopping){stopping=true;const stop=spawn(docker,[...common,'stop','--time','3',name],{stdio:'ignore'});stop.once('close',()=>stopping=false);stop.once('error',()=>stopping=false);}
  },250);
  let result;
  try{result=await new Promise((resolve,reject)=>{child.once('error',()=>reject(Object.assign(Error(),{code:'ROLE_CONTAINER_LAUNCH_UNKNOWN'})));child.once('close',(code,signal)=>resolve({code,signal}));});}
- finally{clearInterval(timer);if(osProbe)clearTimeout(osProbe);process.off('SIGTERM',cancel);process.off('SIGINT',cancel);}
+ finally{clearInterval(timer);if(hostCallsTimer)clearInterval(hostCallsTimer);hostController.abort();if(osProbe)clearTimeout(osProbe);process.off('SIGTERM',cancel);process.off('SIGINT',cancel);}
  if(pending)consume(pending);
  if(outputError)fs.writeSync(err,JSON.stringify({code:'ROLE_CONTAINER_OUTPUT_UNKNOWN'})+'\n');
  fs.fsyncSync(stream);fs.fsyncSync(err);
@@ -169,6 +212,7 @@ try{
  console.log(JSON.stringify({runId,exitCode:outputError?1:result.code,outputUnknown:outputError,image:IMAGE,network:'isolated-with-scoped-provider'}));
 }catch(e){console.error(JSON.stringify({code:/^ROLE_[A-Z_]+$/.test(e.code??e.message)?(e.code??e.message):'ROLE_CONTAINER_UNKNOWN',runId}));process.exitCode=1;}
 finally{
+ if(hostCallsTimer)clearInterval(hostCallsTimer);hostController?.abort();
  for(const fd of [input,stream,err])if(fd!==undefined)fs.closeSync(fd);
  if(terminal){if(broker)exec(['stop','--time','3',broker]);if(network)exec(['network','rm',network]);}
 }

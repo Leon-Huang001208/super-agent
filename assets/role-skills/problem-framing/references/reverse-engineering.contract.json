@@ -1,0 +1,1 @@
+{"methodId":"reverse-engineering","version":"1.0.0","permissions":"none","triggerTerms":["逆向拆解","为什么成功","反推机制","reverse engineer"],"antiTriggerTerms":["从零创作","无需拆解"],"positiveExamples":["逆向拆解这个优秀案例为什么成功","Reverse engineer the behavior from the observed output"],"negativeExamples":["从零创作一个新口号","修正这个拼写错误"]}
