@@ -1,5 +1,7 @@
 # 受控真实验收手册
 
+Native HTTPS 恢复按[专题合同](plans/native-https-recovery.md)先做无模型验证：正确 CA/loopback SAN 成功，错误 CA/主机名失败，Node stdio MCP 继承本 run CA，TLS 监听后才 ready。恢复既有 Chief attempt2 时保全原两槽与旧失败，核明确切 HTTPS-origin 错误、零模型 response、完整进程/环境租约收尾及匹配锁；实际调用后以原剩余额度验证计划，并核计划后暂停和真实通知。不将 mock TLS、CLI session、预算槽或队列状态当作模型成功。
+
 ## Mac原生和公司Skill验收
 
 未变个人订阅在JSONB键顺序重排后仍须被判定为未变；provider、method、connectionId或mode真实变化仍走原Native验证。进程内hook需精确源字节及启动装配合同，不能通过绕过权限或替换认证来完成配置验收。官方paperclip包的12个文件亦核对实际快照与读取。

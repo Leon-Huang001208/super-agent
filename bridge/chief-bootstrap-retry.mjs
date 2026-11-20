@@ -115,6 +115,6 @@ export function teamRoleAdmissionFailure(error){
  return {exitCode:1,signal:null,timedOut:false,
   errorCode:/^(?:TEAM|NATIVE_ROLE)_[A-Z_]+$/.test(error?.code??error?.message)?(error.code??error.message):'NATIVE_ROLE_PREFLIGHT_FAILED',
   errorMessage:'The controlled Native intake or retry did not admit this execution.',
-  resultJson:{executionRecovery:error?.code?.startsWith('TEAM_NATIVE_RETRY_BOOTSTRAP_')?
+  resultJson:{executionRecovery:(error?.code?.startsWith('TEAM_NATIVE_RETRY_BOOTSTRAP_')||error?.code?.startsWith('TEAM_NATIVE_RETRY_CHIEF_TRANSPORT_'))?
    {kind:'reconciliation',providerWorkStarted:null}:{kind:'bootstrap',providerWorkStarted:false}}};
 }

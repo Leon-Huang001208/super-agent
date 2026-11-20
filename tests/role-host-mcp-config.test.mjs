@@ -20,7 +20,8 @@ test('task MCP settings are absent without tools and reject invalid tool config 
 });
 
 test('native task MCP uses the actual host script and endpoint without enabling unknown tools',()=>{
- const args=roleHostMcpConfigArgs([{name:'host.network_observe'}],{scriptPath:'/Volumes/WorkDisk/Projects/runtime/docker/role-host-mcp-server.mjs',nodePath:'/usr/local/bin/node',endpoint:'http://127.0.0.1:45678/backend-api/role-host-mcp'});
+ const args=roleHostMcpConfigArgs([{name:'host.network_observe'}],{scriptPath:'/Volumes/WorkDisk/Projects/runtime/docker/role-host-mcp-server.mjs',nodePath:'/usr/local/bin/node',endpoint:'https://127.0.0.1:45678/backend-api/role-host-mcp'});
  assert.ok(args.includes('mcp_servers.role_host.args=["/Volumes/WorkDisk/Projects/runtime/docker/role-host-mcp-server.mjs"]'));
- assert.ok(args.includes('mcp_servers.role_host.env_vars=["CODEX_CONNECTORS_TOKEN","ROLE_HOST_MCP_ENDPOINT"]'));
+ assert.ok(args.includes('mcp_servers.role_host.env_vars=["CODEX_CONNECTORS_TOKEN","ROLE_HOST_MCP_ENDPOINT","NODE_EXTRA_CA_CERTS"]'));
+ for(const endpoint of ['http://127.0.0.1:1/backend-api/role-host-mcp','https://user@127.0.0.1:1/backend-api/role-host-mcp','https://127.0.0.1:1/backend-api/role-host-mcp?other=1','https://127.0.0.1:1/backend-api/role-host-mcp#other'])assert.throws(()=>roleHostMcpConfigArgs([{name:'host.network_observe'}],{endpoint}),/ROLE_HOST_MCP_CONFIG_INVALID/);
 });

@@ -1,5 +1,7 @@
 # 开发地图
 
+Native HTTPS、每 run 证书/信任、TLS ready 与 MCP CA 传播的合同及测试见[HTTPS 恢复专题](plans/native-https-recovery.md)。Chief 首计划第二次 Native retry 同时维护队列选择、严格物理失败证明、旧锁归档、M2 settled 观察及可信剩余预算提示；只改传输或只让队列消费均不构成完整修复。Mac 宿主检查与 Linux 离线 CI 分别留证。
+
 ## Mac原生执行和公司Skill
 
 `docker/role-ai-binding-hook.mjs`修复固定Native路由的未变订阅误判；`server-entry.loadServer`与ChiefWeb在同一装配点加载/验证/注销，`role-preload`不预先导入路由。回归覆盖JSONB键顺序、真实provider/method/connection变化、源漂移、组合模块缓存及实际安装源字节合同。Dockerfile与受管镜像输入清单同步分发新helper。

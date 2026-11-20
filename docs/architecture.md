@@ -1,5 +1,7 @@
 # Paperclip 集成架构
 
+Mac 原生 provider 通道采用每 run 的 loopback HTTPS、任务 CA 与原 broker 校验；CLI 与 Node MCP 各自获得对应信任，TLS 实际监听后才可消费就绪记录。原首计划已启动 CLI 但在 HTTPS-origin 检查前未发模型 response 的已结算失败，通过窄的第二次 Native retry 合同恢复，保留旧失败与原根预算；不改写 Native NoProvider 字段。见[原生 HTTPS 与首计划恢复](plans/native-https-recovery.md)。
+
 ## 当前原生执行改造
 
 固定安装版Agent路由将Zod投影后的AI绑定与JSONB对象作字符串比较，键顺序不同会误触发订阅变更验证。`role-ai-binding-hook`在进程内按精确源SHA将唯一比较替换为语义深比较；真实绑定变化、兼容性、身份和认证校验全部保留，安装包磁盘不修改。`loadServer`先装ChiefWeb hook、再装AI hook，统一导入、验证和逆序注销，避免提前缓存其他模式的待修改模块。

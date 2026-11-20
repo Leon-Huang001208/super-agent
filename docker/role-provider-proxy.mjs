@@ -122,11 +122,21 @@ server.on('connect',async(req,client,head)=>{
 });
 const listenHost=process.env.SUPER_AGENT_ROLE_PROXY_LISTEN_HOST??'0.0.0.0';
 const listenPort=Number(process.env.SUPER_AGENT_ROLE_PROXY_PORT??8090);
-if(!['0.0.0.0','127.0.0.1'].includes(listenHost)||!Number.isInteger(listenPort)||listenPort<0||listenPort>65535)throw Error('ROLE_PROXY_LISTEN_DENIED');
-server.listen(listenPort,listenHost,()=>{
+const tlsPort=Number(process.env.SUPER_AGENT_ROLE_PROXY_TLS_PORT??8091);
+const readyProtocol=process.env.SUPER_AGENT_ROLE_PROXY_READY_PROTOCOL??'http';
+if(!['0.0.0.0','127.0.0.1'].includes(listenHost)||!Number.isInteger(listenPort)||listenPort<0||listenPort>65535||!Number.isInteger(tlsPort)||tlsPort<0||tlsPort>65535||!['http','https'].includes(readyProtocol))throw Error('ROLE_PROXY_LISTEN_DENIED');
+if(readyProtocol==='https'&&(!tls||listenHost!=='127.0.0.1'))throw Error('ROLE_PROXY_TLS_REQUIRED');
+if(readyProtocol==='http')server.listen(listenPort,listenHost,()=>{
  const address=server.address();audit({code:'ROLE_PROXY_READY',runId:config.runId,host:listenHost,port:address.port});
  if(process.env.SUPER_AGENT_ROLE_PROXY_READY_FILE)fs.writeFileSync(process.env.SUPER_AGENT_ROLE_PROXY_READY_FILE,JSON.stringify({runId:config.runId,host:listenHost,port:address.port})+'\n',{mode:0o600,flag:'wx'});
 });
-tls?.listen(Number(process.env.SUPER_AGENT_ROLE_PROXY_TLS_PORT??8091),listenHost,()=>audit({code:'ROLE_PROXY_TLS_READY',runId:config.runId}));
-for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{tls?.close();server.close(()=>process.exit(0));});
+tls?.listen(tlsPort,listenHost,()=>{
+ const address=tls.address();audit({code:'ROLE_PROXY_TLS_READY',runId:config.runId,host:listenHost,port:address.port});
+ if(readyProtocol==='https'&&process.env.SUPER_AGENT_ROLE_PROXY_READY_FILE)fs.writeFileSync(process.env.SUPER_AGENT_ROLE_PROXY_READY_FILE,JSON.stringify({runId:config.runId,protocol:'https:',host:listenHost,port:address.port})+'\n',{mode:0o600,flag:'wx'});
+});
+for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{
+ const listeners=[server,tls].filter(listener=>listener?.listening);let remaining=listeners.length;
+ if(!remaining)process.exit(0);
+ for(const listener of listeners)listener.close(()=>{if(--remaining===0)process.exit(0);});
+});
 setTimeout(()=>process.exit(1),700000).unref();

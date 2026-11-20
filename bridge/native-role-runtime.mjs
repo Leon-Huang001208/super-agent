@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { createNativeRoleAdapter } from './native-role-adapter.mjs';
 import { withRoleCall } from './role-call-budget.mjs';
+import {readRootCallBudget} from './native-role-budget.mjs';
 import { createRolePreparation } from './role-preparation.mjs';
 import { settleNativeRole } from './role-native-settlement.mjs';
 import { validateNetworkScope } from './network-role.mjs';
@@ -302,6 +303,7 @@ export async function installNativeRoles() {
           ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:{...role.profile,projectId:issue.projectId,projectKey:resolved.contextVersion===1?role.profile.projectKey:projectContext.key},...material,
           projectContext,capabilityRequests,effectiveCapabilities,authorizedHostActions,networkScope:operation.networkScope,resourceScope:operation.resourceScope,codeCandidate:operation.codeCandidate,codeReview:operation.codeReview,
           rootTaskId:operation.rootTaskId??issue.id,phase:operation.phase,additionalInput:operation.additionalInput,reviewedArtifacts:operation.reviewedArtifacts,teamRoster:role.profile.role==='chief'?r.team?.ids:undefined,
+          ...(role.profile.role==='chief'?{callBudget:readRootCallBudget({root:ROOT,rootTaskId:operation.rootTaskId??issue.id,operationId:operation.id})}:{}),
           ...(operation.artifactGeneration?{artifactGeneration:operation.artifactGeneration,planFile:operation.planFile,summaryFile:operation.summaryFile,outputPrefix:operation.outputPrefix}:{}),
           ...(resolved.contextVersion===1?{contextVersion:1,workspaceCwd:resolved.workspaceCwd,knowledgeQuery:nativeKnowledgeQuery(issue),
             knowledgeTask:{id:issue.id,companyId:issue.companyId,projectId:issue.projectId,projectWorkspaceId:issue.projectWorkspaceId,responsibleUserId:issue.responsibleUserId,title:issue.title,description:issue.description}}:{})};

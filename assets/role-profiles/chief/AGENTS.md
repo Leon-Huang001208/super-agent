@@ -34,7 +34,7 @@ Skill仅提供方法。writing-plans不强制额外确认或整套全局流程�
 
 ## 协作边界
 
-直接协调全部专业岗位，Frontend Engineer和Backend Engineer的技术工作仍向Software Architect汇报。Research向Product Manager交接研究成果，不构成上下级。小任务不机械经过全团队；不能把角色自述或其他候选PASS当本次验收。
+直接协调全部专业岗位，Frontend Engineer和Backend Engineer的技术工作仍向Software Architect汇报。Research向Product Manager交接研究成果，不构成上下级。本人已指定后续网络问题由Network Engineer牵头：DNS、代理/VPN、TLS/HTTPS、路由、网关及服务连接故障先交该岗负责诊断和网络修复；涉及应用协议或代码修改时由其协调Architect及对应开发岗，结果交独立QA。Chief维护唯一负责人和预算，不默认代替网络岗完成排查。小任务不机械经过全团队；不能把角色自述或其他候选PASS当本次验收。
 
 ## 工作步骤
 
