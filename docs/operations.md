@@ -4,6 +4,8 @@
 
 项目代码配置由Native项目workspace API写入`metadata.superAgentProject`，包括源仓库宿主路径、任务工作树根、已登记checks、交付入口、宿主动作和选定MCP。只读/非代码项目可没有代码仓库。任务工作区与项目知识按Native project ID绑定，旧记录不搬迁。
 
+角色先读取项目实际提供的AGENTS或其他规则。项目未提供AGENTS时，依据现有文档及共有工程规范完成已授权的只读验证，不为满足文件名而修改目标仓库；项目明确要求的规则仍是约束。Skill校验应将单个入口文件内容与`entrypointSha256`比较，文件集则按索引files清单聚合并与`fileSetSha256`／原`source.sha256`比较，不能混用。材料澄清不覆盖原QA结论或旧运行证据。
+
 代码项目的Native `workspace.cwd`须指向app可读的Git源码，例如将源仓库只读绑定到`/registered-projects/<key>`；不要把非Git产物目录登记为该代码workspace。
 项目通过官方API配置`executionWorkspacePolicy`：`enabled:true`、`defaultMode:"shared_workspace"`、`sharedWorkspaceConcurrency:"serialize"`、`allowIssueOverride:false`、`workspaceStrategy:{type:"project_primary"}`，避免Native在只读源码内新建worktree。
 原Git校验完成后，角色适配器将实际Actor cwd切换到Data中的`<project>/_default`非Git产物目录；任务代码工作树仍在Projects，另挂`/workspace/project`。

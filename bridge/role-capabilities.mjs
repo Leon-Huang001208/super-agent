@@ -47,7 +47,7 @@ export function resolveRoleCapabilities({role,additionalCapabilities=[],projectC
  const registeredMcp=(projectContext.hostMcpServers??[]).some(server=>server&&Array.isArray(server.tools)&&server.tools.length&&(!server.allowedRoles||server.allowedRoles.includes(role)));
  const hostAllowedTools=[...new Set([...hostBase,...capabilities.flatMap(x=>x.hostTools),...(capabilities.some(x=>x.serviceMcp)&&registeredMcp?['host.mcp_call']:[])])];
  const skillNames=capabilities.flatMap(capability=>[...capability.skills,...(capability.conditionalSkills??[]).filter(x=>conditionMatches(x,projectContext)).map(x=>x.name)]);
- const skills=resolveRoleSkillBundles(skillNames).map(skill=>({name:skill.name,path:`${skill.directory}/SKILL.md`,source:skill.source,dependencies:skill.dependencies,
+ const skills=resolveRoleSkillBundles(skillNames).map(skill=>({name:skill.name,path:`${skill.directory}/SKILL.md`,entrypointSha256:skill.files.find(file=>file.path==='SKILL.md').sha256,fileSetSha256:skill.source.sha256,source:skill.source,dependencies:skill.dependencies,
   availability:{bundle:'bundled',dependencies:skill.runtimeDependencies.map(dependency=>({...dependency,status:dependency.kind==='mcp'?(toolCatalog.some(tool=>namespaceMatches(tool.name,dependency.namespace))?'discovered':'not-discovered'):(toolCatalog.some(tool=>tool.name===dependency.tool)?'discovered':'requires-host-transport')}))},
  }));
  return {schemaVersion:1,role,capabilityIds,skills,mcpAllowedTools,hostAllowedTools,skillBundleSha256:ROLE_SKILL_BUNDLE_SHA256,
@@ -67,7 +67,8 @@ export function renderRoleCapabilitiesMarkdown(role){
   '- Apps是连接的外部服务（如GitHub、Figma）；需要有效连接、服务权限及本次任务范围。',
   '- 插件是分发Skills、Tools或Apps连接的包；能发现插件不等于已经安装、连接或获准写入。','',
   '## 默认专业能力','',capability.purpose,'',
-  ...resolved.skills.map(skill=>`- ${skill.name}：${skill.source.origin}@${skill.source.version}；文件 ${skill.path}；源摘要 ${skill.source.sha256}。`),
+  'entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。','',
+  ...resolved.skills.map(skill=>`- ${skill.name}：${skill.source.origin}@${skill.source.version}；文件 ${skill.path}；入口文件摘要 entrypointSha256=${skill.entrypointSha256}；文件集摘要 fileSetSha256=${skill.fileSetSha256}。`),
   ...(capability.conditionalSkills??[]).map(skill=>`- ${skill.name}：仅projectContext确认stack/services匹配${[...(skill.stack??[]),...(skill.service??[])].join(' / ')}时加载。`),'',
   '## 工具触发与依赖','',
   '通用MCP只开放目录中带annotations.readOnlyHint=true的插件发现与GitHub只读工具。GitHub写入及交付走项目已有宿主受管入口，MCP不直接开放merge。',

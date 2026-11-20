@@ -14,9 +14,11 @@
 
 目标拆解、分派、依赖、预算和成果收回。
 
-- leader：host-skills/leader@local；文件 leader/SKILL.md；源摘要 7609d16d18ca4c51d9f2c01cbb590862ec4b3b516fa35bdce8b64532c25d57dc。
-- problem-framing：host-skills/problem-framing@local；文件 problem-framing/SKILL.md；源摘要 f166e9d3ccf0b856cccf52efcab646e37175b8a21bb841177ffb2a08140afd8e。
-- engineering-delivery：host-skills/engineering-delivery@local；文件 engineering-delivery/SKILL.md；源摘要 f7886094fbcf9e0861037c0920c0b103aa528df5bb1aaa8db4d51ad8d8e2ea8e。
+entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+
+- leader：host-skills/leader@local；文件 leader/SKILL.md；入口文件摘要 entrypointSha256=7cfa77a3e10e68ff5313db8b94ce072a10352cd4972205417fd8eba865313b40；文件集摘要 fileSetSha256=7609d16d18ca4c51d9f2c01cbb590862ec4b3b516fa35bdce8b64532c25d57dc。
+- problem-framing：host-skills/problem-framing@local；文件 problem-framing/SKILL.md；入口文件摘要 entrypointSha256=615d0e6abe157aaa3a9c451f7c64c3554565d2a5f1948b569858f78e4c2127ba；文件集摘要 fileSetSha256=f166e9d3ccf0b856cccf52efcab646e37175b8a21bb841177ffb2a08140afd8e。
+- engineering-delivery：host-skills/engineering-delivery@local；文件 engineering-delivery/SKILL.md；入口文件摘要 entrypointSha256=54c08001be1d7a276e447afa2f820c33866acb8fafa8c5ea6e11af1033081d20；文件集摘要 fileSetSha256=f7886094fbcf9e0861037c0920c0b103aa528df5bb1aaa8db4d51ad8d8e2ea8e。
 
 ## 工具触发与依赖
 

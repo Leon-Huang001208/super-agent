@@ -2,7 +2,7 @@
 
 | 子系统 | 本仓库入口 | 维护与验证 |
 |---|---|---|
-| 通用岗位与能力 | `team-roles.mjs`、`role-capabilities.mjs`、`role-skill-bundles.mjs`、`assets/role-profiles/`、`assets/role-skills/` | 11职业说明、默认/补充能力、可复核完整Skill包。能力按技术栈/服务选择，安装或缓存存在不能当调用通过。 |
+| 通用岗位与能力 | `team-roles.mjs`、`role-capabilities.mjs`、`role-skill-bundles.mjs`、`assets/role-profiles/`、`assets/role-skills/` | 11职业说明、默认/补充能力、可复核完整Skill包；入口字节摘要与files聚合摘要分别命名并对实物校验。项目规则按实际提供的文件读取，能力按技术栈/服务选择，安装或缓存存在不能当调用通过。 |
 | 跨项目接单 | `role-project-context.mjs`、Native角色及Chief现有入口 | 使用Native workspace.metadata扩展，任务项目决定知识/工作区/交付；官方schema/service合同fixture覆盖真实原始DB和API投影。 |
 | 宿主执行与MCP | `role-host-capabilities.mjs`、`role-host-mcp.mjs`、`role-host-call-queue.mjs`、`docker/role-host-mcp-server.mjs`、`scripts/role-host-mcp-config.mjs` | 现有传输内执行Git/check/已授权动作及选定stdio MCP；仅本run实际host工具逐项批准，服务器默认prompt。固定CLI合同读回真实审批配置；取消清理自有进程组，失败保留有限脱敏诊断。 |
 | 岗位材料发布 | `scripts/publish-role-profiles.mjs` | 暂停新派发后走Native认证HTTP CAS保存AGENTS/CAPABILITIES，原历史及登记同步链保留；不重建Agent。 |

@@ -14,9 +14,11 @@
 
 客户问题、产品需求、优先级、KPI和可观察验收。
 
-- product-manager-coach：repository-assets/product-manager-coach@sha256:248c4ec630aada30ed7a1020af2f411b29584ae95851d59dc9df7fe4f45d5983；文件 product-manager-coach/SKILL.md；源摘要 d587fd49422514ad12285fd9766ea96066e78016cb46ee94f3e9fbca131a8830。
-- design-kpis：openai-curated-remote/data-analytics@1.2.0；文件 packages/data-analytics/1.2.0/skills/design-kpis/SKILL.md；源摘要 fe414216e93d9d357630957ad2a951741c547cb41814c7e2085dd8e245426034。
-- data-analytics-index：openai-curated-remote/data-analytics@1.2.0；文件 packages/data-analytics/1.2.0/skills/index/SKILL.md；源摘要 721123578c95f357eac07a56879a904e4c9c4d9a1f54303e235626d34235b783。
+entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+
+- product-manager-coach：repository-assets/product-manager-coach@sha256:248c4ec630aada30ed7a1020af2f411b29584ae95851d59dc9df7fe4f45d5983；文件 product-manager-coach/SKILL.md；入口文件摘要 entrypointSha256=248c4ec630aada30ed7a1020af2f411b29584ae95851d59dc9df7fe4f45d5983；文件集摘要 fileSetSha256=d587fd49422514ad12285fd9766ea96066e78016cb46ee94f3e9fbca131a8830。
+- design-kpis：openai-curated-remote/data-analytics@1.2.0；文件 packages/data-analytics/1.2.0/skills/design-kpis/SKILL.md；入口文件摘要 entrypointSha256=0e362176cf5063a33005ba25ef6a7b090dc00b0eea72a0eac5ee006c122915f4；文件集摘要 fileSetSha256=fe414216e93d9d357630957ad2a951741c547cb41814c7e2085dd8e245426034。
+- data-analytics-index：openai-curated-remote/data-analytics@1.2.0；文件 packages/data-analytics/1.2.0/skills/index/SKILL.md；入口文件摘要 entrypointSha256=2604a78ff60dffbdccb9c089b2cc75533de82185150f26afddb691c7005985c6；文件集摘要 fileSetSha256=721123578c95f357eac07a56879a904e4c9c4d9a1f54303e235626d34235b783。
 
 ## 工具触发与依赖
 

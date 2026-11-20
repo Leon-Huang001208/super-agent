@@ -14,9 +14,11 @@
 
 公开搜索、官方文档和多源证据比较。
 
-- firecrawl-deep-research：openai-curated-remote/app-6a314a73f8ac819195b0d55e36b9c609@2.11.0；文件 packages/app-6a314a73f8ac819195b0d55e36b9c609/2.11.0/skills/firecrawl-deep-research/SKILL.md；源摘要 3fbbbab6f7addc21efef3ab48584548cfd00e5273e6611b3f5ed404b325a057d。
-- read-docs：openai-curated-remote/app-6a314a73f8ac819195b0d55e36b9c609@2.11.0；文件 packages/app-6a314a73f8ac819195b0d55e36b9c609/2.11.0/skills/read-docs/SKILL.md；源摘要 9a0fe5e84f67561a8a17e6251bbaa80dffd858dd4263707e570e87110ee5f24f。
-- solution-comparison：host-skills/solution-comparison@local；文件 solution-comparison/SKILL.md；源摘要 7bd76dc6c5419266d3a476dd801c1d87f18fd5231d50d6d1c496786ceaf2432a。
+entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+
+- firecrawl-deep-research：openai-curated-remote/app-6a314a73f8ac819195b0d55e36b9c609@2.11.0；文件 packages/app-6a314a73f8ac819195b0d55e36b9c609/2.11.0/skills/firecrawl-deep-research/SKILL.md；入口文件摘要 entrypointSha256=90d9a0ac1a4e6f6582a2482efc6e06e1a9faaa8e512212794c0b0086cb38b71e；文件集摘要 fileSetSha256=3fbbbab6f7addc21efef3ab48584548cfd00e5273e6611b3f5ed404b325a057d。
+- read-docs：openai-curated-remote/app-6a314a73f8ac819195b0d55e36b9c609@2.11.0；文件 packages/app-6a314a73f8ac819195b0d55e36b9c609/2.11.0/skills/read-docs/SKILL.md；入口文件摘要 entrypointSha256=a20df03ffeb704a15688b760e5e79660e2b852b4c9c0ea83a6c5407414c644ec；文件集摘要 fileSetSha256=9a0fe5e84f67561a8a17e6251bbaa80dffd858dd4263707e570e87110ee5f24f。
+- solution-comparison：host-skills/solution-comparison@local；文件 solution-comparison/SKILL.md；入口文件摘要 entrypointSha256=fdde612ccd0153cd4af4c45ee31ff1d19f01e2884d8b1dcf668c5d14baa6ba23；文件集摘要 fileSetSha256=7bd76dc6c5419266d3a476dd801c1d87f18fd5231d50d6d1c496786ceaf2432a。
 
 ## 工具触发与依赖
 
