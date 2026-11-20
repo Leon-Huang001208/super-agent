@@ -2,6 +2,10 @@
 
 ## 真实任务驱动的迭代
 
+`bridge/host-github-read.mjs`通过`host.github_read`读取Native登记仓库的固定GET端点，复用宿主gh登录，不把凭据复制到独立任务HOME。无代码workspace也可用，原read_only上界只增加允许的只读工具名，不开放代码或写入。`tests/host-github-read.test.mjs`核对路径/方法限制、响应完整性与列表截断；实际连接及业务结论另行验证，见[连接合同](github-read.md)。
+
+`bridge/team-quality-resume.mjs`与`scripts/resume-team-quality.mjs`提供本人已授权的同目标质量续接。默认preview；apply需停派发、原Root/输入/已发送阻断回执及flow摘要匹配、累计预算足够、尚有第二轮额度。Native根行事务记录稳定resume ID，再投影原flow；同事件只对账投影，不新建Root或run。旧summary、通知、QA与调用历史保留。`tests/team-quality-resume.test.mjs`覆盖预算、scope、事务回滚不发事件和投影幂等。
+
 `bridge/task-call-policy.mjs`统一原根默认6/可信复杂任务12次上限，`scripts/task-call-budget.mjs`只在关闭派发且排空后登记已授权的原任务复杂档；不改写任何旧预算文件。物理调用、Chief提示、续接、Native失败重试与普通QA返修共用同一上限。`tests/task-call-policy.test.mjs`与原budget/retry/context测试验证累计计数、伪造上限拒绝和原记录保持。
 
 `bridge/team-qa-repair.mjs`和`team-native-runtime.mjs`把普通成功QA的NEEDS_WORK回交原执行子任务，最多两轮；每轮使用新operation/run/session和独有输出，原开发、QA及失败历史不覆写。采集绑定当前dispatch操作，旧QA不进入新reviewedArtifacts。预算不足、需要多项衍生重建或修复负责人不明确时保留可恢复阻断，不冒充Native失败重试。相关驱动与边界见`tests/team-qa-repair.test.mjs`。

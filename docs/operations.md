@@ -2,6 +2,14 @@
 
 ## Agent迭代发布
 
+### GitHub只读通道与原质量任务续接
+
+连接按[GitHub只读合同](github-read.md)配置。Native workspace远端身份经Owner接口登记，保留metadata原有内容、无代码hostPath及artifact上界；不因接通读通道开放GitHub写入。先修实际工具缺口，取得原操作的可核验证据，再在安全节点恢复原质量任务，避免继续花调用等待同一外部条件。
+
+质量任务因预算不足阻断后，既有本人分档授权可经`task-call-budget.mjs`把同一原Root登记为complex12；旧budget文件不动。`resume-team-quality.mjs --task-id <原root>`只读返回flow SHA；`--apply`另需稳定`--resume-id <UUID>`和同一`--expected-flow-sha256 <SHA256>`。要求team派发关闭、无活动run/未释放环境租约/call锁、原owner/输入/阻断摘要匹配、至少3次剩余额度、尚未完成两轮。未知模型或传输失败不走这个入口。
+
+应用先在Native根行事务记录owner恢复事件与in_review状态，提交后发布Native通知，再保存原flow投影；若文件保存前中断，同一resume ID按已提交事件只对账投影，不重复Native转换。旧质量阻断、summary和已发送通知存入同一flow历史及不可覆盖归档，旧run/session/产物/预算保持。该入口不唤醒模型；恢复原派发后仍由既有coordinator沿原执行/QA子任务进入下一质量轮，不重规划成替代任务或提高最多两轮限制。
+
 源码经PR、检查与独评后，在同一实例排空的窗口更新原App/宿主传输及启动恢复入口，保留Mac原生策略、12岗ID、公司Skill、原任务/调用历史和飞书入口。运行升级与RWB业务部署是不同写窗口；原任务持有窗口时不并发切换RWB。
 
 角色材料用`publish-role-profiles.mjs`经Native Owner/CAS保存。升级可通过`--baseline-profiles <私有JSON>`提供上一现役源码生成的24份文本（键为`<role>/AGENTS.md`或`<role>/CAPABILITIES.md`）。当前文本既不等于目标也不等于旧生成基线时保留整岗材料并报告`custom_content_preserved`；不把人工定制当作旧模板覆盖。旧内容和在途run固定快照保持。源模板发布不等于对应岗位业务验收。
