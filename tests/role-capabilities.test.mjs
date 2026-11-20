@@ -56,7 +56,7 @@ test('actual Apps dot namespaces expose role tools and annotated common readonly
   assert.deepEqual(resolveRoleCapabilities({role:'chief',toolCatalog:actualCatalog.map(({name})=>({name}))}).mcpAllowedTools,[]);
 });
 
-test('all eleven roles resolve common readonly tools and only their professional namespaces',()=>{
+test('all registered roles resolve common readonly tools and only their professional namespaces',()=>{
   assert.deepEqual(Object.keys(CAPABILITY_CATALOG),ROLE_KEYS);
   assert.deepEqual(Object.keys(ROLE_CAPABILITY_DEFAULTS),ROLE_KEYS);
   const research=resolveRoleCapabilities({role:'research',toolCatalog});

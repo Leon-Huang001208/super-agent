@@ -1,5 +1,9 @@
 # 运行维护与恢复
 
+## Document Specialist 单岗扩展
+
+遵循[文档岗合同](plans/document-specialist.md)，仅在当前运行Owner协调的排空窗口新增第12岗。source/Native新Agent/registry/catalog/材料及ready需配套，不能先在旧源创建paused占位；不重跑旧11岗configure或bootstrap。当前Research既有error或其他旧岗问题由原窗口核对，单岗工具不得修写其他角色。恢复入口前保留完整名册ready证据；失败不伪造验证或擅自回退丢弃新配置。
+
 ## 原生Agent切换
 
 保持原AI连接时，配置更新不应触发无许可generic hello。固定源的进程内AI equality修复只纠正键顺序误判，不能关闭真实连接变更验证；源SHA漂移应停止装配。首次分配官方paperclip操作包也须有Native版本快照，包含其全部references/scripts，不能仅把SKILL.md登记为完整能力。
