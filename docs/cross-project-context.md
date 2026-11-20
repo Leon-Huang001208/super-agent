@@ -4,6 +4,8 @@
 
 M2复用唯一的本人飞书 `/chief` 入口、Paperclip Native事务/activity与现有11角色，不增加调度器、任务库、数据库schema、依赖或第二条长连接。项目选择和owner输入以Native为准，部署catalog只缩小允许项目、workspace、角色和动作范围。
 
+M2关联由真实Native control及显式`operation.contextVersion=1`共同识别；全局开关不会把旧RWB primary或第三项目的普通Native任务强收进catalog。无M2关联沿原portable路径，有畸形M2标记或Native/operation关联不一致则拒绝降级。
+
 2026-11-20首轮**本地Docker**回归为515/515，零失败/跳过，见私有`logs/m2-full-first.log`及同名receipt。该轮未包含后加的`context-configure`，不是最终候选总数，也不是Mini或真实模型证据。**Mini配置apply、M2激活、本人飞书多轮/冷启动记忆和跨项目真实业务均为NOT_RUN**。合入后续通用角色能力/Managed指令合同的组合候选仍须单独验证。
 
 ## 飞书命令
@@ -40,6 +42,10 @@ add先持久保存pending输入。在途run未明确终态前不改其绑定输�
 M2新任务使用规范Native项目cwd。RWB如需workspace，仅创建/复用专用non-primary项；旧primary、`/workspaces/rwb-pilot`、callback、旧任务与历史保持原归属，M2不恢复旧执行队列。旧任务可按Native元数据查状态，不因此获得M2执行权。
 
 `materials[projectId][role]`登记完整作用域manifest。原岗位/Skill来源摘要继续校验，项目共享引用另行登记；跨项目复用旧manifest必须显式`scope:'generic'`，不把旧项目私有资料带入新项目。通用岗位能力、完整Skill包、Managed指令工作副本及项目交付仍沿原合同，不用M2配置覆盖它们。
+
+初次generic分类须完整核对公开岗位、CAPABILITIES及所需公共资产；以后本人经Native认证保存的全局role指令继承generic语义。执行以当次Native prepared copy为主，项目overlay只装载项目事实/PM公共引用；配置时复制的旧AGENTS/CAPABILITIES仅供来源对账，不再作为现役指令重喂。来源可沿同Agent已保全的generic材料历史核对，旧run继续固定原副本。
+
+最终能力取Native项目与catalog动作上限交集。`read_only`映射artifact，去除宿主代码写入路径、checks、写动作和未证明只读的MCP；broker工具目录同时取本run静态准入、动态岗位发现和实际readOnlyHint交集。不能因Native metadata已有host repo或动作ID提高M2权限，完整Skill方法包仍可读取。
 
 每run固定只读materialSnapshot，将company/owner/project/projectKey/role/run及manifest摘要与permit绑定，只投射本次材料，不挂整个materials根。HOME与材料目录没有可写别名；其他项目/角色私有文件、宿主HOME、Docker socket和App数据库秘密不进入模型容器。日志仅保存ID、版本、摘要与来源引用，不保存完整prompt或知识正文。实际Skill读取及工具调用仍需原始执行证据，材料存在不能替代调用成功。
 
@@ -81,6 +87,6 @@ node /opt/super-agent/role/scripts/context-configure.mjs --request /paperclip/co
 node /opt/super-agent/role/scripts/context-configure.mjs --request /paperclip/control/research-pm/context-request.json --apply
 ```
 
-company/owner/Agent IDs从原registry和Native核对，不由request替换。工具保全本次原registry/manifest，按稳定operation保存intent/receipt；部分结果沿原操作对账，不盲建第二个workspace。回退只恢复本次context绑定配置，已创建workspace、材料与来源历史保留，不全局删资源。部署apply及真实返回须另行记录，以上命令示例不表示已经运行。
+company/owner/Agent IDs从原registry和Native核对，不由request替换。apply前核对team派发关闭、无活动run/租约/call.lock；preview不写配置。工具保全本次原registry/manifest，按稳定operation保存intent/receipt；部分结果沿原操作对账，不盲建第二个workspace。回退只恢复本次context绑定配置，已创建workspace、材料与来源历史保留，不全局删资源。部署apply及真实返回须另行记录，以上命令示例不表示已经运行。
 
 验收逐项见[真实运行手册](acceptance-runbook.md#m2-跨项目续接与记忆)，源码职责与测试入口见[开发地图](development-map.md)，实施和未完成项见[M2计划](plans/cross-project-context-m2.md)。

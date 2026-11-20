@@ -62,3 +62,16 @@ test('new run preparation binds Native identity, materials, knowledge and fixed 
   await assert.rejects(prepare(input),/DIGEST_MISMATCH/);
   assert.ok(events.some(e=>e.code==='ROLE_PREPARE_READY'));
 });
+
+test('shared role materials stay bound to manifest project while knowledge follows the task project',async t=>{
+ const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'role-shared-'));t.after(()=>fs.rmSync(root,{recursive:true}));
+ fs.writeFileSync(root+'/AGENTS.md','Shared company role');
+ const id=n=>n.repeat(8)+'-'+n.repeat(4)+'-4'+n.repeat(3)+'-8'+n.repeat(3)+'-'+n.repeat(12);
+ const binding={companyId:id('a'),projectId:id('b'),taskId:id('c'),agentId:id('d'),runId:id('e'),ownerId:'owner',inputRevision:'a'.repeat(64)};
+ const profile={projectId:binding.projectId,projectKey:'research-workbench',agentId:binding.agentId,role:'pm',engine:'codex_local',model:'gpt-6.1-sol',reasoningEffort:'low',dangerouslyBypassApprovalsAndSandbox:false,sandbox:'read-only',tools:['read_materials']};
+ const manifest={schemaVersion:1,project:'personal-automation-m1',role:'pm',instructionsFilePath:'AGENTS.md',requiredReferences:[],files:[{path:'AGENTS.md',sha256:createHash('sha256').update('Shared company role').digest('hex')}]};
+ let knowledgeProject;
+ const prepare=createRolePreparation({log(){},readKnowledge:async({project})=>{knowledgeProject=project;return[];},readContext:async()=>({...binding,projectKey:'research-workbench',role:'pm',revision:'b'.repeat(64),runState:'authorized',sessionId:null,dispatchMode:'controlled',model:'gpt-6.1-sol',reasoningEffort:'low'})});
+ const ready=await prepare({binding,profile,materialRoot:root,manifest});
+ assert.equal(knowledgeProject,'research-workbench');assert.equal(ready.config.instructionsFilePath,root+'/AGENTS.md');
+});

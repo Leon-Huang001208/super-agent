@@ -10,7 +10,7 @@ const hash = /^[a-f0-9]{64}$/;
 /** Offline preparation port. Native dispatch must independently authorize and claim this run. */
 export function createRolePreparation({ readContext, readKnowledge, log }) {
   if (![readContext, readKnowledge, log].every(f => typeof f === 'function')) fail('ROLE_PREPARE_CONFIG_INVALID');
-  return async function prepare({ binding, profile, materialRoot, manifest, contextVersion, workspaceCwd, knowledgeQuery='' }) {
+  return async function prepare({ binding, profile, materialRoot, manifest, projectMaterials, contextVersion, workspaceCwd, knowledgeQuery='' }) {
     try {
       binding = structuredClone(binding);
       profile = structuredClone(profile);
@@ -34,7 +34,8 @@ export function createRolePreparation({ readContext, readKnowledge, log }) {
       };
       validate(initial);
       if(contextVersion===1&&(workspaceCwd!=='/paperclip/instances/default/projects/'+binding.companyId+'/'+binding.projectId+'/_default'||typeof knowledgeQuery!=='string'||Buffer.byteLength(knowledgeQuery)>4096))fail('ROLE_PREPARE_SCOPE_DENIED');
-      const materials = loadRoleMaterials({ root: materialRoot, project: profile.projectKey, role: profile.role, manifest, log });
+      const materials = loadRoleMaterials({ root: materialRoot, project: manifest?.project, role: profile.role, manifest, log });
+      const overlay=projectMaterials?loadRoleMaterials({root:projectMaterials.materialRoot,project:profile.projectKey,role:profile.role,manifest:projectMaterials.manifest,log}):null;
       const knowledge = selectRoleKnowledge({ project: profile.projectKey, role: profile.role,
         records: await readKnowledge({ project: profile.projectKey, role: profile.role,
           ...(contextVersion===1?{scope:{companyId:binding.companyId,ownerId:binding.ownerId,projectId:binding.projectId,projectKey:profile.projectKey},query:knowledgeQuery,limit:32}:{} )}) });
@@ -44,7 +45,8 @@ export function createRolePreparation({ readContext, readKnowledge, log }) {
       log({ code: 'ROLE_PREPARE_READY', taskId: binding.taskId, runId: binding.runId, role: profile.role });
       if(contextVersion===1)log({code:'ROLE_PREPARE_KNOWLEDGE_LOADED',taskId:binding.taskId,runId:binding.runId,role:profile.role,
         loaded:knowledge.map(record=>({id:record.id,version:record.version,sourceSha256:createHash('sha256').update(record.source).digest('hex')})),
-        materials:materials.files.map(file=>({path:file.path,sha256:file.sha256}))});
+        materials:materials.files.map(file=>({path:file.path,sha256:file.sha256})),
+        ...(overlay?{projectMaterials:overlay.files.map(file=>({path:file.path,sha256:file.sha256}))}:{})});
       return {
         binding: structuredClone(binding), nativeRevision: final.revision,
         adapterType: profile.engine, sessionMode: 'new',

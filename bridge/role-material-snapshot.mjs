@@ -1,6 +1,7 @@
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {ROLE_KEYS} from './role-labels.mjs';
+import {isRoleInstructionPermitPath} from './role-instruction-paths.mjs';
 
 export const ROLE_MATERIAL_ROOT='/paperclip/control/research-pm/materials';
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -12,6 +13,7 @@ export const roleManifestDigest=manifest=>createHash('sha256').update(JSON.strin
 const relative=value=>typeof value==='string'&&value.length>0&&value.length<=512&&
   !/[\\\0\r\n]/.test(value)&&!path.posix.isAbsolute(value)&&path.posix.normalize(value)===value&&
   !value.split('/').some(part=>!part||part==='.'||part==='..');
+const nativeInstructionFields=value=>Object.fromEntries(['materialRoot','materialSourcePath','instructionsFilePath','materialSha256','materialFiles'].map(key=>[key,value[key]]));
 
 /** Pure validation shared by the Native wrapper, the process gate and the host transport. */
 export function validateRoleMaterialSnapshot(permit,{materialRoot=ROLE_MATERIAL_ROOT}={}) {
@@ -34,9 +36,19 @@ export function validateRoleMaterialSnapshot(permit,{materialRoot=ROLE_MATERIAL_
     }
     if(m.requiredReferences.some(value=>!relative(value)||!seen.has(value)))fail('ROLE_MATERIAL_SNAPSHOT_REFERENCE_DENIED');
     const instructions=m.files.find(file=>file.path===m.instructionsFilePath);
-    if(!instructions||permit.instructionsFilePath!==path.posix.join(materialRoot,m.instructionsFilePath)||
-      permit.materialSha256!==instructions.sha256||
-      permit.cwd!=='/paperclip/instances/default/projects/'+permit.companyId+'/'+permit.projectId+'/_default') {
+    if(!instructions||permit.cwd!=='/paperclip/instances/default/projects/'+permit.companyId+'/'+permit.projectId+'/_default') {
+      fail('ROLE_MATERIAL_SNAPSHOT_SCOPE_DENIED');
+    }
+    if(s.nativeInstructions){
+      const native=s.nativeInstructions,expectedRoot=path.posix.dirname(path.posix.dirname(permit.instructionsFilePath??''));
+      if(!isRoleInstructionPermitPath(permit)||!permit.materialSourcePath||native.materialRoot!==expectedRoot||
+        !Array.isArray(native.materialFiles)||!native.materialFiles.length||native.materialFiles.length>32||
+        roleManifestDigest(native)!==roleManifestDigest(nativeInstructionFields(permit)))fail('ROLE_MATERIAL_SNAPSHOT_NATIVE_DENIED');
+      const names=new Set();for(const file of native.materialFiles){
+        if(!relative(file.path)||!hash.test(file.sha256??'')||names.has(file.path))fail('ROLE_MATERIAL_SNAPSHOT_NATIVE_DENIED');names.add(file.path);
+      }
+      if(!native.materialFiles.some(file=>path.posix.join(native.materialRoot,file.path)===permit.instructionsFilePath&&file.sha256===permit.materialSha256))fail('ROLE_MATERIAL_SNAPSHOT_NATIVE_DENIED');
+    }else if(permit.instructionsFilePath!==path.posix.join(materialRoot,m.instructionsFilePath)||permit.materialSha256!==instructions.sha256){
       fail('ROLE_MATERIAL_SNAPSHOT_SCOPE_DENIED');
     }
     return structuredClone(s);
@@ -45,16 +57,17 @@ export function validateRoleMaterialSnapshot(permit,{materialRoot=ROLE_MATERIAL_
     fail('ROLE_MATERIAL_SNAPSHOT_INVALID');
   }
 }
-export function createRoleMaterialSnapshot({binding,profile,manifest,materialRoot=ROLE_MATERIAL_ROOT}) {
+export function createRoleMaterialSnapshot({binding,profile,manifest,materialRoot=ROLE_MATERIAL_ROOT,nativeInstructions}) {
   const snapshot={schemaVersion:1,companyId:binding.companyId,ownerId:binding.ownerId,
     projectId:binding.projectId,projectKey:profile.projectKey,role:profile.role,runId:binding.runId,
     manifest:structuredClone(manifest),manifestSha256:roleManifestDigest(manifest),
-    ...(binding.projectWorkspaceId?{projectWorkspaceId:binding.projectWorkspaceId}:{})};
+    ...(binding.projectWorkspaceId?{projectWorkspaceId:binding.projectWorkspaceId}:{}),
+    ...(nativeInstructions?{nativeInstructions:structuredClone(nativeInstructionFields(nativeInstructions))}:{})};
   const primary=manifest.files.find(file=>file.path===manifest.instructionsFilePath);
   validateRoleMaterialSnapshot({...binding,role:profile.role,
     cwd:'/paperclip/instances/default/projects/'+binding.companyId+'/'+binding.projectId+'/_default',
     instructionsFilePath:path.posix.join(materialRoot,manifest.instructionsFilePath),
-    materialSha256:primary?.sha256,materialSnapshot:snapshot},{materialRoot});
+    materialSha256:primary?.sha256,...(nativeInstructions?nativeInstructionFields(nativeInstructions):{}),materialSnapshot:snapshot},{materialRoot});
   return snapshot;
 }
 

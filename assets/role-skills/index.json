@@ -1,0 +1,2353 @@
+{
+  "schemaVersion": 1,
+  "sha256": "58e8e0974314f3566e1b36a17fc4719a59551d6f306dbb9909c8dedfdc183511",
+  "skills": {
+    "leader": {
+      "name": "leader",
+      "directory": "leader",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "host-skills/leader",
+        "version": "local",
+        "sha256": "7609d16d18ca4c51d9f2c01cbb590862ec4b3b516fa35bdce8b64532c25d57dc"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "references/anatomy.md",
+          "bytes": 4979,
+          "sha256": "859002658982f188a5ac6104f5e716e228260826e1045657df9ac07809ff28f6",
+          "executable": false
+        },
+        {
+          "path": "references/style.md",
+          "bytes": 3446,
+          "sha256": "90a2ef1bc8b9181dfbf2d030891d91616bbfc4f28ec41aba018ddf0b6855c0b7",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 7480,
+          "sha256": "7cfa77a3e10e68ff5313db8b94ce072a10352cd4972205417fd8eba865313b40",
+          "executable": false
+        }
+      ]
+    },
+    "problem-framing": {
+      "name": "problem-framing",
+      "directory": "problem-framing",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "host-skills/problem-framing",
+        "version": "local",
+        "sha256": "f166e9d3ccf0b856cccf52efcab646e37175b8a21bb841177ffb2a08140afd8e"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "references/dual-layer-explanation.contract.json",
+          "bytes": 416,
+          "sha256": "4b1d9eae4cd7ae5b9e28d7d61e1672602921b774b679256be5f0b38d7a4456e2",
+          "executable": false
+        },
+        {
+          "path": "references/dual-layer-explanation.md",
+          "bytes": 922,
+          "sha256": "2afd9782fab47e049ff6d4580e0fa48fd5d698b17472d4b2ab60d0ea69b2f404",
+          "executable": false
+        },
+        {
+          "path": "references/first-principles.contract.json",
+          "bytes": 453,
+          "sha256": "7d12970c0da1ef877d0627ee9e681d0af73b7cdc35d4a41b2c9e50166b8db84e",
+          "executable": false
+        },
+        {
+          "path": "references/first-principles.md",
+          "bytes": 969,
+          "sha256": "102781bc4a6058ef69d1dc59be423eeb222080e03b801bb09e1ecffaa8d07fc2",
+          "executable": false
+        },
+        {
+          "path": "references/reverse-engineering.contract.json",
+          "bytes": 413,
+          "sha256": "46302b083ba88af5685dc4ef2af52944b99f6c5612a191c8a1f31caa85fe02fa",
+          "executable": false
+        },
+        {
+          "path": "references/reverse-engineering.md",
+          "bytes": 945,
+          "sha256": "c9763e073ce05c5a682791d0e51022342521c9bfe53646624ad9d915255a7850",
+          "executable": false
+        },
+        {
+          "path": "references/socratic-clarification.contract.json",
+          "bytes": 414,
+          "sha256": "7769635a0e31a2344a7619fce758c38713cd0df71c4a55c996a55f371c10963b",
+          "executable": false
+        },
+        {
+          "path": "references/socratic-clarification.md",
+          "bytes": 1015,
+          "sha256": "d302fe8e61f31bd009b3fb034fac080099d4b3302125d72f3f2c8a3627f4dc6a",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 897,
+          "sha256": "615d0e6abe157aaa3a9c451f7c64c3554565d2a5f1948b569858f78e4c2127ba",
+          "executable": false
+        }
+      ]
+    },
+    "engineering-delivery": {
+      "name": "engineering-delivery",
+      "directory": "engineering-delivery",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "host-skills/engineering-delivery",
+        "version": "local",
+        "sha256": "f7886094fbcf9e0861037c0920c0b103aa528df5bb1aaa8db4d51ad8d8e2ea8e"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [
+        {
+          "kind": "host",
+          "tool": "host.project_publish",
+          "description": "项目已有受管发布入口；全局运行时路径不代表容器可执行。"
+        }
+      ],
+      "files": [
+        {
+          "path": "references/iteration-delivery.md",
+          "bytes": 4350,
+          "sha256": "dc07541fc674ee8f4db647ed8dc600bd5fddce6e237012d08027b0bcfa33054b",
+          "executable": false
+        },
+        {
+          "path": "references/review-ship.md",
+          "bytes": 621,
+          "sha256": "dd3617417eb91b9fa243842539ac7e686b52a7cc3f79b1ac5c00d006fa7b9755",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 841,
+          "sha256": "54c08001be1d7a276e447afa2f820c33866acb8fafa8c5ea6e11af1033081d20",
+          "executable": false
+        }
+      ]
+    },
+    "solution-comparison": {
+      "name": "solution-comparison",
+      "directory": "solution-comparison",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "host-skills/solution-comparison",
+        "version": "local",
+        "sha256": "7bd76dc6c5419266d3a476dd801c1d87f18fd5231d50d6d1c496786ceaf2432a"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "references/cross-domain-transfer.contract.json",
+          "bytes": 483,
+          "sha256": "48cb6cd51f120fb3cbd85398189dcdc7a8ebd6f2c9d2c2080850799105b3eff0",
+          "executable": false
+        },
+        {
+          "path": "references/cross-domain-transfer.md",
+          "bytes": 934,
+          "sha256": "f2c843827b0600e79978a053fcc7fbb3172618033867dd3b5c0265d13a8c4482",
+          "executable": false
+        },
+        {
+          "path": "references/expert-perspectives.contract.json",
+          "bytes": 433,
+          "sha256": "9a8ce9896c0931b27a50bab82b53822560bf5b9769329b3f110ae12a22644e52",
+          "executable": false
+        },
+        {
+          "path": "references/expert-perspectives.md",
+          "bytes": 999,
+          "sha256": "16802ed901130d11a1af8ef63937881e15f4af8e8da95130dc95b1461dc2c44d",
+          "executable": false
+        },
+        {
+          "path": "references/horizontal-vertical-analysis.contract.json",
+          "bytes": 446,
+          "sha256": "32092f7d812cb9abce12be85c127b9817a654ef3d423dd566666468041667afb",
+          "executable": false
+        },
+        {
+          "path": "references/horizontal-vertical-analysis.md",
+          "bytes": 934,
+          "sha256": "8b41396c8069dd66d2e300618cc8758e51cd04b397020267aaff558ab7387067",
+          "executable": false
+        },
+        {
+          "path": "references/steelman-comparison.contract.json",
+          "bytes": 413,
+          "sha256": "4055d34b7662607a260f065f813f1aba641d9e536e42af46050814bd5a46995c",
+          "executable": false
+        },
+        {
+          "path": "references/steelman-comparison.md",
+          "bytes": 988,
+          "sha256": "ca062a4ab2cbf17422966f5b3a6db991bfe173d9e8f53f1052e5bee236320aeb",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 808,
+          "sha256": "fdde612ccd0153cd4af4c45ee31ff1d19f01e2884d8b1dcf668c5d14baa6ba23",
+          "executable": false
+        }
+      ]
+    },
+    "frontend-design": {
+      "name": "frontend-design",
+      "directory": "frontend-design",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "host-skills/frontend-design",
+        "version": "local",
+        "sha256": "46f1d8baf51bad0908bd60784c6a2a1ad8a844f7e161988dfcff6be5090979c7"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "bytes": 10174,
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 9390,
+          "sha256": "d91970639e9f5c37682ac7ab60094d35f1c7c1f38d731bd56396563aee10c1d3",
+          "executable": false
+        }
+      ]
+    },
+    "storage-analyzer": {
+      "name": "storage-analyzer",
+      "directory": "storage-analyzer",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "host-skills/storage-analyzer",
+        "version": "local",
+        "sha256": "6e0d23d4070b3e54af9a16a6906c6588e7f34a5d337965d60ece1bd82005b712"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [
+        {
+          "kind": "host",
+          "tool": "host.resources_observe",
+          "description": "宿主磁盘事实；Python报告脚本按当前运行环境核对，交互清理不自动启动。"
+        }
+      ],
+      "files": [
+        {
+          "path": "assets/report_template.html",
+          "bytes": 27253,
+          "sha256": "d5b56841cd012af6ec7acf00e0045b061c4d2606654411133fa03a56d56222ce",
+          "executable": false
+        },
+        {
+          "path": "references/linux.md",
+          "bytes": 4856,
+          "sha256": "a1648384499f2d0a1216883f341502b4bc5a10d0b8e7768cb3a831e7d72ec154",
+          "executable": false
+        },
+        {
+          "path": "references/macos.md",
+          "bytes": 1692,
+          "sha256": "8f7ff6d4785834d126415fe465a5aeac7fef689a4f34ad9cf0cb485bdcb6fffc",
+          "executable": false
+        },
+        {
+          "path": "references/windows.md",
+          "bytes": 2541,
+          "sha256": "c09e53f64e4dff563dfcf25cb33eb2565e857eb4d4574c4b420c9780d289754b",
+          "executable": false
+        },
+        {
+          "path": "scripts/build_report.py",
+          "bytes": 1963,
+          "sha256": "6ad53439038e63d310c2e900f7909f9626d91691b281acedcdfb758ca2ec3ac8",
+          "executable": false
+        },
+        {
+          "path": "scripts/scan.py",
+          "bytes": 18892,
+          "sha256": "291ba3fc6b9dcdeea9eeacb8cf754ef2c5a6cd37a5474a0d536ff8ee7a102863",
+          "executable": false
+        },
+        {
+          "path": "scripts/server.py",
+          "bytes": 15885,
+          "sha256": "976e3e8d98b8213b98834b7c3517aec3b8e9581555fabccca94f353d93eceb6a",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 15650,
+          "sha256": "06334a2f500cda48373aa6ddbd12b1bc9944f0f85c26738cda4316918667c5a9",
+          "executable": false
+        }
+      ]
+    },
+    "diagnosing-bugs": {
+      "name": "diagnosing-bugs",
+      "directory": "diagnosing-bugs",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "host-skills/diagnose",
+        "version": "local",
+        "sha256": "d6e11788572001044ab7bd5c6b50ae69d06937e0d850175c04af8d282bae22d9"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [
+        {
+          "kind": "host",
+          "tool": "host.project_check",
+          "description": "使用项目已有复现入口；宿主观察通过授权宿主工具。"
+        }
+      ],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 103,
+          "sha256": "3e430dbe4334a87597488c060cb3dc3786bb00c9182877d6f5ec41f62490e90b",
+          "executable": false
+        },
+        {
+          "path": "scripts/hitl-loop.template.sh",
+          "bytes": 1316,
+          "sha256": "35103539fc36873eea36074769ad454f9379d6fc8b2dc0e26ce987fd3bfe5503",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 8664,
+          "sha256": "849198df88cdb65fd0d97236604c1fca7ff2f22d2f705f9724a800d0266b118d",
+          "executable": false
+        }
+      ]
+    },
+    "improve-codebase-architecture": {
+      "name": "improve-codebase-architecture",
+      "directory": "improve-codebase-architecture",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "host-agent-skills/improve-codebase-architecture",
+        "version": "local",
+        "sha256": "7c6ee05289ef2e18a8a37ec7f37b72a835e4fedc976f19837ca08b1c304d1353",
+        "originalFilesSha256": "9cd1c9ef501e68b399bed29581a85878fd4e88e704a7ef1266c9d0290e3af13c",
+        "adaptations": [
+          {
+            "path": "SKILL.md",
+            "originalSha256": "9e9b617b1c70d390e37dbfd1c031c11b3de850e2e3d01c4a2c2888bdb386a247",
+            "reason": "Replace absent optional host format references with project-format guidance"
+          }
+        ]
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "DEEPENING.md",
+          "bytes": 2565,
+          "sha256": "9577485f4fc32c0267639a9151bb41c8af0f8f6086e4bf8b84d5b236e30604e9",
+          "executable": false
+        },
+        {
+          "path": "INTERFACE-DESIGN.md",
+          "bytes": 2725,
+          "sha256": "678c3e34f1339015053212b3316bf0b676c70aa251050a0613667d4e755fb35e",
+          "executable": false
+        },
+        {
+          "path": "LANGUAGE.md",
+          "bytes": 3804,
+          "sha256": "6feca2140439c54a774749e8367f18350899ff69c777144ed2248cd4407949fa",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 5356,
+          "sha256": "9031331fa2493af7141186dc30bee5f43de605239f6ba642d17fb021c3425cfa",
+          "executable": false
+        }
+      ]
+    },
+    "product-manager-coach": {
+      "name": "product-manager-coach",
+      "directory": "product-manager-coach",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "repository-assets/product-manager-coach",
+        "version": "sha256:248c4ec630aada30ed7a1020af2f411b29584ae95851d59dc9df7fe4f45d5983",
+        "sha256": "d587fd49422514ad12285fd9766ea96066e78016cb46ee94f3e9fbca131a8830"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 376,
+          "sha256": "c1913636b7ac1bf7b5db3410b03ce8d20625ceece898b5bcc62c71f41c5f1657",
+          "executable": false
+        },
+        {
+          "path": "README.md",
+          "bytes": 4141,
+          "sha256": "8de89546f3bead8a3934f473a9dc895d4eed787bf5ee55ec0c0cf00f60157c54",
+          "executable": false
+        },
+        {
+          "path": "references/finance.md",
+          "bytes": 4530,
+          "sha256": "2651e3c26bf9f0835a573623d1b8426859695654da453328c605669e2102b479",
+          "executable": false
+        },
+        {
+          "path": "references/modes.md",
+          "bytes": 6616,
+          "sha256": "caf691b1a292533bd7002a07d584bbe45b2c8a31d96aa712ab55e96241cc8fd0",
+          "executable": false
+        },
+        {
+          "path": "references/templates.md",
+          "bytes": 5330,
+          "sha256": "3fcbafc74ebe461550b3c8b3154d9d6b29a47fa829f08aeb88c865a8771ca94a",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 6128,
+          "sha256": "248c4ec630aada30ed7a1020af2f411b29584ae95851d59dc9df7fe4f45d5983",
+          "executable": false
+        }
+      ]
+    },
+    "firecrawl-deep-research": {
+      "name": "firecrawl-deep-research",
+      "directory": "packages/app-6a314a73f8ac819195b0d55e36b9c609/2.11.0/skills/firecrawl-deep-research",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/app-6a314a73f8ac819195b0d55e36b9c609",
+        "version": "2.11.0",
+        "sha256": "3fbbbab6f7addc21efef3ab48584548cfd00e5273e6611b3f5ed404b325a057d"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "firecrawl",
+          "description": "已连接的Firecrawl搜索/抓取工具；缓存文件本身不提供网络能力。"
+        }
+      ],
+      "files": [
+        {
+          "path": "SKILL.md",
+          "bytes": 13431,
+          "sha256": "90d9a0ac1a4e6f6582a2482efc6e06e1a9faaa8e512212794c0b0086cb38b71e",
+          "executable": false
+        }
+      ]
+    },
+    "read-docs": {
+      "name": "read-docs",
+      "directory": "packages/app-6a314a73f8ac819195b0d55e36b9c609/2.11.0/skills/read-docs",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/app-6a314a73f8ac819195b0d55e36b9c609",
+        "version": "2.11.0",
+        "sha256": "9a0fe5e84f67561a8a17e6251bbaa80dffd858dd4263707e570e87110ee5f24f"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "firecrawl",
+          "description": "已连接的Firecrawl搜索/抓取工具；缓存文件本身不提供网络能力。"
+        }
+      ],
+      "files": [
+        {
+          "path": "SKILL.md",
+          "bytes": 2593,
+          "sha256": "a20df03ffeb704a15688b760e5e79660e2b852b4c9c0ea83a6c5407414c644ec",
+          "executable": false
+        }
+      ]
+    },
+    "data-analytics-index": {
+      "name": "data-analytics-index",
+      "directory": "packages/data-analytics/1.2.0/skills/index",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/data-analytics",
+        "version": "1.2.0",
+        "sha256": "721123578c95f357eac07a56879a904e4c9c4d9a1f54303e235626d34235b783",
+        "originalFilesSha256": "bfca3a10ccca40c92ec17f01c23c833914a032e8542c161079b397f49ec12dfb",
+        "adaptations": [
+          {
+            "path": "SKILL.md",
+            "originalSha256": "86d241dd68cbfdcae859ca96df25a939a954952f4374aae120508715097b8d19",
+            "reason": "Mark optional unbundled workflows explicitly; preserve selected KPI method and current task artifact contract"
+          }
+        ]
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 227,
+          "sha256": "5b590b788c68c945cc28f59690d340fa6699c8223579f56c561a41726d884c31",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 23377,
+          "sha256": "2604a78ff60dffbdccb9c089b2cc75533de82185150f26afddb691c7005985c6",
+          "executable": false
+        }
+      ]
+    },
+    "design-kpis": {
+      "name": "design-kpis",
+      "directory": "packages/data-analytics/1.2.0/skills/design-kpis",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/data-analytics",
+        "version": "1.2.0",
+        "sha256": "fe414216e93d9d357630957ad2a951741c547cb41814c7e2085dd8e245426034"
+      },
+      "dependencies": [
+        "data-analytics-index"
+      ],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "data",
+          "description": "如需连接分析，先核对Data工具与数据源；纯指标定义可离线完成。"
+        }
+      ],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 281,
+          "sha256": "3f3bb98ebe61e1df2aad1fc8d38484e21fabc033237b4e5bbb437df050acec3a",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 8862,
+          "sha256": "0e362176cf5063a33005ba25ef6a7b090dc00b0eea72a0eac5ee006c122915f4",
+          "executable": false
+        }
+      ]
+    },
+    "product-design-index": {
+      "name": "product-design-index",
+      "directory": "packages/product-design/0.1.56/skills/index",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/product-design",
+        "version": "0.1.56",
+        "sha256": "6b1fbf42669f34a9bf9b80c9a820d585f13045e5cbd4edb5d760d063ff5117c6"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 290,
+          "sha256": "61ff54c05daef11e1b1e8d29bf7fc9a18e18962cc22cc59d8c2a6ff1e2413d66",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 9961,
+          "sha256": "8e9916d9e5dc3b6a394bedcaa38cd9c8833a1f3b0c4538b75647cf9f62f779fc",
+          "executable": false
+        }
+      ]
+    },
+    "user-context": {
+      "name": "user-context",
+      "directory": "packages/product-design/0.1.56/skills/user-context",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/product-design",
+        "version": "0.1.56",
+        "sha256": "7b48422c65ed303fd187079668a427ef3086055b437162476a05b24717a8785f"
+      },
+      "dependencies": [
+        "product-design-index"
+      ],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 293,
+          "sha256": "0218955b3a361ac630601fdf6f8d256c36235d67abde655a0406600a094464e5",
+          "executable": false
+        },
+        {
+          "path": "plugin-author-config/user-context-template.md",
+          "bytes": 1587,
+          "sha256": "c925a17d42b97c0bf1c53137211692d50b4d7af1852640708e9a2edc4b505dac",
+          "executable": false
+        },
+        {
+          "path": "references/onboarding.md",
+          "bytes": 2285,
+          "sha256": "0215ef54801aaa1e40222aaac7393d2e5ff8697edd7d8e5467cae44ddde47b49",
+          "executable": false
+        },
+        {
+          "path": "scripts/init_user_context.py",
+          "bytes": 2599,
+          "sha256": "102ad6d6535840c7d5d06a166e20c50c56a803c37a00c6ff58083fb18950e481",
+          "executable": false
+        },
+        {
+          "path": "scripts/user_context_preflight.py",
+          "bytes": 6132,
+          "sha256": "3195ea2f41f5db4a4fa1a6b18f911137ffbabf6e3176a49de489f2d33da87bc4",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 6088,
+          "sha256": "5690a7f99cf896970493f5d0bd7f35f62ab9cbe21744352acf84dc0ceea4194c",
+          "executable": false
+        }
+      ]
+    },
+    "audit": {
+      "name": "audit",
+      "directory": "packages/product-design/0.1.56/skills/audit",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/product-design",
+        "version": "0.1.56",
+        "sha256": "5259daf2db93667763adabf06d8d04adfebdbea91084501626e6e3a731fc4dec"
+      },
+      "dependencies": [
+        "product-design-index",
+        "user-context"
+      ],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "figma",
+          "description": "设计审查按产物使用已连接的设计工具；无连接时只审查已给材料。"
+        }
+      ],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 261,
+          "sha256": "ec598dcf404a2ed68a32090e281e3168917caa497e08341e3f2cb034be0a529e",
+          "executable": false
+        },
+        {
+          "path": "references/design-audit-framework.md",
+          "bytes": 2028,
+          "sha256": "6b5643df54a2c47089fe2769886487eb6e2c828d275a0697c015aca8b146f149",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 9863,
+          "sha256": "087f798c3fe02e91b4cca18cc0f42c358a4dc2c02ccf37a348b476fb19b64aa3",
+          "executable": false
+        }
+      ]
+    },
+    "figma-use": {
+      "name": "figma-use",
+      "directory": "packages/figma/20.0.0/skills/figma-use",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/figma",
+        "version": "20.0.0",
+        "sha256": "c77ab5c3ba577648909f35edd5e009bcaef3a474cbdd1dcf88f46a5e48cb2030",
+        "originalFilesSha256": "baad23d6764d828c24215ab87bc5986eb4679da9e9a1ce154b160d95724e7039",
+        "adaptations": [
+          {
+            "path": "references/gotchas.md",
+            "originalSha256": "18b21fc8dab6bb2a31daf15dcbc0bd9989096aa7460f768f42e46d0383da4f57",
+            "reason": "Correct upstream relative reference or obsolete heading anchor; mark optional unbundled workflow"
+          },
+          {
+            "path": "references/text-style-patterns.md",
+            "originalSha256": "6ca1f627692cea335a3145330bf327b6eaa1417a73f849fec9be609ad5bce50f",
+            "reason": "Correct upstream relative reference or obsolete heading anchor; mark optional unbundled workflow"
+          },
+          {
+            "path": "references/working-with-design-systems/wwds-variables.md",
+            "originalSha256": "51e2e13658a80ebd1683890cba656b48caf1da670b53b7945dd3cad6b2796958",
+            "reason": "Correct upstream relative reference or obsolete heading anchor; mark optional unbundled workflow"
+          },
+          {
+            "path": "SKILL.md",
+            "originalSha256": "d650cc01d10513efda419b3988befa8a05008f066409a7956c52e7e97f3c7c60",
+            "reason": "Correct upstream relative reference or obsolete heading anchor; mark optional unbundled workflow"
+          },
+          {
+            "path": "references/component-patterns.md",
+            "originalSha256": "5d7b3a4f468d7ad1cb3fe5a8deb9359a0cc770ebcf761a2a369397ab79302931",
+            "reason": "Separate valid upstream HTML anchor from its paragraph for portable Markdown validation"
+          }
+        ]
+      },
+      "dependencies": [
+        "figma-generate-design",
+        "figma-generate-library"
+      ],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "figma",
+          "description": "需要本run工具目录内的Figma MCP和已授权文件访问。"
+        }
+      ],
+      "files": [
+        {
+          "path": "references/api-reference.md",
+          "bytes": 16608,
+          "sha256": "8975782bd5e78e500b9aea29a97f0a0414e401357967bab12d7d11779593b2ca",
+          "executable": false
+        },
+        {
+          "path": "references/common-patterns.md",
+          "bytes": 12359,
+          "sha256": "7618569e29722cf4072547031fa14665129f90a546377a3aaeaba53dbd9f539b",
+          "executable": false
+        },
+        {
+          "path": "references/component-patterns.md",
+          "bytes": 26485,
+          "sha256": "bc218df8aead689b05ace3d7669afc558236661cc454ee9d3ad9523ac035469e",
+          "executable": false
+        },
+        {
+          "path": "references/critical-rules-deep.md",
+          "bytes": 11775,
+          "sha256": "d2c4fec54b80aff4c57c8bef6c45f1b7c8ca0e7e0967273b22632bae8e7a1399",
+          "executable": false
+        },
+        {
+          "path": "references/effect-style-patterns.md",
+          "bytes": 2574,
+          "sha256": "9146f004447bd6e8bc5fae545d0d7685bde8e00836e8d069755c48cf08677d50",
+          "executable": false
+        },
+        {
+          "path": "references/fig-builder.md",
+          "bytes": 39843,
+          "sha256": "eb19654225cd7c1c770d87e5ee67d0de4037ba9caaeae256c950d224e350e0ce",
+          "executable": false
+        },
+        {
+          "path": "references/gotchas.md",
+          "bytes": 53596,
+          "sha256": "ac1172affc5a7f01eb6ceb0633e79cb99db90e458d6232008def71fd9e1d8821",
+          "executable": false
+        },
+        {
+          "path": "references/plugin-api-standalone.d.ts",
+          "bytes": 443167,
+          "sha256": "c4a2654700880c7c7220f87f9b4d5e8af46957c90bf50f8c82d2f9dd9ff9d2fe",
+          "executable": false
+        },
+        {
+          "path": "references/plugin-api-standalone.index.md",
+          "bytes": 40482,
+          "sha256": "58c3755474f2fd3fc9b0c535e302ac55114b74ff7567b150bf9a29afbf34f875",
+          "executable": false
+        },
+        {
+          "path": "references/text-style-patterns.md",
+          "bytes": 5913,
+          "sha256": "93b26f4894c1b16cd4141ced5bfa6f0098ba13e4bf22d11add5aeef37fe253de",
+          "executable": false
+        },
+        {
+          "path": "references/validation-and-recovery.md",
+          "bytes": 3973,
+          "sha256": "95fa6b77b4382c1350fd76aa65ec13f8353e91241cdc5dd6e520c2fd68a85049",
+          "executable": false
+        },
+        {
+          "path": "references/variable-patterns.md",
+          "bytes": 14937,
+          "sha256": "64c446377c6b88950f203a0a71c768bee4964f47142eaed337b67bb313f149f9",
+          "executable": false
+        },
+        {
+          "path": "references/working-with-design-systems/wwds-components--creating.md",
+          "bytes": 2199,
+          "sha256": "f383ea109e48c335c5855a8c7be15402e0ba72d5313c34cde6cebf550a6443ff",
+          "executable": false
+        },
+        {
+          "path": "references/working-with-design-systems/wwds-components--using.md",
+          "bytes": 3170,
+          "sha256": "ea7a6d7909deeb2db039e1893301f60f1b65da0e4f6e65726c1516454f03ce4c",
+          "executable": false
+        },
+        {
+          "path": "references/working-with-design-systems/wwds-components.md",
+          "bytes": 4402,
+          "sha256": "fe8d988d5ed545410a9536f57b8f7fc6c2acea62e46ee97cb7afca8bebf149fd",
+          "executable": false
+        },
+        {
+          "path": "references/working-with-design-systems/wwds-effect-styles.md",
+          "bytes": 3649,
+          "sha256": "fd7f0c19939bb7fa938e161b8e4e9a3ed785c4ae8ee5c035fd644488b3a52210",
+          "executable": false
+        },
+        {
+          "path": "references/working-with-design-systems/wwds-text-styles.md",
+          "bytes": 5519,
+          "sha256": "d976a6f7f69a496998a78a1e321132f127479d14831dd33fe7a5f6a9f43069e3",
+          "executable": false
+        },
+        {
+          "path": "references/working-with-design-systems/wwds-variables--creating.md",
+          "bytes": 1559,
+          "sha256": "3a2f9796aac9d419705ca02b9fab29a46282f0921c4c0a01704cec7e43d8ccf2",
+          "executable": false
+        },
+        {
+          "path": "references/working-with-design-systems/wwds-variables--using.md",
+          "bytes": 2273,
+          "sha256": "81d8c8446a565acef433f1d031f03ca7ac6e8f84762dab2beb408a42a1ed2b47",
+          "executable": false
+        },
+        {
+          "path": "references/working-with-design-systems/wwds-variables.md",
+          "bytes": 5186,
+          "sha256": "0d1d8145ce892ff782500581af3e368cbb6b41ac34e922429de0e05ef182174e",
+          "executable": false
+        },
+        {
+          "path": "references/working-with-design-systems/wwds.md",
+          "bytes": 5220,
+          "sha256": "e514da78a7eed6a55c95d6b52a600bd38252bb28ad1dde689a7c72f30c99a9f8",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 36829,
+          "sha256": "38206a581f30f7a919e230f8cb342067ea8f8bb788247528844c901d01b66eb7",
+          "executable": false
+        }
+      ]
+    },
+    "figma-generate-design": {
+      "name": "figma-generate-design",
+      "directory": "packages/figma/20.0.0/skills/figma-generate-design",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/figma",
+        "version": "20.0.0",
+        "sha256": "2966b1653810b7e951e1e6df19a9e54bc77f39700196992c161e09029b24900c"
+      },
+      "dependencies": [
+        "figma-use",
+        "figma-create-new-file"
+      ],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "figma",
+          "description": "需要本run工具目录内的Figma MCP和已授权文件访问。"
+        }
+      ],
+      "files": [
+        {
+          "path": "references/componentization.md",
+          "bytes": 2832,
+          "sha256": "98ca878fe4b4839646af27314ec5c24803f511962949e4a5f2be78e9cc1afbee",
+          "executable": false
+        },
+        {
+          "path": "references/discover-product-font.md",
+          "bytes": 4791,
+          "sha256": "212ee1c8d4ec2bd4f580fde52e97bda62e091a763aa1d2390af8182843802450",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 39675,
+          "sha256": "b3247e893ece4cd8437e06aa8b498b584b95c9785aa902dd6bd9e51b41eaa022",
+          "executable": false
+        }
+      ]
+    },
+    "figma-generate-library": {
+      "name": "figma-generate-library",
+      "directory": "packages/figma/20.0.0/skills/figma-generate-library",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/figma",
+        "version": "20.0.0",
+        "sha256": "635f76e1279b939156f66f096bf057292987a767e42fb9939b3b2499bf8a37e5",
+        "originalFilesSha256": "0ecc4dbbccc37217156f8ebde4477442f02557462888bddab6beb1995693f639",
+        "adaptations": [
+          {
+            "path": "SKILL.md",
+            "originalSha256": "58da255f6b9e5639dd0c60b8680ecb8f293cb2c68efff8beb5174729f28fd265",
+            "reason": "Correct upstream relative reference or obsolete heading anchor; mark optional unbundled workflow"
+          }
+        ]
+      },
+      "dependencies": [
+        "figma-use"
+      ],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "figma",
+          "description": "需要本run工具目录内的Figma MCP和已授权文件访问。"
+        }
+      ],
+      "files": [
+        {
+          "path": "references/code-connect-setup.md",
+          "bytes": 13334,
+          "sha256": "878ebecb9f274e172835951b8ffec4dccd51914f09dc95c4f8d16cf925973648",
+          "executable": false
+        },
+        {
+          "path": "references/component-creation.md",
+          "bytes": 39303,
+          "sha256": "55d09d20f329c81c09d77d93ef5f6792b1d0e09bab53899598a95eee1d0b93c3",
+          "executable": false
+        },
+        {
+          "path": "references/discovery-phase.md",
+          "bytes": 21839,
+          "sha256": "61dc150ac47ea4d227eb78d3e8720e21d51f18bc060c7af3c2f2baeceb8c3e0e",
+          "executable": false
+        },
+        {
+          "path": "references/documentation-creation.md",
+          "bytes": 29037,
+          "sha256": "16559b87b5922d249611087e3063f0e64c7b593e34d353f63979630f0bb5c932",
+          "executable": false
+        },
+        {
+          "path": "references/error-recovery.md",
+          "bytes": 16250,
+          "sha256": "d78ff587d288391ad0811024f9ea0db25bc411c5ba83a0a8cea3ba65f423abfc",
+          "executable": false
+        },
+        {
+          "path": "references/naming-conventions.md",
+          "bytes": 18994,
+          "sha256": "eae21ca0c6b8d2fa2452d359f3b76a1112cf081cf0096cc29e48fbd60c860369",
+          "executable": false
+        },
+        {
+          "path": "references/token-creation.md",
+          "bytes": 32717,
+          "sha256": "15b3d4c84d2c677ff6a340e232b8142b7553962ccaf9664226b4b2e64d7118f4",
+          "executable": false
+        },
+        {
+          "path": "scripts/bindVariablesToComponent.js",
+          "bytes": 4026,
+          "sha256": "f6492ad075b38bab0ae9a7a0dfb60c58e23a4258f67261f1b166098df58f115c",
+          "executable": false
+        },
+        {
+          "path": "scripts/cleanupOrphans.js",
+          "bytes": 2204,
+          "sha256": "525583dc4a560cfd7f725685140210e649dd1c73c7fd076a5ce03fe9e17fddaa",
+          "executable": false
+        },
+        {
+          "path": "scripts/createComponentWithVariants.js",
+          "bytes": 4679,
+          "sha256": "3a97251335e4bb5dd833acdd86c1a158d1e4ad2b6780587f1bc453d88aa53d31",
+          "executable": false
+        },
+        {
+          "path": "scripts/createDocumentationPage.js",
+          "bytes": 4738,
+          "sha256": "28cb9b86c2c26ed91b3fdb688d18e07928c7abc073e1b72dd6c0f0995225381d",
+          "executable": false
+        },
+        {
+          "path": "scripts/createSemanticTokens.js",
+          "bytes": 3688,
+          "sha256": "e390eb77e996cddcf62fb889eb146cb37f83407c4c83659297d4d1a34c26020f",
+          "executable": false
+        },
+        {
+          "path": "scripts/createVariableCollection.js",
+          "bytes": 1408,
+          "sha256": "7fed413cd2d09acdb80e9a92e20a9afd581aeba4d4754d605862926df8b146d0",
+          "executable": false
+        },
+        {
+          "path": "scripts/inspectFileStructure.js",
+          "bytes": 3718,
+          "sha256": "d4c73a074cfef2bfe6dc31998b3e9fb4861bfd4e0ae61bcda6165ab05c9f3118",
+          "executable": false
+        },
+        {
+          "path": "scripts/validateCreation.js",
+          "bytes": 2718,
+          "sha256": "dae970b4d80c4d0994f14c89ad01c04115604444b916a0b8fc342ed262fdfa97",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 26913,
+          "sha256": "e9662f643049f897fe7295453d53783617235e7dcd23c270bbcd85b49f30bb95",
+          "executable": false
+        }
+      ]
+    },
+    "figma-create-new-file": {
+      "name": "figma-create-new-file",
+      "directory": "packages/figma/20.0.0/skills/figma-create-new-file",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/figma",
+        "version": "20.0.0",
+        "sha256": "3d891426df580724e5bc42e04ce1b6daa2338508a5245d7acedb6d040a2dfdd6"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "figma",
+          "description": "需要本run工具目录内的Figma MCP和已授权文件访问。"
+        }
+      ],
+      "files": [
+        {
+          "path": "SKILL.md",
+          "bytes": 1841,
+          "sha256": "bb7bc48c487f0ad7e738c23d0685bad5ec0bbbca8f5b5bb6295dc0666cc9ddf1",
+          "executable": false
+        }
+      ]
+    },
+    "figma-design-to-code": {
+      "name": "figma-design-to-code",
+      "directory": "packages/figma/20.0.0/skills/figma-design-to-code",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/figma",
+        "version": "20.0.0",
+        "sha256": "8684bdbead462c0100601b59aa17a6e564ebf9dd445a43963e9b0d11fbb648c7"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "figma",
+          "description": "需要本run工具目录内的Figma MCP和已授权文件访问。"
+        }
+      ],
+      "files": [
+        {
+          "path": "SKILL.md",
+          "bytes": 4066,
+          "sha256": "a6e852421e4db72260b2ca641929b1f84684e5b067aead081e35111f5b5feee4",
+          "executable": false
+        }
+      ]
+    },
+    "figma-spec": {
+      "name": "figma-spec",
+      "directory": "packages/figma/20.0.0/skills/figma-spec",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/figma",
+        "version": "20.0.0",
+        "sha256": "fe7c2b7bbf74b01c1bf81d1d8d5d4f582d9102f09fbd11047eb498abd7b48f2d"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "figma",
+          "description": "需要本run工具目录内的Figma MCP和已授权文件访问。"
+        }
+      ],
+      "files": [
+        {
+          "path": "SKILL.md",
+          "bytes": 6159,
+          "sha256": "aa3d552caf36e7e20589d4d585dbfa4eda6213cc4f295abe9594a0f774656a9e",
+          "executable": false
+        }
+      ]
+    },
+    "figma-code-connect": {
+      "name": "figma-code-connect",
+      "directory": "packages/figma/20.0.0/skills/figma-code-connect",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/figma",
+        "version": "20.0.0",
+        "sha256": "27d0e469122fa8a17f9369e600fddbb8a308d8d08e5329f08dbda7f8bfc426cd"
+      },
+      "dependencies": [
+        "figma-use"
+      ],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "figma",
+          "description": "需要本run工具目录内的Figma MCP和已授权文件访问。"
+        }
+      ],
+      "files": [
+        {
+          "path": "references/advanced-patterns.md",
+          "bytes": 10069,
+          "sha256": "ac2cb232aca4e43b75169f47f5550d6e7e48a8df0eb55aa1adbfb1a2ab0aa1b4",
+          "executable": false
+        },
+        {
+          "path": "references/api.md",
+          "bytes": 23396,
+          "sha256": "40c1dcae2db387fb93ffbf4eba8ae81362e204bdfa5be7018f743b8ac24d4252",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 26669,
+          "sha256": "87af3996edb167d6aa3c044cb1bbb6a0d8e2d631c731bb896b1e1e8669640415",
+          "executable": false
+        }
+      ]
+    },
+    "writing-plans": {
+      "name": "writing-plans",
+      "directory": "packages/superpowers/7.0.1/skills/writing-plans",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/superpowers",
+        "version": "7.0.1",
+        "sha256": "7d835a8d2a4b4f1132311a10c2070dac3f5c6c5f5499deb60cd2be4ca788792b"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 123,
+          "sha256": "de6a2f3d9de78d9c5027512ab1abab998f9acbef70960ecdbad525f4dce2e1bb",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 10335,
+          "sha256": "a6c67c1900064347c2a329990dd3c555657c51c3ec53b259a08aa01a2c26139a",
+          "executable": false
+        }
+      ]
+    },
+    "systematic-debugging": {
+      "name": "systematic-debugging",
+      "directory": "packages/superpowers/7.0.1/skills/systematic-debugging",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/superpowers",
+        "version": "7.0.1",
+        "sha256": "5da558cf3d2c9d21a19329ea8dab1163c77b40ce581673d5deb2647ff99e11c7"
+      },
+      "dependencies": [
+        "test-driven-development",
+        "verification-before-completion"
+      ],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 114,
+          "sha256": "a1ec2b63eb6ac4f79bdea5e0ac4dd9688ead473dbc0ff8aa791f9142778b5386",
+          "executable": false
+        },
+        {
+          "path": "condition-based-waiting-example.ts",
+          "bytes": 5054,
+          "sha256": "40ae5ebe497fdf310200e43fe986552546d0a22837c0d39e855db1cfd33eb88e",
+          "executable": false
+        },
+        {
+          "path": "condition-based-waiting.md",
+          "bytes": 3516,
+          "sha256": "e89fec8400d6cd50f43407cec9fab50976ba4d55d0ec2eb51c0bd68036b54c26",
+          "executable": false
+        },
+        {
+          "path": "CREATION-LOG.md",
+          "bytes": 4257,
+          "sha256": "c24733a5b1821bd6bed1fc950261f0b9f4e90097e0bbb96459d8179713730789",
+          "executable": false
+        },
+        {
+          "path": "defense-in-depth.md",
+          "bytes": 3650,
+          "sha256": "1e175fb86fc357e58c6aebf5441e481e1b7868b4380c0456b63a17eefbd18ba7",
+          "executable": false
+        },
+        {
+          "path": "find-polluter.sh",
+          "bytes": 1986,
+          "sha256": "dd7b8f13c4cc2a24b33ff87b18da9248f3e1c80a085c3316224f69ff0fa5c43c",
+          "executable": true
+        },
+        {
+          "path": "root-cause-tracing.md",
+          "bytes": 5321,
+          "sha256": "75b933b6a8c40bdb2031b10f21654395b56ec6ab6bc7b018c18d3fe57aeb7fb8",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 9530,
+          "sha256": "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202",
+          "executable": false
+        },
+        {
+          "path": "test-academic.md",
+          "bytes": 653,
+          "sha256": "fe2ba480d78ac0d686dc025f41c2a32a43d642bf533f91b0c6053a04d35d6486",
+          "executable": false
+        },
+        {
+          "path": "test-pressure-1.md",
+          "bytes": 1900,
+          "sha256": "0b6a915db0054577819834c79be9eb614e97bddba10d73768e1fbe91cfed048a",
+          "executable": false
+        },
+        {
+          "path": "test-pressure-2.md",
+          "bytes": 2283,
+          "sha256": "b2030aeffba07050e8ad573ddf87486457c4a016a786bb326235bebd856f2016",
+          "executable": false
+        },
+        {
+          "path": "test-pressure-3.md",
+          "bytes": 2692,
+          "sha256": "96b50a52e2c7989c9cf20fb752c47c1e9a3a70dc362f8f7989f8f5b64dac7708",
+          "executable": false
+        }
+      ]
+    },
+    "test-driven-development": {
+      "name": "test-driven-development",
+      "directory": "packages/superpowers/7.0.1/skills/test-driven-development",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/superpowers",
+        "version": "7.0.1",
+        "sha256": "5aee51fc2435b93047330a1166f1acc23059038abf461d112dc0ad4f3e0be490"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 137,
+          "sha256": "d1fd223b137ce6eca628d521031213a2dc002a97865f00e2f6fce03529b9ca05",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 9578,
+          "sha256": "64b03fce4aee5a97a93160cea8111f3ba13a17b7c001db4bd5836d67fd10705d",
+          "executable": false
+        },
+        {
+          "path": "writing-good-tests.md",
+          "bytes": 8268,
+          "sha256": "51471c853306ff92ca8bb41dcaea05f31c0e46b03651f8f3c99754b7172f4ae1",
+          "executable": false
+        }
+      ]
+    },
+    "verification-before-completion": {
+      "name": "verification-before-completion",
+      "directory": "packages/superpowers/7.0.1/skills/verification-before-completion",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/superpowers",
+        "version": "7.0.1",
+        "sha256": "70ca9f737356f7d0bb83751411a379e1100d97dfa825cede43765b0420c5eef2"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [
+        {
+          "kind": "host",
+          "tool": "host.project_check",
+          "description": "只把实际执行结果作为验证证据。"
+        }
+      ],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 147,
+          "sha256": "0eaad1a982ab8c95d8b938f1567f207dbc6fd9d172707b1e268e0cc8ab999705",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 3646,
+          "sha256": "2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3",
+          "executable": false
+        }
+      ]
+    },
+    "react-best-practices": {
+      "name": "react-best-practices",
+      "directory": "packages/build-web-apps/0.1.2/skills/react-best-practices",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/build-web-apps",
+        "version": "0.1.2",
+        "sha256": "3219037ef790a3b67c82e212f31c546fb3c3e8bb0948e505d9422fa9fa84a9c3"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 131,
+          "sha256": "c7183028e6c3160fae6e99c036bf32958c9a48577ad0731adc124aaffc599b75",
+          "executable": false
+        },
+        {
+          "path": "AGENTS.md",
+          "bytes": 94496,
+          "sha256": "6327efcce0c631580cee5bf2dcac8f884a81172a0261fa3c8ca458a72f603165",
+          "executable": true
+        },
+        {
+          "path": "metadata.json",
+          "bytes": 921,
+          "sha256": "c4e18bac3290fbe1b471a605867d4df68b03144ea26b8befdbe8f9d8fd124354",
+          "executable": true
+        },
+        {
+          "path": "README.md",
+          "bytes": 3360,
+          "sha256": "9eafb2123d3b8b2aef41fba0db2648a3f4f49996f8c7c8bb2c86263befd8b48a",
+          "executable": true
+        },
+        {
+          "path": "rules/_sections.md",
+          "bytes": 1554,
+          "sha256": "01c59969e4e867f0708c8f8ef9c6d87fab9a07d0586244f429ff84013db8a115",
+          "executable": true
+        },
+        {
+          "path": "rules/_template.md",
+          "bytes": 631,
+          "sha256": "99df2a3ea088c6c22de2484ddc7e964d0e9923846f44c63380343ecc64455442",
+          "executable": true
+        },
+        {
+          "path": "rules/advanced-event-handler-refs.md",
+          "bytes": 1483,
+          "sha256": "a3097edeecfb2ff6851cd66ed8cdf0617c3c88180504bee824aa6e75a215bbbc",
+          "executable": true
+        },
+        {
+          "path": "rules/advanced-init-once.md",
+          "bytes": 958,
+          "sha256": "3e4dc22173eb0e2b6dcf583e3babd862b8696328f8f59aee7c4d746c5bc05f6c",
+          "executable": true
+        },
+        {
+          "path": "rules/advanced-use-latest.md",
+          "bytes": 1072,
+          "sha256": "8a3f64dfe5a77d1564248faf17fe662ae75b55d497a243cb30b38eb07ccbbf9a",
+          "executable": true
+        },
+        {
+          "path": "rules/async-api-routes.md",
+          "bytes": 1125,
+          "sha256": "523338540d73427dc14c0cbb19f2741ebccdf8b105a7b2c1b33d2905cf237a42",
+          "executable": true
+        },
+        {
+          "path": "rules/async-defer-await.md",
+          "bytes": 2028,
+          "sha256": "9b9166c7fc58b436cf039ac4e36dd0d3c4f762b61111f579d93cdb9f2ab2b6f9",
+          "executable": true
+        },
+        {
+          "path": "rules/async-dependencies.md",
+          "bytes": 1293,
+          "sha256": "16ef469f877e30c6b8e1e1b4bc3e527312fa3c6318cb785a4eca186ea236131a",
+          "executable": true
+        },
+        {
+          "path": "rules/async-parallel.md",
+          "bytes": 654,
+          "sha256": "6d2f841896279e976dfcdc1ac89e70771ac188baadfd43c096b5706cb838b961",
+          "executable": true
+        },
+        {
+          "path": "rules/async-suspense-boundaries.md",
+          "bytes": 2510,
+          "sha256": "de05fedac2eb7ae563b887b5a424464ec3dfaf84e5b7797467ebe2a796ac8afc",
+          "executable": true
+        },
+        {
+          "path": "rules/bundle-barrel-imports.md",
+          "bytes": 2370,
+          "sha256": "9e61a5d579a8a7d55194c2e110414d7ee2d8da947ba187d444daa1e54d265f0f",
+          "executable": true
+        },
+        {
+          "path": "rules/bundle-conditional.md",
+          "bytes": 949,
+          "sha256": "09c8259c3efb04fc0abb8e412ccbda217c222ae8118516283e571c995fe3a7d4",
+          "executable": true
+        },
+        {
+          "path": "rules/bundle-defer-third-party.md",
+          "bytes": 920,
+          "sha256": "3719fb47b191e8db4fe22686ec88448ad5af9e6838585425abbe103d0b642e37",
+          "executable": true
+        },
+        {
+          "path": "rules/bundle-dynamic-imports.md",
+          "bytes": 791,
+          "sha256": "401817a7369f315fc5a68a1095742ff7d53d0461906880dc9d64a41495ee1986",
+          "executable": true
+        },
+        {
+          "path": "rules/bundle-preload.md",
+          "bytes": 1149,
+          "sha256": "d1f7cc28da7cd5ab249acd287edc5b761afcfb194e9cb62cd44c5f3543db2de2",
+          "executable": true
+        },
+        {
+          "path": "rules/client-event-listeners.md",
+          "bytes": 1969,
+          "sha256": "242a873349febc1ce685e85617994784dbab92c2eaa68aed7fed5a83e7680e93",
+          "executable": true
+        },
+        {
+          "path": "rules/client-localstorage-schema.md",
+          "bytes": 1950,
+          "sha256": "0fb7cdf9dc93fdf22f87e3669f953fb9d4ac9b0be42eec4a29fe9a2560610b88",
+          "executable": true
+        },
+        {
+          "path": "rules/client-passive-event-listeners.md",
+          "bytes": 1644,
+          "sha256": "1f35016f9053de69e884ee9be00654e37979c2ca85f5e57764dc2626ff7acb4b",
+          "executable": true
+        },
+        {
+          "path": "rules/client-swr-dedup.md",
+          "bytes": 1159,
+          "sha256": "644652c39c6cc00de8d1c77a7273612e868dc3f7edda30764164c12ec0f764a3",
+          "executable": true
+        },
+        {
+          "path": "rules/js-batch-dom-css.md",
+          "bytes": 3266,
+          "sha256": "480b891b9eaf96e929dc1e964274a4828e3a78009b7d00ccd965a0d425215959",
+          "executable": true
+        },
+        {
+          "path": "rules/js-cache-function-results.md",
+          "bytes": 1949,
+          "sha256": "3daaa11d24f4295cb6be8bc6f407f2ce83cc7b5bd1f0e68891ea8ab835721dc7",
+          "executable": true
+        },
+        {
+          "path": "rules/js-cache-property-access.md",
+          "bytes": 532,
+          "sha256": "73e47431e74878a927061bf0ddc7cd91a7556cb35d2573f3421e82300d9ae311",
+          "executable": true
+        },
+        {
+          "path": "rules/js-cache-storage.md",
+          "bytes": 1651,
+          "sha256": "11b826b0433898c1ece2d3547010d8e77db9fb240185748c45db91493de9b6cc",
+          "executable": true
+        },
+        {
+          "path": "rules/js-combine-iterations.md",
+          "bytes": 753,
+          "sha256": "71add08aeeb43091d4ff4c0b2842cce8b4bdef8ad3e732cc034bb5a84827e746",
+          "executable": true
+        },
+        {
+          "path": "rules/js-early-exit.md",
+          "bytes": 1133,
+          "sha256": "925ce5ce87f3347186ca62212f29cc6baa2b8c85a96d2720ad07c3d0abf781c0",
+          "executable": true
+        },
+        {
+          "path": "rules/js-flatmap-filter.md",
+          "bytes": 1411,
+          "sha256": "9e5b166a41914d975bef7635467f8fb32cd98b5c3126c0bc6f163490812fb5f0",
+          "executable": true
+        },
+        {
+          "path": "rules/js-hoist-regexp.md",
+          "bytes": 1028,
+          "sha256": "f9e9aef2f7c2307dd7310f283df85dcada45fc43e9bb941b0c3aa414dec21ec4",
+          "executable": true
+        },
+        {
+          "path": "rules/js-index-maps.md",
+          "bytes": 837,
+          "sha256": "5df1bdc2cfabb2c98abd55d26762e5c18189535c2e686184f426082e62920391",
+          "executable": true
+        },
+        {
+          "path": "rules/js-length-check-first.md",
+          "bytes": 1747,
+          "sha256": "8b54a311c826b299272f29187fc58bc55772a04c4a72eeb29456ee96dc9fc624",
+          "executable": true
+        },
+        {
+          "path": "rules/js-min-max-loop.md",
+          "bytes": 2290,
+          "sha256": "87dfb67e2f39df6ad8bcfb5b78c5fb364d3c07554ad188a202408d99f3763421",
+          "executable": true
+        },
+        {
+          "path": "rules/js-set-map-lookups.md",
+          "bytes": 532,
+          "sha256": "a7fd781a6ba9ad49065961b6f9a90ef486bf6b648390e1a08704025f98e1642b",
+          "executable": true
+        },
+        {
+          "path": "rules/js-tosorted-immutable.md",
+          "bytes": 1782,
+          "sha256": "d0a5e1b0fec48a0a81397957e2f068e224329f7c42cb5feeed8aae6fa64025e8",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-activity.md",
+          "bytes": 564,
+          "sha256": "1e5e7eaf3555e61d6a2e900089c676527d26259501db5594f59544b6c664f85a",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-animate-svg-wrapper.md",
+          "bytes": 1185,
+          "sha256": "9c6ae0ca7a51434e803887c64cded760956579a1452ccb80a461a03f9c937c77",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-conditional-render.md",
+          "bytes": 980,
+          "sha256": "2ec2fa23c4148285144687050c52369adba3da2fbe3d486f8d3e0aad8f06f2bc",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-content-visibility.md",
+          "bytes": 815,
+          "sha256": "64eee6d5b916fe74df33363994b27fc7f71bea3bcedc7ee04bda23107ca3e6e4",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-hoist-jsx.md",
+          "bytes": 1039,
+          "sha256": "93b229560fae92005ed9a2a829064607b39b2e984e92d221d05b2d41df2b7c0e",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-hydration-no-flicker.md",
+          "bytes": 2308,
+          "sha256": "dc7ab358c67c177bca6e6f360fbc935ebe4efa928c0ba3ebd3f9f3d9e2000ca3",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-hydration-suppress-warning.md",
+          "bytes": 872,
+          "sha256": "915bacb934e2927d84b37a3f3d225a47b309ac8f9e494ed2bcb66ce07c5676a2",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-resource-hints.md",
+          "bytes": 2549,
+          "sha256": "351b1095d641717b930f1b2253282b7120af3023bc74e06c17675168d4286864",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-script-defer-async.md",
+          "bytes": 1868,
+          "sha256": "4cea07b7875ba7fc2c7465ff23b63a2bb334f90aaf2d9293d38d67b05fdb32ab",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-svg-precision.md",
+          "bytes": 588,
+          "sha256": "ed468533f6e95f622859c884b122cf21f9f593ed6bb3d500a54de4b9f9bcb9fb",
+          "executable": true
+        },
+        {
+          "path": "rules/rendering-usetransition-loading.md",
+          "bytes": 2074,
+          "sha256": "3a1249c3f13026b6f54ab5712c388df219d6af01b12aa542749acd99a46f4bc1",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-defer-reads.md",
+          "bytes": 973,
+          "sha256": "234050a77faf50cb306be10a9e15bd4421134ab5907e75f13e6d78e2bd262dc9",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-dependencies.md",
+          "bytes": 824,
+          "sha256": "17eb5830956fb56486fd3cfc7431f5849d39751730c05ad9e77dd4f0c27169c5",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-derived-state-no-effect.md",
+          "bytes": 1201,
+          "sha256": "cb11ec76f50aa7b6847269f02d79b120c889a30d9ecd2c1d578f75144419c77a",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-derived-state.md",
+          "bytes": 728,
+          "sha256": "1c326bb67b01fb084eb00c8911b0a7cff54681c2315b629f88e49b64eaa6481d",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-functional-setstate.md",
+          "bytes": 2968,
+          "sha256": "5e68df6b2ae8058e67f476ff1ac67bde159f5a9d18df439e46eabcdeb7b52e58",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-lazy-state-init.md",
+          "bytes": 2016,
+          "sha256": "4ae844740f266fc8cbf050701230286624a2440ec5be67b9a63d9edc3c580573",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-memo-with-default-value.md",
+          "bytes": 1173,
+          "sha256": "81c47476564ad8a79fc68fc442734255ca7d6829424359464503fda0a9f9a0dd",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-memo.md",
+          "bytes": 1148,
+          "sha256": "1f258990c2f27ff6256b3cc5c43300631bb3f0d81f749aed08d07fcdcc131dd1",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-move-effect-to-event.md",
+          "bytes": 1268,
+          "sha256": "abc2cbf167bee056743023351e96806a411d3398da8802093620aecf0721f029",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-no-inline-components.md",
+          "bytes": 2135,
+          "sha256": "1cc32907a770272524ba682eef9e7efdd8ad4533b6f89b718a1fcd7d1d0eb6a3",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-simple-expression-in-memo.md",
+          "bytes": 1018,
+          "sha256": "5bdcf2d1558ba5204e643c887b7b4060f89630969425651eb68e96427d97f800",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-split-combined-hooks.md",
+          "bytes": 1844,
+          "sha256": "6f45d703343484ef9acef9388397f3642966ae6a5a258899a0cf1f9977cfbf6c",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-transitions.md",
+          "bytes": 1055,
+          "sha256": "60f4033909a62df5e5b8c601494f9e50a562e2f8c1c2d81eac24f38142265f1c",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-use-deferred-value.md",
+          "bytes": 1846,
+          "sha256": "8c3579576a61a949884167745dcfaf1d5426ba305cc61fd0a79602d70fda4909",
+          "executable": true
+        },
+        {
+          "path": "rules/rerender-use-ref-transient-values.md",
+          "bytes": 1742,
+          "sha256": "f1a649af9d1d0b5c762f6c9c4c1c70c90d7df82aa10296ee87aadb78c1b76c54",
+          "executable": true
+        },
+        {
+          "path": "rules/server-after-nonblocking.md",
+          "bytes": 2012,
+          "sha256": "d0b8d24a3db9f0f65f9e2bddbf230b0e03a5f60e1229d93a4a18f5e7a991c7c2",
+          "executable": true
+        },
+        {
+          "path": "rules/server-auth-actions.md",
+          "bytes": 2649,
+          "sha256": "a2ca8aa102839251c7971ec784560fab943c20b36fe6f80365d4110c13260c23",
+          "executable": true
+        },
+        {
+          "path": "rules/server-cache-lru.md",
+          "bytes": 1353,
+          "sha256": "1924b64561841923b88a657085097a0aeba3e0ba2d5470b9f5c15cc10d6ae70f",
+          "executable": true
+        },
+        {
+          "path": "rules/server-cache-react.md",
+          "bytes": 2228,
+          "sha256": "fddeea6c870bb3da4134b61d54b7d09b83d2603f929b7547cd3dc1dc269edd5c",
+          "executable": true
+        },
+        {
+          "path": "rules/server-dedup-props.md",
+          "bytes": 2060,
+          "sha256": "c2747424cdac46be62f835f245a0aa887b0090b416d28e2ac8676702645eeb37",
+          "executable": true
+        },
+        {
+          "path": "rules/server-hoist-static-io.md",
+          "bytes": 4393,
+          "sha256": "f90610d0f0db0fa8da5cf99790ed3369544a5b9b671bc4198347c95ec3325db4",
+          "executable": true
+        },
+        {
+          "path": "rules/server-parallel-fetching.md",
+          "bytes": 1554,
+          "sha256": "569a2e9fc04f9606686cd75c5894ef8781b502786a7fffe241396846c7733472",
+          "executable": true
+        },
+        {
+          "path": "rules/server-serialization.md",
+          "bytes": 996,
+          "sha256": "f4c7d68b29c82381baad059c4a7f09e868e71ec9c3115a26ad3ae7d24c0dfe1f",
+          "executable": true
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 6671,
+          "sha256": "cc7d03309817f392c419a203e1bc1f1759ef94831f7dbedf39d91a35ac5bc86a",
+          "executable": true
+        }
+      ]
+    },
+    "shadcn": {
+      "name": "shadcn",
+      "directory": "packages/build-web-apps/0.1.2/skills/shadcn-best-practices",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/build-web-apps",
+        "version": "0.1.2",
+        "sha256": "87acdf6def7c08d581888f772a46bfbef62331ea7c492327a4ed6d9ecd83aac8"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 238,
+          "sha256": "35db91b1eef58b2abe01da9b88577de5a44e233b740cd93d692ddeeadd2afe4d",
+          "executable": false
+        },
+        {
+          "path": "assets/shadcn-small.png",
+          "bytes": 1049,
+          "sha256": "0ecc62d682727f68fc4937eed19960c706714fa084d44f63028d611ae02bf3d7",
+          "executable": false
+        },
+        {
+          "path": "assets/shadcn.png",
+          "bytes": 3852,
+          "sha256": "7d60ad6fec4d89a0d44ba5a3c9283d2fea0047af5467f9227040e20d927d39b7",
+          "executable": false
+        },
+        {
+          "path": "cli.md",
+          "bytes": 15290,
+          "sha256": "ba3bc1f4466daf1fafee42bc21b3a8b1d4fc76d4c109a7c936074d9cf8293c4b",
+          "executable": false
+        },
+        {
+          "path": "customization.md",
+          "bytes": 5969,
+          "sha256": "12e4d5fd4ae05ec4cef759035d3a70fec474d857298fe0a0effa8880112f8a54",
+          "executable": false
+        },
+        {
+          "path": "evals/evals.json",
+          "bytes": 3118,
+          "sha256": "97ebb931d690578ee64e445d84f406be2a8799812d38d3cb1bb216e68291eb2b",
+          "executable": false
+        },
+        {
+          "path": "mcp.md",
+          "bytes": 2355,
+          "sha256": "03cf3e9ad820bb2922c19b50164070d5c4b324c12869275f79174ceec8b43b1c",
+          "executable": false
+        },
+        {
+          "path": "rules/base-vs-radix.md",
+          "bytes": 6954,
+          "sha256": "2b2deb47d004285220c1fc6b38bb2edc2d0ccbcdafd031b0b189d5d8ed0d1ba8",
+          "executable": false
+        },
+        {
+          "path": "rules/composition.md",
+          "bytes": 4268,
+          "sha256": "de068e5aa5351dd8e4af7bfb7a6333302445c15527eaeee521d8591e95e7d709",
+          "executable": false
+        },
+        {
+          "path": "rules/forms.md",
+          "bytes": 4857,
+          "sha256": "29593e14381e34626f8e0e9c15c59f3394b92a0623af6a6ec94585400123853c",
+          "executable": false
+        },
+        {
+          "path": "rules/icons.md",
+          "bytes": 1958,
+          "sha256": "d4a58266648872d9ee07d0c2368843a1cb88b8253b7f528dd7bda9d68b6c2535",
+          "executable": false
+        },
+        {
+          "path": "rules/styling.md",
+          "bytes": 3795,
+          "sha256": "4a71da3fc53d8efbedac26946e5b13b53d1edf71583d62088ccc2b8cc7b5fef7",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 16426,
+          "sha256": "7678f5168d4ee6f3ae3ce4d3d41c654f0aebc7b88cbc392a9504822dec0dff28",
+          "executable": false
+        }
+      ]
+    },
+    "frontend-testing-debugging": {
+      "name": "frontend-testing-debugging",
+      "directory": "packages/build-web-apps/0.1.2/skills/frontend-testing-debugging",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/build-web-apps",
+        "version": "0.1.2",
+        "sha256": "f966bad01044f0cbcfc071bb2f7671f5f84640632198d697d4257834f5b20825"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [
+        {
+          "kind": "mcp",
+          "namespace": "browser_use",
+          "description": "优先可用Browser；缺少时按Skill和当前授权使用已安装Playwright。"
+        }
+      ],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 154,
+          "sha256": "82477c78c6f601cb85fa21d30f61624f49fd28ab75351e65093ee6afb04f864c",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 9800,
+          "sha256": "03724620cf7e7de425b607a5492f572d867b1cf5d9c92c74bf50d057d7415e0b",
+          "executable": false
+        }
+      ]
+    },
+    "supabase-postgres-best-practices": {
+      "name": "supabase-postgres-best-practices",
+      "directory": "packages/build-web-apps/0.1.2/skills/supabase-best-practices",
+      "source": {
+        "kind": "bundled-skill",
+        "origin": "openai-curated-remote/build-web-apps",
+        "version": "0.1.2",
+        "sha256": "688cabee932ad56514e01eef0d5fbc783f1ef98ed71946e23c14c804968fd082"
+      },
+      "dependencies": [],
+      "runtimeDependencies": [],
+      "files": [
+        {
+          "path": "agents/openai.yaml",
+          "bytes": 145,
+          "sha256": "f8029a40d11c3118ba0fde1afa0822eb9698e7bc478d974c8129f252f0a35126",
+          "executable": false
+        },
+        {
+          "path": "AGENTS.md",
+          "bytes": 2160,
+          "sha256": "bc26c551fda72e50b66e132854aa63ead7280c93b0d1f6bbb6c4f841e7c1202e",
+          "executable": false
+        },
+        {
+          "path": "README.md",
+          "bytes": 3175,
+          "sha256": "210d26cc0466a1bfb9ab95e57d7fe8a80644ef3fd860769bcb4ec9989a7d7a8f",
+          "executable": false
+        },
+        {
+          "path": "references/_contributing.md",
+          "bytes": 4166,
+          "sha256": "7265c8c26812c9aad31fdd3936473f887c295c486eca82775ce5598d99ec7858",
+          "executable": false
+        },
+        {
+          "path": "references/_sections.md",
+          "bytes": 1682,
+          "sha256": "c9e992612b422c7122de0b7542ebc2450db283edaab08cfe86c6d657fcccccd5",
+          "executable": false
+        },
+        {
+          "path": "references/_template.md",
+          "bytes": 1040,
+          "sha256": "6299954250f212caabe339d752c3e5313a8e07d1a182a4e4b425baee91df1bd2",
+          "executable": false
+        },
+        {
+          "path": "references/advanced-full-text-search.md",
+          "bytes": 1468,
+          "sha256": "40c2606bbb4c4dce31308f201b24cc7f58c7df05b1d9c6856fe2b888d3b7cf28",
+          "executable": false
+        },
+        {
+          "path": "references/advanced-jsonb-indexing.md",
+          "bytes": 1444,
+          "sha256": "24cacf6a8bc35901dd566d24502ce8e57f810a5c196b897e61d52726e521d106",
+          "executable": false
+        },
+        {
+          "path": "references/conn-idle-timeout.md",
+          "bytes": 1282,
+          "sha256": "630588902c00fcec59a5988cc5d042f76dcf2c923a535abfd8c47dca205eaed5",
+          "executable": false
+        },
+        {
+          "path": "references/conn-limits.md",
+          "bytes": 1325,
+          "sha256": "11b2a67a7c7679cbbc5d807bbb17e69c98484a581d0c8b929c03408f412b81b2",
+          "executable": false
+        },
+        {
+          "path": "references/conn-pooling.md",
+          "bytes": 1382,
+          "sha256": "88cf086bf98ba865d2e9d0579974e1366b14157619d6a93e7da77be91084e4a5",
+          "executable": false
+        },
+        {
+          "path": "references/conn-prepared-statements.md",
+          "bytes": 1529,
+          "sha256": "174e9332fe3dda5c99b2b00159fb1915ae36c00bab3a7882c14e73e4344e946e",
+          "executable": false
+        },
+        {
+          "path": "references/data-batch-inserts.md",
+          "bytes": 1287,
+          "sha256": "531933b82d6a622d0fae29e0ea80be6fe5d78655adf2804c271ea84a1930de37",
+          "executable": false
+        },
+        {
+          "path": "references/data-n-plus-one.md",
+          "bytes": 1361,
+          "sha256": "21a44905e5b16a42741892ec34bb1bfef124d049b140a76934a9acd0f46f5fc2",
+          "executable": false
+        },
+        {
+          "path": "references/data-pagination.md",
+          "bytes": 1358,
+          "sha256": "73c9fa10a3d439bedea0e11b640bd25bf30dd50f0d9006cf85baf7c3151543fa",
+          "executable": false
+        },
+        {
+          "path": "references/data-upsert.md",
+          "bytes": 1390,
+          "sha256": "2612af83b20a2701dde30ef1f8d7efd26b7e9eef84717226b8f038a2d2150ff7",
+          "executable": false
+        },
+        {
+          "path": "references/lock-advisory.md",
+          "bytes": 1531,
+          "sha256": "c88d259dbf81c3771438f59a165f7eab8acd09999dd370bdf807521c73f35aab",
+          "executable": false
+        },
+        {
+          "path": "references/lock-deadlock-prevention.md",
+          "bytes": 1855,
+          "sha256": "09aee46f51d7178c8e55fe056cd5a94a64ba2c122fe418e6900cd99f297b2347",
+          "executable": false
+        },
+        {
+          "path": "references/lock-short-transactions.md",
+          "bytes": 1350,
+          "sha256": "5aa7f61095916986d39644b446cdbcd2bacca7ef698a3bb50b3f82dd60207602",
+          "executable": false
+        },
+        {
+          "path": "references/lock-skip-locked.md",
+          "bytes": 1353,
+          "sha256": "6c45077f430f29cd9cd8f448c94d578e827e7bd023fcdaf717a756acb116fa4b",
+          "executable": false
+        },
+        {
+          "path": "references/monitor-explain-analyze.md",
+          "bytes": 1441,
+          "sha256": "4cb67ffbf8e57f2e5b380b0beb4242528b513723ce314a2c2ffcf083bd4203d7",
+          "executable": false
+        },
+        {
+          "path": "references/monitor-pg-stat-statements.md",
+          "bytes": 1418,
+          "sha256": "89dca99d4e894fcbdcac136be7ad9fbc03d1342904f065c1b198dc9cf495f098",
+          "executable": false
+        },
+        {
+          "path": "references/monitor-vacuum-analyze.md",
+          "bytes": 1506,
+          "sha256": "2892272011710eb49b3f185ec12f15ce9ce4c365792c672f6e2a9c90da426a1a",
+          "executable": false
+        },
+        {
+          "path": "references/query-composite-indexes.md",
+          "bytes": 1454,
+          "sha256": "73e42424e671f0266e74fdb220db3196790f69fb43e2b19c7b9483eb4971b554",
+          "executable": false
+        },
+        {
+          "path": "references/query-covering-indexes.md",
+          "bytes": 1287,
+          "sha256": "daf2a7f0477fb7357b62b5fb5b185b1995a77a186347e45cb780e25e7a7589b6",
+          "executable": false
+        },
+        {
+          "path": "references/query-index-types.md",
+          "bytes": 1521,
+          "sha256": "472a74f22c2df203bd0154999b3a5a0187cca2ab3d9a3978e305bb7c32f1a282",
+          "executable": false
+        },
+        {
+          "path": "references/query-missing-indexes.md",
+          "bytes": 1218,
+          "sha256": "91ad8b0ff4365704b4830a7f077c6f140f7140fd5d3ce5cd0b92b160cf9e25f1",
+          "executable": false
+        },
+        {
+          "path": "references/query-partial-indexes.md",
+          "bytes": 1347,
+          "sha256": "6448982bc8558c6555284958edc331b29239c6a0130e6b4501dd6d4da607a6dd",
+          "executable": false
+        },
+        {
+          "path": "references/schema-constraints.md",
+          "bytes": 1880,
+          "sha256": "90e8efda3e9e81095e642911ad4aae2809d160f29414338fa997253238f510f8",
+          "executable": false
+        },
+        {
+          "path": "references/schema-data-types.md",
+          "bytes": 1453,
+          "sha256": "e01b58c14c7f3f65d8ead580b9a4fcf70b83baaab0f9a5f83c569c9fd113e8c8",
+          "executable": false
+        },
+        {
+          "path": "references/schema-foreign-key-indexes.md",
+          "bytes": 1679,
+          "sha256": "7587713d12a65a212365459b3d39e4717d8a79e4073b10bd62f1054d8192c0dd",
+          "executable": false
+        },
+        {
+          "path": "references/schema-lowercase-identifiers.md",
+          "bytes": 1728,
+          "sha256": "4bc80f70865f2390872591f326c8a6be6456a0aeb5a7e5a2475d7cd9d43059ab",
+          "executable": false
+        },
+        {
+          "path": "references/schema-partitioning.md",
+          "bytes": 1548,
+          "sha256": "541e13fbeaf4bb1485c9059d4c9417dbdb766cf16f4237cd63a04ada7ec45b90",
+          "executable": false
+        },
+        {
+          "path": "references/schema-primary-keys.md",
+          "bytes": 1821,
+          "sha256": "3c8beabef82066f9a0838b926da0885117fd2d9a263aaf84cb5ca9e5f0d400e9",
+          "executable": false
+        },
+        {
+          "path": "references/security-privileges.md",
+          "bytes": 1566,
+          "sha256": "095909274a4fb43df785d7144cf674eeb40284d2d45628f14af4108737b93663",
+          "executable": false
+        },
+        {
+          "path": "references/security-rls-basics.md",
+          "bytes": 1372,
+          "sha256": "e04dd1a3a382aafdaaa73fe9f7976352acdde6e90c2a2470d281b94d4f44b096",
+          "executable": false
+        },
+        {
+          "path": "references/security-rls-performance.md",
+          "bytes": 1493,
+          "sha256": "ee62c6e34468df8673d625291c1fcd7fb87041f122325eba224fc492cfe01bb3",
+          "executable": false
+        },
+        {
+          "path": "SKILL.md",
+          "bytes": 2564,
+          "sha256": "cfc4da3ed47c14f4fb24c5b4db4be443fa200e12e71d674fb1270eecce87a302",
+          "executable": false
+        }
+      ]
+    }
+  },
+  "supportFiles": [
+    {
+      "path": "packages/data-analytics/1.2.0/shared/analysis-quality.md",
+      "bytes": 10559,
+      "sha256": "2852467d54a0f69bc95733a3d3496ac5a1c9df40c1e0b393c6527ce6afc1b9d9",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ]
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/automation-offers.md",
+      "bytes": 1730,
+      "sha256": "e716678000fa7bc52b78158e5eec793e114ba3155a080586d0173648ba377911",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ]
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/dashboard-quality.md",
+      "bytes": 6623,
+      "sha256": "d0060101918b76db30ca5b18788579441030f612d4c125a6109a6b034e1d2abc",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ],
+      "originalSha256": "65c45b18ae7b0ffaa0f870a09eac9c04c67392e892b6506217bcefc543242880",
+      "adaptation": "Mark optional unbundled workflows explicitly; preserve selected KPI method and current task artifact contract"
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/data-writing.md",
+      "bytes": 3013,
+      "sha256": "c5cf2222f872e4566b16887430e1434ee2e1420daa5c8c9ffffa13420c990431",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ]
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/live-queries.md",
+      "bytes": 8641,
+      "sha256": "b97e91dcf53bc97cda7ec82c2a0fa3417c2b90709902f38790a12013d3234484",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ],
+      "originalSha256": "2d093a2b7eefd4cbd89f5060911814a85107b4e6a80485ab04d3900f831b7c7e",
+      "adaptation": "Mark optional unbundled workflows explicitly; preserve selected KPI method and current task artifact contract"
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/metric-definitions.md",
+      "bytes": 5179,
+      "sha256": "a28f4d7a9bf3ae90214f73c31bc965e21140385b8f5a8acad957b3848b0d8d73",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ]
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/output-and-template-handling.md",
+      "bytes": 14757,
+      "sha256": "61413bd3cc239032ef50f27605e253be3c3e235fe2118ec5d55d22736864139e",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ],
+      "originalSha256": "b9460a0a7b3d55222117c5565f132a8dfdb5a84ef3ec6f8502a399a7706b8e67",
+      "adaptation": "Mark optional unbundled workflows explicitly; preserve selected KPI method and current task artifact contract"
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/shared-skill-instructions.md",
+      "bytes": 10016,
+      "sha256": "700160a1bae1ac8154423632d42cef183a5c6f2dd91582a82272f6b4ca1e3294",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ],
+      "originalSha256": "c37eb5d428eed453ac8a306c1cde3f99add316031a9a1577522e38f334021f49",
+      "adaptation": "Mark optional unbundled workflows explicitly; preserve selected KPI method and current task artifact contract"
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/source-selection.md",
+      "bytes": 7363,
+      "sha256": "3d7112108c13bdb30310988277877e5023d2762f191f207e4b3b76515f88a5ad",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ],
+      "originalSha256": "1c732821be7db31e5d8cfd6834be5d1747fe3851b83fcbda0702bad949ee43f1",
+      "adaptation": "Mark optional unbundled workflows explicitly; preserve selected KPI method and current task artifact contract"
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/source-setup.md",
+      "bytes": 14855,
+      "sha256": "623badb1fcd1bb37348f14a74eca55e66f267a2a7e007e4444c9f01c56b9fdf9",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ],
+      "originalSha256": "ab7333a9b110fe34f243f6a5bf4a2c0a3371a69ff70ec7a8acb40c66448ee411",
+      "adaptation": "Mark optional unbundled workflows explicitly; preserve selected KPI method and current task artifact contract"
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/table-usage.md",
+      "bytes": 5681,
+      "sha256": "8b9f0e1bdfa2e323b35194f73fb63ac8cfd5ac4dfee594efe39fe8862de450d1",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ]
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/task-intake.md",
+      "bytes": 5588,
+      "sha256": "e2786f62a8aa2e0838d25baee2102edb160ce9c78371baa308182e54c180a515",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ],
+      "originalSha256": "33b43a478bc4a97aa7d6f9677a73cc190c9d8a21a428235eae71f21a95169064",
+      "adaptation": "Mark optional unbundled workflows explicitly; preserve selected KPI method and current task artifact contract"
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/template-previews.md",
+      "bytes": 9075,
+      "sha256": "0f7392988c0138cca03fe272760b4e7934ff9ff6c8367a6be1a0c2b88d9b0a62",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ],
+      "originalSha256": "3446bc9374e3719d5753af0acb8d0d83c6f3d18283b44707a3289618227873f4",
+      "adaptation": "Mark optional unbundled workflows explicitly; preserve selected KPI method and current task artifact contract"
+    },
+    {
+      "path": "packages/data-analytics/1.2.0/shared/templates-and-prior-work.md",
+      "bytes": 3704,
+      "sha256": "d1233f3f3c21bfcc834c140eddaf31644673604967a99b84f5ddc289a17612a9",
+      "executable": false,
+      "requiredBy": [
+        "design-kpis",
+        "data-analytics-index"
+      ]
+    },
+    {
+      "path": "packages/product-design/0.1.56/references/communication-protocol.md",
+      "bytes": 2121,
+      "sha256": "580ac13c693befa663c41782fd3040a24742f310d1446b4ed8dbcc38f3fd5c23",
+      "executable": false,
+      "requiredBy": [
+        "audit",
+        "product-design-index",
+        "user-context"
+      ]
+    },
+    {
+      "path": "packages/product-design/0.1.56/references/critical-overrides.md",
+      "bytes": 5905,
+      "sha256": "cb1fd716c1b7d1fc08014279749f3d311234c62ad8c9113d6d8c346866ee1af8",
+      "executable": false,
+      "requiredBy": [
+        "audit",
+        "product-design-index",
+        "user-context"
+      ]
+    },
+    {
+      "path": "packages/product-design/0.1.56/references/existing-codebase-edits.md",
+      "bytes": 945,
+      "sha256": "ad40141411a0cf80c827faacf9c126eb61cbb4cb0274060d6d124b67134eaa8b",
+      "executable": false,
+      "requiredBy": [
+        "audit",
+        "product-design-index",
+        "user-context"
+      ]
+    },
+    {
+      "path": "packages/product-design/0.1.56/references/local-prototype-preflight.md",
+      "bytes": 3824,
+      "sha256": "7a6d537e9d3bb5398ccbefed330017ffa8b0e1f029fbd30300bff28abcadfee8",
+      "executable": false,
+      "requiredBy": [
+        "audit",
+        "product-design-index",
+        "user-context"
+      ]
+    },
+    {
+      "path": "shared/engineering.md",
+      "bytes": 2851,
+      "sha256": "d78492924286780a8aa57630465a4e5c2f7703def89267ec28c1ec183d4dcece"
+    },
+    {
+      "path": "packages/figma/20.0.0/skills/figma-use-motion/references/motion-easing.md",
+      "bytes": 4591,
+      "sha256": "bb687254ab222747d385e1604ead72a439a444dec8aa0a51ef8a2189a9f45637",
+      "executable": false,
+      "requiredBy": [
+        "figma-use"
+      ],
+      "source": {
+        "origin": "openai-curated-remote/figma",
+        "version": "20.0.0",
+        "path": "skills/figma-use-motion/references/motion-easing.md"
+      }
+    }
+  ]
+}

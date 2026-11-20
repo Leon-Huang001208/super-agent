@@ -56,6 +56,12 @@ export function teamContextEnabled(registry) {
       !registry.context.catalog) fail('TEAM_CONTEXT_CONFIGURATION_INVALID');
   return true;
 }
+/** A global feature flag never captures an unrelated Native operation. Missing M2 markers cannot downgrade one. */
+export function registryForContextRecord(registry,record) {
+  const marked=record&&['contextVersion','projectKey','workspaceCwd','artifactGeneration'].some(key=>record[key]!==undefined);
+  if(marked){if(record.contextVersion!==1||!teamContextEnabled(registry))fail('TEAM_CONTEXT_OPERATION_SCOPE_MISSING');return registry;}
+  return registry.context?{...registry,context:{...registry.context,enabled:false}}:registry;
+}
 function catalogFor(registry,log) {
   return createProjectCatalog({registry:registry.context.catalog,
     authority:{companyId:registry.companyId,ownerId:registry.ownerId,agentIds:registry.team?.ids},log});

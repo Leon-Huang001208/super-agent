@@ -77,14 +77,25 @@ export async function createChiefContextApplication({database,binding,registry,c
     return value;
   }
 
+  async function handleTrusted(message){
+      try{
+        if(message.commandError){
+          const legacy=await repository.transaction(chiefContextSourceKey(message),tx=>tx.readLegacyRegistration(message),{chatId:message.chatId});
+          if(legacy)return Object.freeze({...legacy,legacy:true,reused:true});
+          return await rejected(message,message.commandError);
+        }
+        return await controller.dispatchTrustedCommand(message);
+      }catch(error){const code=knownCode(error);await log({code,messageId:message.messageId});return rejected(message,code);}
+  }
+  const inFlight=new Map();
   return Object.freeze({
     catalog,repository,controller,knowledgeStore,
     async receiveTrusted(message){
       currentScope();
-      try{
-        if(message.commandError)return await rejected(message,message.commandError);
-        return await controller.dispatchTrustedCommand(message);
-      }catch(error){const code=knownCode(error);await log({code,messageId:message.messageId});return rejected(message,code);}
+      const key=chiefContextSourceKey(message)+':'+chiefContextFingerprint(message);
+      if(inFlight.has(key))return inFlight.get(key);
+      const pending=handleTrusted(message);inFlight.set(key,pending);
+      try{return await pending;}finally{inFlight.delete(key);}
     },
     async drain(){currentScope();return native.drain();},
   });

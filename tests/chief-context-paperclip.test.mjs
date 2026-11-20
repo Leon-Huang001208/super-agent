@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
-import { createChiefContextPaperclipRepository } from '../bridge/chief-context-paperclip.mjs';
+import { createChiefContextPaperclipRepository, readManagedChiefContext } from '../bridge/chief-context-paperclip.mjs';
 import { createChiefFeishuNative, chiefFeishuOperation } from '../bridge/chief-feishu-native.mjs';
 import { createChiefContextController } from '../bridge/chief-context-native.mjs';
 import { createProjectCatalog } from '../bridge/context-projects.mjs';
@@ -19,12 +19,19 @@ function fixture(){
   const agentIds=Object.fromEntries(ROLE_KEYS.map(k=>[k,k==='chief'?binding.chiefAgentId:randomUUID()]));
   const project={key:'personal',aliases:['个人'],companyId:binding.companyId,ownerId:binding.nativeOwnerId,projectId:binding.projectId,adapterKey:'native-docs',allowedRoles:['chief','pm'],maximumAction:'read_only',workspaceCwd:`/paperclip/instances/default/projects/${binding.companyId}/${binding.projectId}/_default`};
   const catalog=createProjectCatalog({registry:{schemaVersion:1,defaultProjectKey:'personal',projects:[project]},authority:{companyId:binding.companyId,ownerId:binding.nativeOwnerId,agentIds},log:()=>{}});
-  const data={issues:[],activityLog:[],heartbeatRuns:[]},locks=[],published=[],calls={transactions:0,create:0,wake:0};
+  const data={issues:[],activityLog:[],heartbeatRuns:[],projects:[{id:project.projectId,companyId:binding.companyId}]},locks=[],published=[],calls={transactions:0,create:0,wake:0};
   const schema=Object.fromEntries(Object.keys(data).map(name=>[name,{name,...Object.fromEntries(['id','companyId','projectId','parentId','issueId','status','action','entityId','details','contextSnapshot','createdAt','actorType','actorId'].map(key=>[key,{name,key}]))}]));
   schema.agentWakeupRequests={name:'agentWakeupRequests',companyId:{key:'companyId'},idempotencyKey:{key:'idempotencyKey'}};data.agentWakeupRequests=[];
   const orm={eq:(c,v)=>row=>row[c.key]===v,and:(...ps)=>row=>ps.every(p=>p(row)),inArray:(c,vs)=>row=>vs.includes(row[c.key]),asc:x=>x,desc:x=>x,
     sql:(strings,...args)=>{const p=/->>'([^']+)'/.exec(strings.join(''));return p?row=>row[args[0].key]?.[p[1]]===args[1]:()=>true;}};
-  function query(projection){let table,filter=()=>true,max=Infinity;const q={from(t){table=t;return q;},where(p){filter=p;return q;},orderBy(){return q;},limit(n){max=n;return q;},for(kind){locks.push({table:table.name,kind});return q;},then(a,b){const rows=(data[table.name]??[]).filter(filter).slice(0,max).map(row=>projection?Object.fromEntries(Object.entries(projection).map(([k,c])=>[k,row[c.key]])):structuredClone(row));return Promise.resolve(rows).then(a,b);}};return q;}
+  function query(projection){let table,filter=()=>true,max=Infinity;const q={from(t){table=t;return q;},where(p){filter=p;return q;},orderBy(){return q;},limit(n){max=n;return q;},for(kind){locks.push({table:table.name,kind});return q;},then(a,b){
+    const rows=(data[table.name]??[]).filter(filter).slice(0,max).map(row=>projection?Object.fromEntries(Object.entries(projection).map(([k,c])=>[k,row[c.key]])):structuredClone(row));
+    if(calls.memoryAuthorizationGate&&rows.some(row=>row.action==='team.context.intent'&&row.details.kind==='remember'&&
+      data.activityLog.some(effect=>effect.action==='team.context.effect_claimed'&&effect.details.operationId===row.details.operationId))){
+      const gate=calls.memoryAuthorizationGate;delete calls.memoryAuthorizationGate;gate.entered();return gate.wait.then(()=>rows).then(a,b);
+    }
+    return Promise.resolve(rows).then(a,b);
+  }};return q;}
   const tx={select:query,execute:async()=>[]};
   const db={...tx,transaction:async fn=>{calls.transactions++;return fn(tx);}};
   const services={issueService:connection=>({
@@ -57,6 +64,17 @@ test('chat and control projections persist as scoped Native activity, never task
   },{chatId:'oc_test'});
   await repo.transaction(key,async tx=>{assert.equal((await tx.readChat()).taskId,f.task.id);assert.equal((await tx.readControl(f.task.id)).revision,0);},{chatId:'oc_test'});
   assert.equal(f.data.issues.length,1);assert.equal(f.calls.create,0);assert.ok(f.published.length>=2);
+});
+test('M2 association comes from Native control and does not restrict an unrelated legacy workspace or project',async()=>{
+  const f=fixture(),third={...f.task,id:randomUUID(),projectId:randomUUID(),projectWorkspaceId:randomUUID()};
+  assert.equal(await readManagedChiefContext({...await f.database(),task:third,companyId:f.binding.companyId,ownerId:f.binding.nativeOwnerId}),null);
+  const repo=await createChiefContextPaperclipRepository(f.options);
+  await repo.transaction('association',tx=>tx.writeControl(f.task.id,{schemaVersion:1,managed:true,companyId:f.binding.companyId,
+    projectId:f.task.projectId,ownerId:f.binding.nativeOwnerId,taskId:f.task.id,inputRevision:taskInputRevision(f.task),revision:0,pendingInputs:[]}),{actor:'controller'});
+  const associated=await readManagedChiefContext({...await f.database(),task:f.task,companyId:f.binding.companyId,ownerId:f.binding.nativeOwnerId});
+  assert.equal(associated.managed,true);assert.equal(associated.taskId,f.task.id);assert.equal(f.calls.wake,0);
+  f.data.activityLog.find(row=>row.action==='team.context.control').details.value.ownerId='other';
+  await assert.rejects(readManagedChiefContext({...await f.database(),task:f.task,companyId:f.binding.companyId,ownerId:f.binding.nativeOwnerId}),{code:'CHIEF_CONTEXT_CONTROL_CHANGED'});
 });
 test('foreign Native tasks and scope-changing patches are denied',async()=>{
   const f=fixture(),repo=await createChiefContextPaperclipRepository(f.options);
@@ -131,6 +149,7 @@ async function application(t){
   t.after(()=>fs.rmSync(folder,{recursive:true,force:true}));
   const other={...f.project,key:'rwb',aliases:['投研'],projectId:randomUUID(),projectWorkspaceId:randomUUID(),adapterKey:'rwb-docs'};
   other.workspaceCwd=`/paperclip/instances/default/projects/${f.binding.companyId}/${other.projectId}/_default`;
+  f.data.projects.push({id:other.projectId,companyId:f.binding.companyId});
   const catalog={schemaVersion:1,defaultProjectKey:f.project.key,projects:[f.project,other]};
   const registry={companyId:f.binding.companyId,ownerId:f.binding.nativeOwnerId,team:{projectId:f.project.projectId,ids:f.agentIds},context:{schemaVersion:1,enabled:true,catalog}};
   const original=f.services.issueService;
@@ -191,6 +210,19 @@ test('a source-bound syntax rejection is not sent again on platform replay',asyn
   const first=await f.app.receiveTrusted(source);assert.equal(first.kind,'rejected');assert.equal(f.messages.length,1);
   await f.app.receiveTrusted(source);assert.equal(f.messages.length,1);assert.equal(f.calls.create,0);
 });
+test('a registered M1 event with invalid M2 syntax remains its old task without a new error acknowledgement',async t=>{
+  const f=await application(t),source=f.snapshot('/chief status');
+  source.text='/chief --unsupported old goal';source.bodySha256=sha(source.text);source.sourceParams.bodySha256=source.bodySha256;
+  delete source.command;source.commandError='CHIEF_CONTEXT_OPTION_DENIED';
+  const record={operationId:chiefFeishuOperation(source),taskId:f.task.id,identifier:f.task.identifier,
+    companyId:f.binding.companyId,ownerId:f.binding.nativeOwnerId,chiefAgentId:f.binding.chiefAgentId,
+    projectId:f.project.projectId,bodySha256:source.bodySha256};
+  f.data.activityLog.push({id:randomUUID(),companyId:f.binding.companyId,actorType:'user',actorId:f.binding.nativeOwnerId,
+    action:'team.feishu.registered',entityId:f.task.id,details:record});
+  const result=await f.app.receiveTrusted(source);
+  assert.equal(result.legacy,true);assert.equal(result.taskId,f.task.id);assert.equal(result.reused,true);
+  assert.equal(f.messages.length,0);assert.equal(f.calls.create,0);assert.equal(f.calls.wake,0);
+});
 test('a committed memory with lost Native result is reconciled without adding another version',async t=>{
   const f=await application(t),source=f.snapshot('/chief 记住 项目尾注 以证据版本为准');f.calls.failMemoryResultOnce=true;
   const uncertain=await f.app.receiveTrusted(source);assert.equal(uncertain.kind,'rejected');assert.equal(f.messages.length,1);
@@ -202,4 +234,21 @@ test('an uncertain Feishu send is claimed once and never repeated',async t=>{
   const f=await application(t),source=f.snapshot('/chief projects');f.calls.failReplyOnce=true;
   await f.app.receiveTrusted(source);assert.equal(f.messages.length,1);
   await f.app.receiveTrusted(source);assert.equal(f.messages.length,1);assert.equal(f.calls.create,0);assert.equal(f.calls.wake,0);
+});
+
+test('concurrent identical owner messages share the known in-flight result and its successful acknowledgement',async t=>{
+  const f=await application(t),source=f.snapshot('/chief 记住 报告尾注 采用当前已确认版本');
+  let enter,release;const entered=new Promise(resolve=>{enter=resolve;}),wait=new Promise(resolve=>{release=resolve;});
+  f.calls.memoryAuthorizationGate={entered:enter,wait};
+  const first=f.app.receiveTrusted(source);await entered;
+  const conflict=structuredClone(source);conflict.text='/chief 记住 报告尾注 另一份不能替换的正文';
+  conflict.command=parseChiefContextCommand(conflict.text);conflict.goal=conflict.text.slice(6).trim();
+  conflict.bodySha256=sha(conflict.text);conflict.sourceParams.bodySha256=conflict.bodySha256;
+  const denied=await f.app.receiveTrusted(conflict);assert.equal(denied.code,'CHIEF_CONTEXT_SOURCE_CONFLICT');assert.equal(f.messages.length,0);
+  const duplicate=f.app.receiveTrusted(source);
+  await new Promise(resolve=>setImmediate(resolve));release();
+  const results=await Promise.all([first,duplicate]);
+  assert.deepEqual(results.map(result=>[result.kind,result.version]),[['remember',1],['remember',1]]);
+  assert.equal(f.messages.length,1);assert.match(JSON.parse(f.messages[0].value.data.content).text,/已记住/);
+  assert.equal(f.calls.create,0);assert.equal(f.calls.wake,0);
 });

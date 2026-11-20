@@ -13,6 +13,27 @@ test('host transport import never starts a host execution or changes the importi
  const result=spawnSync(process.execPath,['--input-type=module','-e','await import('+JSON.stringify(target)+'); console.log("import-safe");'],{encoding:'utf8'});
  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout.trim(),'import-safe');
 });
+test('the Native prepared instruction copy and project overlay are independent read-only snapshots outside HOME',t=>{
+ const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'role-native-projection-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const client=root+'/client',nativeRoot=root+'/native',materials=root+'/materials';for(const directory of[client,nativeRoot,materials])fs.mkdirSync(directory,{mode:0o700});
+ fs.mkdirSync(nativeRoot+'/pm',{mode:0o700});fs.writeFileSync(nativeRoot+'/pm/AGENTS.md','Owner edited generic instructions',{mode:0o600});
+ fs.writeFileSync(nativeRoot+'/other-project.md','PRIVATE',{mode:0o600});fs.writeFileSync(materials+'/project.md','Registered project reference',{mode:0o600});
+ const sha=text=>createHash('sha256').update(text).digest('hex'),binding={companyId:randomUUID(),ownerId:'owner',projectId:randomUUID(),runId:randomUUID(),agentId:randomUUID()};
+ const nativePrefix='/paperclip/instances/default/companies/'+binding.companyId+'/agents/'+binding.agentId;
+ const nativeInstructions={materialRoot:nativePrefix+'/file-sync/runs/'+binding.runId+'/live',materialSourcePath:nativePrefix+'/instructions/pm/AGENTS.md',
+  instructionsFilePath:nativePrefix+'/file-sync/runs/'+binding.runId+'/live/pm/AGENTS.md',materialSha256:sha('Owner edited generic instructions'),
+  materialFiles:[{path:'pm/AGENTS.md',sha256:sha('Owner edited generic instructions')}]};
+ const manifest={schemaVersion:1,project:'beta',role:'pm',instructionsFilePath:'project.md',requiredReferences:[],files:[{path:'project.md',sha256:sha('Registered project reference')}]};
+ const permit={...binding,role:'pm',cwd:'/paperclip/instances/default/projects/'+binding.companyId+'/'+binding.projectId+'/_default',...nativeInstructions,
+  materialSnapshot:createRoleMaterialSnapshot({binding,profile:{role:'pm',projectKey:'beta'},manifest,nativeInstructions})};
+ const input={permit,clientRoot:client,log(){}};
+ const overlay=transport.createRoleMaterialProjection({...input,materialRoot:materials,snapshotRoot:root+'/project-snapshot'});
+ const instructions=transport.createRoleMaterialProjection({...input,kind:'native-instructions',materialRoot:nativeRoot,snapshotRoot:root+'/native-snapshot'});
+ assert.equal(instructions.target,nativeInstructions.materialRoot);assert.equal(overlay.target,'/paperclip/control/research-pm/materials');
+ assert.equal(fs.readFileSync(instructions.source+'/pm/AGENTS.md','utf8'),'Owner edited generic instructions');
+ assert.equal(fs.existsSync(instructions.source+'/other-project.md'),false);assert.equal(fs.statSync(instructions.source).mode&0o222,0);
+ assert.throws(()=>transport.createRoleMaterialProjection({...input,kind:'native-instructions',materialRoot:nativeRoot,snapshotRoot:client+'/native'}),/ALIAS/);
+});
 test('a per-run material projection contains only selected bytes and has no writable HOME alias',t=>{
  assert.equal(typeof transport.createRoleMaterialProjection,'function');
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'role-projection-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));

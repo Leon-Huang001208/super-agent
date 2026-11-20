@@ -1,0 +1,1 @@
+{"methodId":"first-principles","version":"1.0.0","permissions":"none","triggerTerms":["第一性原理","基本约束","从根本推导","first principles"],"antiTriggerTerms":["照搬惯例","已有明确模式"],"positiveExamples":["用第一性原理从基本约束推导方案","Reason from first principles instead of copying convention"],"negativeExamples":["按仓库已有明确模式修改同类字段","照搬惯例，不需要重新推导"]}

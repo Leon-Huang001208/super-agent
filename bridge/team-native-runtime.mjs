@@ -1,14 +1,16 @@
 import{taskInputRevision}from'./task-input.mjs';
 import fs from'node:fs';import path from'node:path';import{createHash,randomUUID}from'node:crypto';
 import{AdmissionMeter}from'./admission.mjs';import{ROLE_ROOT as R,readControl,writeControl,editRoleRegistry}from'./role-control-store.mjs';
-import{authorizeChiefOwnerInput,validateTeamPlan,sameReviewedArtifacts}from'./team-plan.mjs';import{TEAM_ROLES,validateTeamRoster}from'./team-roles.mjs';
-import{teamContextEnabled,projectForTask,projectForOperation,scopedRegistry,reconcileTeamDispatch,createTeamContextCoordinator,writeTeamArchive,buildTeamContinuationInput,observeTeamFlow,teamArtifactNames}from'./team-context.mjs';
+import{authorizeChiefOwnerInput,validateTeamPlan,validateTeamCodeCandidate,validateTeamQaResult,validateTeamCheckEvidence,codeReviewForTeamStep}from'./team-plan.mjs';import{TEAM_ROLES,validateTeamRoster}from'./team-roles.mjs';
+import{readRoleProjectContext}from'./role-project-context.mjs';
+import{teamContextEnabled,registryForContextRecord,projectForTask,projectForOperation,scopedRegistry,reconcileTeamDispatch,createTeamContextCoordinator,writeTeamArchive,buildTeamContinuationInput,observeTeamFlow,teamArtifactNames}from'./team-context.mjs';
 const P='/opt/paperclip/node_modules',sha=b=>createHash('sha256').update(b).digest('hex');
 const fail=code=>{throw Object.assign(Error(code),{code});};
 const log=e=>fs.appendFileSync(R+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...e})+'\n',{mode:0o600});
-const workspace=r=>r.contextProject?.workspaceCwd??'/paperclip/instances/default/projects/'+r.companyId+'/'+r.team.projectId+'/_default';
-const scopeTask=(r,task)=>scopedRegistry(r,projectForTask(r,task,{log}),{log});
-const scopeFlow=(r,flow,task)=>scopedRegistry(r,projectForOperation(r,flow,{task,log}),{log});
+const projectIdFor=(r,value)=>value?.projectId??r.team.projectId;
+const workspace=(r,projectId=r.team.projectId)=>(r.contextProject?.projectId===projectId?r.contextProject.workspaceCwd:null)??'/paperclip/instances/default/projects/'+r.companyId+'/'+projectId+'/_default';
+const scopeTask=(r,task,record)=>{if(record||!r.contextProject)r=registryForContextRecord(r,record);if(teamContextEnabled(r))return scopedRegistry(r,projectForTask(r,task,{log}),{log});if(!task||task.companyId!==r.companyId||task.responsibleUserId!==r.ownerId||!task.projectId)fail('TEAM_CONTEXT_NATIVE_SCOPE_DENIED');return {...r,team:{...r.team,projectId:task.projectId}};};
+const scopeFlow=(r,flow,task)=>{r=registryForContextRecord(r,flow);if(teamContextEnabled(r))return scopedRegistry(r,projectForOperation(r,flow,{task,log}),{log});if(flow.projectId&&flow.projectId!==task?.projectId)fail('TEAM_CONTEXT_NATIVE_SCOPE_DENIED');return scopeTask(r,task);};
 const projectFields=r=>teamContextEnabled(r)?{contextVersion:1,projectId:r.team.projectId,projectKey:r.contextProject.key,workspaceCwd:workspace(r),...(r.contextProject.projectWorkspaceId?{projectWorkspaceId:r.contextProject.projectWorkspaceId}:{})}:{};
 function dirs(){for(const name of ['team','team/workflows','team/waiting','team/notifications','team/context-archive']){const p=R+'/'+name;if(!fs.existsSync(p))fs.mkdirSync(p,{mode:0o700});const s=fs.lstatSync(p);if(!s.isDirectory()||s.isSymbolicLink()||s.uid!==0||(s.mode&0o077))fail('TEAM_DIRECTORY_DENIED');}}
 function archiveDirectory(flow){
@@ -43,20 +45,22 @@ function continuationInput(r,flow,task){
  return buildTeamContinuationInput({task,flow,readArtifact:ref=>flowArtifact(r,flow,ref),additionalArtifacts});
 }
 function budgetUsed(root){const names=fs.readdirSync(R+'/budget/'+root);if(names.some(x=>!/^[-a-f0-9]{36}\.json$/.test(x)))fail('TEAM_BUDGET_RECORD_DENIED');return names.length;}
-function registration(r,taskId,agentId,role,lease,{rootTaskId=taskId,rootInputRevision,phase='work',inputRevision,networkScope,resourceScope,operationId=randomUUID(),acceptedRunId,additionalInput,reviewedArtifacts,artifactGeneration}={}){
- const op={id:operationId,kind:'run',taskId,agentId,role,rootTaskId,rootInputRevision,phase,inputRevision,networkScope,resourceScope,acceptedRunId,additionalInput,reviewedArtifacts,...projectFields(r),
+function registration(r,taskId,agentId,role,lease,{rootTaskId=taskId,rootInputRevision,phase='work',inputRevision,networkScope,resourceScope,additionalCapabilities=[],authorizedHostActions=[],codeCandidate,codeReview,operationId=randomUUID(),acceptedRunId,additionalInput,reviewedArtifacts,artifactGeneration}={}){
+ const op={id:operationId,kind:'run',taskId,projectId:lease.projectId,agentId,role,rootTaskId,rootInputRevision,phase,inputRevision,networkScope,resourceScope,additionalCapabilities,authorizedHostActions,codeCandidate,codeReview,acceptedRunId,additionalInput,reviewedArtifacts,...projectFields(r),
   ...(artifactGeneration?{artifactGeneration,...teamArtifactNames({taskId:rootTaskId,inputRevision:rootInputRevision??inputRevision,generationId:artifactGeneration})}:{})};
  editRoleRegistry(current=>{current.tasks=[...new Set([...current.tasks,taskId,rootTaskId])];current.taskRoots??={};current.taskRoots[taskId]=rootTaskId;current.taskRoots[rootTaskId]=rootTaskId;current.taskId=taskId;current.lease={taskId,projectId:lease.projectId,nonce:lease.nonce,operationId:op.id};if(!current.operations.some(x=>x.id===op.id))current.operations.push(op);if(!fs.existsSync(R+'/budget/'+rootTaskId))fs.mkdirSync(R+'/budget/'+rootTaskId,{mode:0o700});return current;});return op;
 }
-function meterFor(r){return new AdmissionMeter({filename:'/paperclip/control/admission.sqlite',allowedProjectIds:[r.team.projectId],log});}
+function meterFor(r,projectId=r.lease?.projectId??r.team.projectId){return new AdmissionMeter({filename:'/paperclip/control/admission.sqlite',allowedProjectIds:[projectId],log});}
 export async function admitChiefInput(ctx,{database}){
  let r=readControl(R+'/registry.json');if(ctx.agent.id!==r.team?.ids?.chief||r.team.enabled!==true)fail('TEAM_CHIEF_NOT_ENABLED');dirs();
  const {db,schema:s,orm:o}=await database();let[task]=await db.select().from(s.issues).where(o.eq(s.issues.id,ctx.context.issueId));const[run]=await db.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,ctx.runId));if(!task||!run)fail('TEAM_NATIVE_INPUT_MISSING');
  const[wakeup]=await db.select().from(s.agentWakeupRequests).where(o.eq(s.agentWakeupRequests.id,run.wakeupRequestId));const previousRuns=await db.select().from(s.heartbeatRuns).where(o.and(o.eq(s.heartbeatRuns.issueId,task.id),o.ne(s.heartbeatRuns.id,run.id)));
  if(teamContextEnabled(r)&&!task.projectId)fail('TEAM_CONTEXT_NATIVE_SCOPE_DENIED');
- r=scopeTask(r,task.projectId?task:{...task,projectId:r.team.projectId});authorizeChiefOwnerInput({registry:r,task:task.projectId?task:{...task,projectId:r.team.projectId},run,wakeup,previousRuns});
+ const contextControl=r.context?.enabled===true?await(await import('./chief-context-paperclip.mjs')).readManagedChiefContext({db,schema:s,orm:o,task,companyId:r.companyId,ownerId:r.ownerId}):null;
+ r=scopeTask(r,task.projectId?task:{...task,projectId:r.team.projectId},contextControl?{contextVersion:1}:undefined);authorizeChiefOwnerInput({registry:r,task:task.projectId?task:{...task,projectId:r.team.projectId},run,wakeup,previousRuns});
  if(!task.projectId){const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(db);task=await svc.update(task.id,{projectId:r.team.projectId});}
- const meter=meterFor(r);let lease;
+ await readRoleProjectContext({db,schema:s,orm:o,task,companyId:r.companyId,ownerId:r.ownerId,legacyProfile:r.agents.find(a=>a.profile.role==='chief')?.profile,rootTaskId:task.id});
+ const meter=meterFor(r,task.projectId);let lease;
  try{lease=meter.reserveTask({taskId:task.id,projectId:task.projectId,storageReceipt:JSON.parse(fs.readFileSync('/host-evidence/host-storage.json','utf8'))});}
  catch(e){if(e.code!=='ADMISSION_BUSY')throw e;const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(db);writeControl(R+'/team/waiting/'+task.id+'.json',{taskId:task.id,runId:run.id,wakeupId:wakeup.id,inputRevision:taskInputRevision(task),...projectFields(r),at:new Date().toISOString()});await svc.update(task.id,{status:'todo',assigneeAgentId:null,assigneeUserId:r.ownerId});fail('NATIVE_ROLE_GLOBAL_SLOT_BUSY');}
  finally{meter.close();}
@@ -68,14 +72,14 @@ export async function admitChiefInput(ctx,{database}){
 function artifact(r,name,{notBefore=0,runId,historicalTaskId}={}){
  let base=workspace(r);if(runId){const permit=readControl(R+'/permits/'+runId+'.json');base=permit.cwd;
   if(historicalTaskId!==undefined){if(permit.runId!==runId||permit.taskId!==historicalTaskId||permit.companyId!==r.companyId||permit.projectId!==r.team.projectId||permit.ownerId!==r.ownerId||!TEAM_ROLES[permit.role]||base!==workspace(r)&&base!==R+'/workspaces/'+permit.role)fail('TEAM_ARTIFACT_WORKSPACE_DENIED');}
-  else if(teamContextEnabled(r)){if(permit.projectId!==r.team.projectId||base!==workspace(r))fail('TEAM_ARTIFACT_WORKSPACE_DENIED');}else if(base!==workspace(r)&&!Object.keys(TEAM_ROLES).some(k=>base===R+'/workspaces/'+k))fail('TEAM_ARTIFACT_WORKSPACE_DENIED');}
+  else if(teamContextEnabled(r)){if(permit.projectId!==r.team.projectId||base!==workspace(r))fail('TEAM_ARTIFACT_WORKSPACE_DENIED');}else if(permit.companyId!==r.companyId||base!==workspace(r,permit.projectId)&&!Object.keys(TEAM_ROLES).some(k=>base===R+'/workspaces/'+k))fail('TEAM_ARTIFACT_WORKSPACE_DENIED');}
  if(!/^[a-z][a-z0-9-]{0,110}\.(md|json)$/.test(name??''))fail('TEAM_ARTIFACT_PATH_DENIED');const p=path.join(base,name),stat=fs.lstatSync(p);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size>262144||stat.mtimeMs+2000<notBefore)fail('TEAM_ARTIFACT_DENIED');const bytes=fs.readFileSync(p);if(bytes.includes(0))fail('TEAM_ARTIFACT_DENIED');return {file:name,sha256:sha(bytes),bytes:bytes.length,text:bytes.toString('utf8')};
 }
 async function ports(database){const data=await database();const issue=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(data.db);const heartbeat=(await import(P+'/@paperclipai/server/dist/services/heartbeat.js')).heartbeatService(data.db);return {...data,issue,heartbeat};}
 async function getRunForOp(p,op){const file=R+'/operations/'+op.id+'.json';let id=op.acceptedRunId;if(fs.existsSync(file))id=readControl(file).runId;if(!id){const[w]=await p.db.select().from(p.schema.agentWakeupRequests).where(p.orm.eq(p.schema.agentWakeupRequests.idempotencyKey,'team-operation:'+op.id));id=w?.runId;}if(!id)return null;const[run]=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.eq(p.schema.heartbeatRuns.id,id));return run;}
 async function requireNoPendingOwnerInput(p,r,taskId){const rows=await p.db.select({id:p.schema.agentWakeupRequests.id}).from(p.schema.agentWakeupRequests).where(p.orm.and(p.orm.eq(p.schema.agentWakeupRequests.companyId,r.companyId),p.orm.eq(p.schema.agentWakeupRequests.requestedByActorType,'user'),p.orm.inArray(p.schema.agentWakeupRequests.status,['queued','deferred_issue_execution']),p.orm.sql`${p.schema.agentWakeupRequests.payload}->>'issueId' = ${taskId}`)).limit(1);if(rows.length)fail('TEAM_PENDING_OWNER_INPUT');}
 async function releaseKnownIdle(p,r){
- if(fs.existsSync(R+'/call.lock'))return false;if(r.lease){const held=await p.issue.getById(r.lease.taskId);if(!held)fail('TEAM_CONTEXT_LEASE_TASK_MISSING');r=scopeTask(r,held);if(r.lease.projectId!==r.team.projectId)fail('TEAM_CONTEXT_LEASE_PROJECT_CHANGED');}const meter=meterFor(r);try{
+ if(fs.existsSync(R+'/call.lock'))return false;if(r.lease){const held=await p.issue.getById(r.lease.taskId);if(!held)fail('TEAM_CONTEXT_LEASE_TASK_MISSING');r=scopeTask(r,held,r.operations.find(op=>op.id===r.lease.operationId));if(r.lease.projectId!==r.team.projectId)fail('TEAM_CONTEXT_LEASE_PROJECT_CHANGED');}const meter=meterFor(r);try{
  if(!r.lease||!meter.verifyLease(r.lease).allowed)return true;
  const currentOp=r.operations.find(x=>x.id===r.lease.operationId);if(!currentOp||!await getRunForOp(p,currentOp))return false;
  const nonce=randomUUID(),lock=R+'/call.lock';try{fs.writeFileSync(lock,JSON.stringify({kind:'controlled-phase-release',nonce})+'\n',{flag:'wx',mode:0o600});}catch(e){if(e.code==='EEXIST')return false;throw e;}
@@ -101,8 +105,8 @@ async function rootAuthority(p,r,flow,fn,context){
 async function dispatchPlan(p,r,op,run,context){
  const file=R+'/team/workflows/'+run.id+'.json',saved=fs.existsSync(file)?readControl(file):null;
  if(saved&&saved.dispatched!==false)return;
- let task=await p.issue.getById(op.taskId);if(!task)fail('TEAM_NATIVE_ROOT_MISSING');r=scopeTask(r,task);projectForOperation(r,op,{task,log});
- const base=saved??{rootTaskId:task.id,sourceRunId:run.id,sourceOperationId:op.id,inputRevision:op.inputRevision,...projectFields(r),artifacts:{},
+ let task=await p.issue.getById(op.taskId);if(!task)fail('TEAM_NATIVE_ROOT_MISSING');r=scopeTask(r,task,op);projectForOperation(r,op,{task,log});if(!teamContextEnabled(r))context=null;
+ const base=saved??{rootTaskId:task.id,projectId:task.projectId,sourceRunId:run.id,sourceOperationId:op.id,inputRevision:op.inputRevision,...projectFields(r),artifacts:{},
   ...(op.artifactGeneration?{artifactGeneration:op.artifactGeneration,planFile:op.planFile,summaryFile:op.summaryFile,outputPrefix:op.outputPrefix}:{})};
  const readStrictPlan=()=>{const value=base.planArtifact?flowArtifact(r,base,base.planArtifact):artifact(r,base.planFile??'chief-dispatch-'+task.id+'-'+op.inputRevision.slice(0,12)+'.json',{notBefore:Date.parse(run.startedAt),runId:run.id});
   const strict=validateTeamPlan(JSON.parse(value.text),{remainingCalls:6-budgetUsed(task.id)});if(base.artifactGeneration&&!strict.tasks.length)fail('TEAM_CONTEXT_REPLAN_EMPTY');for(const entry of strict.tasks){if(!entry.outputFile.startsWith(base.outputPrefix??'team-'+task.id+'-'))fail('TEAM_PLAN_OUTPUT_SCOPE_DENIED');if(teamContextEnabled(r)&&!r.contextProject.allowedRoles.includes(entry.role))fail('TEAM_CONTEXT_ROLE_DENIED');}return{artifact:value,plan:strict};};
@@ -113,7 +117,7 @@ async function dispatchPlan(p,r,op,run,context){
  if(!context){await requireNoPendingOwnerInput(p,r,task.id);await nativeRoster(p,r);}
  read??=readStrictPlan();const{artifact:a,plan}=read;
  const required=r.goalRequirements?.[task.id];if(required?.roles?.some(role=>!plan.tasks.some(t=>t.role===role)))fail('TEAM_PLAN_REQUIRED_ROLE_MISSING');
- const description=t=>t.goal+'\n\nRequired deliverable: '+t.outputFile+'\nRead your instructions_file and record material SHA. Keep existing artifacts; no RWB merge/deploy, installation or host configuration change.';
+ const description=(t,legacy=false)=>t.goal+'\n\nRequired deliverable: '+t.outputFile+(legacy?'\nRead your instructions_file and record material SHA. Keep existing artifacts; no RWB merge/deploy, installation or host configuration change.':'\nRead your instructions_file and current project AGENTS.md. Record material SHA and actual verification. Keep existing artifacts. Follow the current Native project delivery policy and owner authorization.');
  const planArtifact=snapshotArtifact(r,base,a,run.id);
  const pending=saved??{...base,planSha256:a.sha256,taskEntries:plan.tasks.map(t=>({...t,id:randomUUID(),agentId:r.team.ids[t.role]})),
    children:[],artifacts:{},dispatched:false,reviewBeforeDispatch:control?.managed===true&&control.reviewBeforeDispatch===true,
@@ -125,7 +129,7 @@ async function dispatchPlan(p,r,op,run,context){
  const intentFile=file+'.intent';let intent,created;
  if(fs.existsSync(intentFile)){
   intent=readControl(intentFile);if(intent.rootTaskId!==task.id||intent.sourceRunId!==run.id||intent.inputRevision!==op.inputRevision||intent.planSha256!==a.sha256)fail('TEAM_DISPATCH_INTENT_CHANGED');
-  created=[];for(const entry of intent.taskEntries){const child=await p.issue.getById(entry.id);if(!child||child.companyId!==r.companyId||child.projectId!==r.team.projectId||r.contextProject?.projectWorkspaceId&&child.projectWorkspaceId!==r.contextProject.projectWorkspaceId||child.parentId!==task.id||child.createdByAgentId!==r.team.ids.chief||child.responsibleUserId!==r.ownerId||child.title!==entry.title||child.description!==description(entry))fail('TEAM_DISPATCH_RECONCILIATION_REQUIRED');created.push(child);}
+  created=[];for(const entry of intent.taskEntries){const child=await p.issue.getById(entry.id);if(!child||child.companyId!==r.companyId||child.projectId!==r.team.projectId||r.contextProject?.projectWorkspaceId&&child.projectWorkspaceId!==r.contextProject.projectWorkspaceId||child.parentId!==task.id||child.createdByAgentId!==r.team.ids.chief||child.responsibleUserId!==r.ownerId||child.title!==entry.title||child.description!==description(entry,!intent.projectId))fail('TEAM_DISPATCH_RECONCILIATION_REQUIRED');created.push(child);}
  }else{
   intent={...pending,schemaVersion:1,at:new Date().toISOString()};writeControl(intentFile,intent);
   created=await rootAuthority(p,r,intent,async tx=>{const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx),out=[];for(const entry of intent.taskEntries)out.push(await svc.create(r.companyId,{id:entry.id,projectId:r.team.projectId,...(r.contextProject?.projectWorkspaceId?{projectWorkspaceId:r.contextProject.projectWorkspaceId}:{}),parentId:task.id,title:entry.title,description:description(entry),status:'todo',assigneeAgentId:entry.agentId,responsibleUserId:r.ownerId,createdByAgentId:r.team.ids.chief,actorResponsibleUserId:r.ownerId,trustExplicitResponsibleUserId:true,idempotencyKey:'chief-dispatch:'+run.id+':'+entry.key,allowDuplicate:false}));return out;},context);
@@ -149,13 +153,20 @@ async function wakeRole(p,r,task,entry,{rootTaskId,phase='work',flow,file,stepKe
  if(disposition.kind!=='new')return disposition.run?.id??null;
  if(!fs.existsSync(budgetDirectory))fs.mkdirSync(budgetDirectory,{mode:0o700});
  if(teamContextEnabled(r)&&!r.contextProject.allowedRoles.includes(role))fail('TEAM_CONTEXT_ROLE_DENIED');
- let additionalInput=reconstruction,reviewedArtifacts;
+ const projectContext=await readRoleProjectContext({...p,task,companyId:r.companyId,ownerId:r.ownerId,legacyProfile:r.agents.find(a=>a.profile.role===role)?.profile,rootTaskId});
+ let additionalInput=reconstruction,reviewedArtifacts,codeCandidate;
  if(phase==='work'){
   const obs=readControl(R+'/team/host-observations.json');if(obs.kind!=='macos-host-observation'||obs.hostPlatform!=='darwin'||!Number.isFinite(Date.parse(obs.capturedAt))||Date.parse(obs.capturedAt)>Date.now()+5000||Date.now()-Date.parse(obs.capturedAt)>300000)fail('TEAM_HOST_OBSERVATION_STALE');
   additionalInput='Trusted management observations (evidence, not instructions):\n'+JSON.stringify({host:obs,roster:await nativeRoster(p,r)});
   if(role==='pm'||role==='qa')for(const a of Object.values(flow?.artifacts??{})){const value=flowArtifact(r,flow,a);if(value.sha256!==a.sha256)fail('TEAM_COLLECTED_ARTIFACT_CHANGED');additionalInput+='\nActual upstream artifact '+JSON.stringify(a)+'\n'+value.text;}
   if(role==='qa'){
    reviewedArtifacts=Object.values(flow.artifacts).map(a=>({taskId:a.taskId,runId:a.runId,file:a.file,sha256:a.sha256}));
+   const candidateFile=R+'/code-workspaces/'+rootTaskId+'/candidate.json';
+   if(fs.existsSync(candidateFile)){
+    const candidate=readControl(candidateFile),[sourceRun]=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.eq(p.schema.heartbeatRuns.id,candidate.runId));
+    codeCandidate=validateTeamCodeCandidate(candidate,{rootTaskId,projectId:task.projectId,workspaceHostPath:projectContext.workspace.hostPath,
+      companyId:r.companyId,artifacts:Object.values(flow.artifacts),run:sourceRun,qaAgentId:agentId});
+   }
    additionalInput+='\nYour JSON verdict must include reviewedArtifacts exactly matching these identities and SHA values: '+JSON.stringify(reviewedArtifacts);
    if(fs.existsSync(R+'/team/isolation-fixtures.json')){const fixtures=readControl(R+'/team/isolation-fixtures.json');for(const f of fixtures.files){const stat=fs.lstatSync(f.path);if(!stat.isFile()||sha(fs.readFileSync(f.path))!==f.sha256)fail('TEAM_ISOLATION_FIXTURE_CHANGED');}additionalInput+='\nSynthetic private fixture existence verified by controller; values withheld: '+JSON.stringify(fixtures);}
   }
@@ -167,7 +178,7 @@ async function wakeRole(p,r,task,entry,{rootTaskId,phase='work',flow,file,stepKe
  if(!lease.allowed)fail('TEAM_CHILD_ADMISSION_UNKNOWN');
  const operationId=requestedOperationId??randomUUID(),inputRevision=taskInputRevision(task);
  if(flow){flow.dispatches??={};flow.dispatches[stepKey]={operationId,taskId:task.id,role,phase,inputRevision,...projectFields(r),additionalInputSha256:sha(additionalInput),leaseNonce:lease.nonce,at:new Date().toISOString()};writeControl(file,flow);}
- const op=registration(r,task.id,agentId,role,{...lease,projectId:task.projectId},{rootTaskId,rootInputRevision:flow?.inputRevision,phase,inputRevision,operationId,networkScope:entry.networkScope,resourceScope:entry.resourceScope,additionalInput,reviewedArtifacts,artifactGeneration});
+ const op=registration(r,task.id,agentId,role,{...lease,projectId:task.projectId},{rootTaskId,rootInputRevision:flow?.inputRevision,phase,inputRevision,operationId,networkScope:entry.networkScope,resourceScope:entry.resourceScope,additionalInput,reviewedArtifacts,artifactGeneration,additionalCapabilities:entry.capabilities??[],authorizedHostActions:entry.hostActions??[],codeCandidate,codeReview:codeReviewForTeamStep(flow,entry,phase)});
  const assign=async(tx)=>{const[current]=await tx.select().from(p.schema.issues).where(p.orm.eq(p.schema.issues.id,task.id)).for('update');if(!current||current.companyId!==r.companyId||current.projectId!==r.team.projectId||current.responsibleUserId!==r.ownerId||taskInputRevision(current)!==inputRevision||['done','cancelled','blocked'].includes(current.status))fail('TEAM_CHILD_AUTHORITY_CHANGED');if(context&&!flow)await context.assertCurrent({registry:r,task:current,flow:{rootTaskId,inputRevision,...projectFields(r),phase:'plan'},transaction:{db:tx}});await(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx).update(task.id,{assigneeAgentId:agentId,assigneeUserId:null,status:'todo'});};
  if(flow)await rootAuthority(p,r,flow,assign,context);else await p.db.transaction(assign);
  await p.heartbeat.resetRuntimeSession(agentId,{taskKey:task.id});
@@ -180,7 +191,7 @@ async function collectChild(p,r,flow,entry,task,context){
  const op=r.operations.filter(x=>x.kind==='run'&&x.taskId===task.id).at(-1);if(!op)return false;const run=await getRunForOp(p,op);if(!run||run.status!=='succeeded')return false;
  if(taskInputRevision(task)!==op.inputRevision||task.companyId!==r.companyId||task.projectId!==r.team.projectId||task.responsibleUserId!==r.ownerId)fail('TEAM_CHILD_INPUT_CHANGED');
  const a=snapshotArtifact(r,flow,artifact(r,entry.outputFile,{notBefore:Date.parse(run.startedAt),runId:run.id}),run.id),marker='<!-- role-artifact:'+run.id+':'+a.sha256+' -->',body=marker+'\n'+a.text;
- let verdict;if(entry.role==='qa'){const review=JSON.parse(a.text);if(!['PASS','NEEDS_WORK'].includes(review.verdict)||!Array.isArray(review.findings)||!Array.isArray(review.notRun)||!sameReviewedArtifacts(review.reviewedArtifacts,op.reviewedArtifacts))fail('TEAM_QA_RESULT_INVALID');verdict=review.verdict;}
+ let verdict;if(entry.role==='qa'){const review=validateTeamQaResult(JSON.parse(a.text),{reviewedArtifacts:op.reviewedArtifacts,codeCandidate:op.codeCandidate});verdict=review.verdict;}
  await rootAuthority(p,r,flow,async tx=>{
   const[current]=await tx.select().from(p.schema.issues).where(p.orm.eq(p.schema.issues.id,task.id)).for('update');if(taskInputRevision(current)!==op.inputRevision)fail('TEAM_CHILD_INPUT_CHANGED');
   const[receipt]=await tx.select({id:p.schema.issueComments.id}).from(p.schema.issueComments).where(p.orm.and(p.orm.eq(p.schema.issueComments.issueId,task.id),p.orm.eq(p.schema.issueComments.body,body),p.orm.eq(p.schema.issueComments.authorAgentId,entry.agentId),p.orm.eq(p.schema.issueComments.createdByRunId,run.id))).limit(1);
@@ -188,7 +199,17 @@ async function collectChild(p,r,flow,entry,task,context){
   if(current.status!=='in_review'||current.assigneeUserId!==r.ownerId)fail('TEAM_CHILD_AUTHORITY_CHANGED');
   const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx);if(!receipt)await svc.addComment(task.id,body,{agentId:entry.agentId,runId:run.id});await svc.update(task.id,{status:'done'});
  },context);
- flow.artifacts[entry.key]={taskId:task.id,runId:run.id,sessionId:run.sessionIdAfter,file:a.file,sha256:a.sha256,bytes:a.bytes,verdict,...(a.archiveFile?{archiveFile:a.archiveFile}:{})};return true;
+ flow.artifacts[entry.key]={taskId:task.id,runId:run.id,sessionId:run.sessionIdAfter,file:a.file,sha256:a.sha256,bytes:a.bytes,verdict,...(a.archiveFile?{archiveFile:a.archiveFile}:{})};
+
+ if(entry.role==='qa'&&op.codeCandidate&&verdict==='PASS'){
+  const permit=readControl(R+'/permits/'+run.id+'.json');
+  if(permit.companyId!==r.companyId||permit.projectId!==task.projectId||permit.runId!==run.id||permit.taskId!==task.id||permit.agentId!==entry.agentId||(permit.rootTaskId??permit.taskId)!==flow.rootTaskId)fail('TEAM_CHECK_EVIDENCE_DENIED');
+  const checksFile=R+'/code-workspaces/'+flow.rootTaskId+'/checks/'+run.id+'.json';
+  const proof=fs.existsSync(checksFile)?validateTeamCheckEvidence(readControl(checksFile),{permit,candidateSha:op.codeCandidate.candidateSha}):{checks:[]};
+  flow.codeReview={verdict,candidateSha:op.codeCandidate.candidateSha,rootTaskId:flow.rootTaskId,
+   projectId:task.projectId,runId:run.id,agentId:entry.agentId,artifactSha256:a.sha256,sourceCandidate:op.codeCandidate,...proof};
+ }
+ return true;
 }
 
 async function finalizeSummary(p,r,flow,file,context){
@@ -198,7 +219,7 @@ async function finalizeSummary(p,r,flow,file,context){
  const qualityAccepted=flow.taskEntries.filter(t=>t.role==='qa').every(t=>flow.artifacts[t.key]?.verdict==='PASS');
  let root=await p.db.transaction(async tx=>{
   const[current]=await tx.select().from(p.schema.issues).where(p.orm.eq(p.schema.issues.id,flow.rootTaskId)).for('update');
-  if(!current||current.companyId!==r.companyId||current.projectId!==r.team.projectId||current.responsibleUserId!==r.ownerId||taskInputRevision(current)!==flow.inputRevision)fail('TEAM_ROOT_AUTHORITY_CHANGED');
+  if(!current||current.companyId!==r.companyId||current.projectId!==projectIdFor(r,flow)||current.responsibleUserId!==r.ownerId||taskInputRevision(current)!==flow.inputRevision)fail('TEAM_ROOT_AUTHORITY_CHANGED');
   const[receipt]=await tx.select({id:p.schema.issueComments.id}).from(p.schema.issueComments).where(p.orm.and(p.orm.eq(p.schema.issueComments.issueId,current.id),p.orm.eq(p.schema.issueComments.body,body),p.orm.eq(p.schema.issueComments.authorAgentId,r.team.ids.chief),p.orm.eq(p.schema.issueComments.createdByRunId,run.id))).limit(1);
   if(['done','blocked'].includes(current.status)){if(!receipt)fail('TEAM_ROOT_DONE_WITHOUT_RECEIPT');return current;}
   if(current.status!=='in_review'||current.assigneeUserId!==r.ownerId||current.assigneeAgentId||current.executionRunId||current.checkoutRunId)fail('TEAM_ROOT_AUTHORITY_CHANGED');
@@ -216,7 +237,8 @@ async function resumeContextPlan(context,p,r,task,flow,file){
    {rootTaskId:view.task.id,phase:'plan',operationId:view.operationId,artifactGeneration:view.artifactGeneration,reconstruction:continuationInput(r,flow,view.task),context})});
 }
 async function driveFlow(p,r,file,context){
- const flow=readControl(file),view=await observeTeamFlow({registry:r,flow,file,readTask:id=>p.issue.getById(id),context,log});let root=view.task;r=view.registry;
+ const flow=readControl(file);r=registryForContextRecord(r,flow);if(!teamContextEnabled(r)){context=null;const task=await p.issue.getById(flow.rootTaskId);r=scopeFlow(r,flow,task);}
+ const view=await observeTeamFlow({registry:r,flow,file,readTask:id=>p.issue.getById(id),context,log});let root=view.task;r=view.registry;
  if(view.delivered||root.status==='cancelled')return;
  if(context){if(view.disposition==='retired')return;if(view.disposition==='superseded'||view.resumeRequired){await resumeContextPlan(context,p,r,root,flow,file);return;}if(view.disposition==='paused')return;if(view.disposition==='terminal'&&!flow.summaryRunId)return;}
  if(flow.dispatched===false){const op=r.operations.find(x=>x.kind==='run'&&x.acceptedRunId===flow.sourceRunId||x.kind==='run'&&x.id===flow.sourceOperationId);let source=op;if(!source)for(const candidate of r.operations.filter(x=>x.kind==='run'&&x.role==='chief'&&x.taskId===flow.rootTaskId&&x.phase==='plan')){if((await getRunForOp(p,candidate))?.id===flow.sourceRunId){source=candidate;break;}}if(!source)fail('TEAM_DISPATCH_RECONCILIATION_REQUIRED');const prior=await getRunForOp(p,source);if(prior?.status==='succeeded')await dispatchPlan(p,r,source,prior,context);return;}
@@ -237,12 +259,12 @@ async function driveFlow(p,r,file,context){
 async function resumeWaiting(p,r,context){
  for(const name of fs.readdirSync(R+'/team/waiting').filter(x=>x.endsWith('.json'))){
   const file=R+'/team/waiting/'+name,w=readControl(file);let task=await p.issue.getById(w.taskId);if(!task||['done','cancelled'].includes(task.status))continue;
-  let scoped=scopeTask(r,task);projectForOperation(scoped,w,{task,log});
-  if(context){const flow={...w,rootTaskId:task.id,sourceRunId:w.runId},view=await context.inspect({registry:scoped,task,flow,file});task=view.task;scoped=view.registry;if(view.disposition==='superseded'){const result=await resumeContextPlan(context,p,scoped,task,flow,file);if(result?.runId){fs.renameSync(file,file+'.resumed');return true;}continue;}if(view.disposition!=='ready')continue;}
+  let scoped=scopeTask(r,task,w);projectForOperation(scoped,w,{task,log});const localContext=teamContextEnabled(scoped)?context:null;
+  if(localContext){const flow={...w,rootTaskId:task.id,sourceRunId:w.runId},view=await localContext.inspect({registry:scoped,task,flow,file});task=view.task;scoped=view.registry;if(view.disposition==='superseded'){const result=await resumeContextPlan(localContext,p,scoped,task,flow,file);if(result?.runId){fs.renameSync(file,file+'.resumed');return true;}continue;}if(view.disposition!=='ready')continue;}
   if(taskInputRevision(task)!==w.inputRevision)continue;
   const[wakeup]=await p.db.select().from(p.schema.agentWakeupRequests).where(p.orm.eq(p.schema.agentWakeupRequests.id,w.wakeupId));if(wakeup?.requestedByActorId!==scoped.ownerId||wakeup.requestedByActorType!=='user')fail('TEAM_WAIT_OWNER_CHANGED');
   if(task.status!=='todo'||task.assigneeUserId!==scoped.ownerId||task.assigneeAgentId||task.projectId!==scoped.team.projectId||task.responsibleUserId!==scoped.ownerId)continue;
-  const runId=await wakeRole(p,scoped,task,{role:'chief'},{rootTaskId:task.id,phase:'plan',context});if(!runId)return false;fs.renameSync(file,file+'.resumed');return true;
+  const runId=await wakeRole(p,scoped,task,{role:'chief'},{rootTaskId:task.id,phase:'plan',context:localContext});if(!runId)return false;fs.renameSync(file,file+'.resumed');return true;
  }return false;
 }
 export function startTeamCoordinator({database,contextRuntime}){

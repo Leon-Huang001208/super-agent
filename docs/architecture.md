@@ -1,5 +1,17 @@
 # Paperclip 集成架构
 
+## 通用角色、项目与能力
+
+11角色的职责与专业方法属于岗位，仓库、工作树、规则、checks和交付方式属于当前Native项目。合法项目扩展存放于`project_workspaces.metadata.superAgentProject`，通过原Native API登记；固定安装版的`runtimeConfig`是严格运行环境schema，不承载这份扩展。本人明确项目优先，其次当前/父任务项目，歧义才询问。旧M1记录继续保留。
+
+`role-capabilities.mjs`同时生成岗位说明的能力索引和执行组合。原tools类别保留兼容；实际MCP由岗位默认与任务补充解析，并在broker处按真实目录过滤和校验。GitHub访问绑定本次项目仓库，宿主动作绑定Native许可中的动作ID。AGENTS与Skills提供方法，不能通过文字扩大允许调用范围。
+
+模型继续在独立Docker运行。Native默认目录存放计划/报告/QA等产物；任务Git工作树另挂到`/workspace/project`，QA只读。宿主Git、checks、受管发布与选定本地MCP通过本run stdio MCP及既有宿主传输执行，Task容器只持有opaque token。宿主和provider的真实认证保持原归属。
+
+Skill方法包单独只读挂载，保留包内相对引用与摘要；CODEX_HOME/skills只建立选定入口。运行中实际tools/list、调用结果和缺依赖原因是可用性证据。参见[实施与接口](plans/role-capabilities.md)及[岗位说明](team.md)。
+
+角色指令使用Paperclip原生Managed bundle，每个角色只登记自己的`<role>/AGENTS.md`。原生文件服务的进程内装配保留认证与内容冲突检查，保存前保全旧内容，保存后同步本项目材料manifest和摘要。同步尚未完成时拒绝新执行，恢复仍核对同一次修改；旧角色配置、UUID材料和运行记录保留。参见[角色指令迁移](plans/role-instructions.md)。
+
 ## 组件与数据流
 
 ```mermaid
@@ -68,6 +80,8 @@ flowchart LR
 ## 跨项目上下文与记忆 M2
 
 部署 catalog 将 Native company、owner、project、规范 workspace 及可选 `projectWorkspaceId` 绑定；flow、operation、子任务、permit 和挂载沿同一绑定派生，原 11 个 Agent ID 与全局默认项目保持。项目选择和本人指令、输入版本、计划、继续意图均以既有 Native 事务/activity 为准；私有文件仅保存知识版本和执行映射，不建立第二个调度器、任务库、WebSocket 或数据库 schema。
+
+全局context开关不接管所有Native任务：真实M2 control与显式operation版本共同确定关联；旧flow、RWB原primary及其他Native项目保留portable执行路径，畸形M2记录不能降级。Native项目能力与catalog取交集，read_only仅artifact、无宿主代码写路径/写动作，MCP在broker按静态准入、动态岗位目录与实际只读声明共同收窄。初次公开bundle核验后generic范围随Native本人保存继承，实际指令使用本run prepared copy；项目overlay排除冻结的旧AGENTS/CAPABILITIES，只保留项目事实及公共引用。
 
 `add` 先记录本人补充，活动 run 终态明确后才应用新输入；旧 flow/产物保留原摘要。同任务恢复以全新模型 session 重建授权输入与产物上下文，同根六次额度累计，不重置 lease 或伪造 resume 身份。暂停后同版本继续复用计划；已结束的 blocked 阶段须先对账，重规划至少保留三次调用。done 根的明确新目标仅由 `followup` 建立关联新根，不使用 `parentId`，失败/UNKNOWN 不借此换预算。
 

@@ -5,6 +5,7 @@ import {createChiefFeishuNative} from './chief-feishu-native.mjs';
 import {parseChiefContextCommand} from './chief-context-commands.mjs';
 import {createHash} from 'node:crypto';
 import {ROLE_ROOT as R,readControl,writeControl} from './role-control-store.mjs';
+import {selectNativeProject} from './role-project-context.mjs';
 const require=createRequire('/opt/super-agent/bridge-dependencies/package.json');
 const fail=code=>{throw Object.assign(Error(code),{code});};
 export async function startChiefFeishuService({database}){
@@ -20,10 +21,15 @@ export async function startChiefFeishuService({database}){
  const native=context??await createChiefFeishuNative({database,binding,log,
   canDispatch:async({db:transaction}={})=>{currentScope();if(fs.existsSync(R+'/call.lock')||fs.existsSync(R+'/registry.control.lock'))return false;const {db,schema:s,orm:o}=await database();return !(await (transaction??db).select({id:s.heartbeatRuns.id}).from(s.heartbeatRuns).where(o.inArray(s.heartbeatRuns.status,['running','queued','scheduled_retry'])).limit(1)).length;},
   acknowledge:async record=>{const k=record.operationId,uuid=k.slice(0,8)+'-'+k.slice(8,12)+'-4'+k.slice(13,16)+'-8'+k.slice(17,20)+'-'+k.slice(20,32);
-   const response=await client.im.message.reply({path:{message_id:record.sourceParams.messageId},data:{msg_type:'text',content:JSON.stringify({text:'已登记 Chief 任务 '+record.identifier+'\nNative ID：'+record.taskId+'\n交由 Chief Coordinator 按原调用预算串行分派；不合并或部署 RWB。'}),uuid}});
+   const response=await client.im.message.reply({path:{message_id:record.sourceParams.messageId},data:{msg_type:'text',content:JSON.stringify({text:'已登记 Chief 任务 '+record.identifier+'\nNative ID：'+record.taskId+'\n项目：'+record.projectId+'\n交由 Chief Coordinator 按原调用预算串行分派，执行范围按该项目规则和本人授权。'}),uuid}});
    if(response.code!==0||!/^om_[A-Za-z0-9]+$/.test(response.data?.message_id??''))fail('CHIEF_FEISHU_ACK_UNKNOWN');return {messageId:response.data.message_id};}
  });
- const receive=createChiefFeishuIntake({binding,...(context&&{parseCommand:parseChiefContextCommand}),registerTrustedMessage:async message=>{currentScope();return context?context.receiveTrusted(message):native.registerTrustedMessage(message);},log});
+ const receive=createChiefFeishuIntake({binding,...(context&&{parseCommand:parseChiefContextCommand}),resolveProject:async selector=>{
+  currentScope();const{db,schema:s,orm:o}=await database();
+  const projects=await db.select().from(s.projects).where(o.eq(s.projects.companyId,binding.companyId));
+  const workspaces=projects.length?await db.select().from(s.projectWorkspaces).where(o.inArray(s.projectWorkspaces.projectId,projects.map(p=>p.id))):[];
+  return selectNativeProject({projects,workspaces,companyId:binding.companyId,selector,defaultProjectId:binding.projectId});
+ },registerTrustedMessage:async message=>{currentScope();return context?context.receiveTrusted(message):native.registerTrustedMessage(message);},log});
  const {createFeishuConnection}=await import('/chief-feishu-transport/bridge/feishu-connection.mjs');
  const connection=createFeishuConnection({sdk,...credentials,log,store:{getOwner:async()=>readControl('/paperclip/feishu/ownership.json').ownerOpenId,compareAndBind:async()=>false},
   persistHealth:async health=>writeControl(R+'/team/feishu-connection.health.json',health),

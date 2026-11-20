@@ -5,6 +5,12 @@
 | M2 项目与本人命令 | `bridge/context-projects.mjs`、`bridge/chief-context-commands.mjs`、`bridge/chief-context-native.mjs` | catalog 绑定 Native project/可选 workspace ID；原 activity 持久化项目/任务选择、补充、暂停、继续与 linked followup。`context-projects`、`chief-context-commands`、`chief-context-native` 同名测试核对契约。 |
 | M2 记忆与协调 | `bridge/project-knowledge-store.mjs`、`bridge/team-context.mjs`、`bridge/team-native-runtime.mjs` | owner-confirmed 当前版本按项目共享/角色私有先隔离后检索；新 session 不带旧任务 history；六次同根额度、原操作对账和分代产物保留。对应 `project-knowledge-store`、`team-context` 测试。 |
 | M2 材料与配置 | `bridge/role-material-snapshot.mjs`、`bridge/native-role-runtime.mjs`、`scripts/role-container-transport.mjs`、`scripts/context-configure.mjs` | 专用只读 snapshot，manifest/permit/项目/workspace 同域；配置默认 preview、显式 apply，保留旧 RWB primary/回调。`native-role-runtime-context`、`role-container-materials`、`context-configure` 及既有 gate/adapter/preparation 测试；合同见[跨项目专题](cross-project-context.md)。 |
+| 通用岗位与能力 | `team-roles.mjs`、`role-capabilities.mjs`、`role-skill-bundles.mjs`、`assets/role-profiles/`、`assets/role-skills/` | 11职业说明、默认/补充能力、可复核完整Skill包。能力按技术栈/服务选择，安装或缓存存在不能当调用通过。 |
+| 跨项目接单 | `role-project-context.mjs`、Native角色及Chief现有入口 | 使用Native workspace.metadata扩展，任务项目决定知识/工作区/交付；官方schema/service合同fixture覆盖真实原始DB和API投影。 |
+| 宿主执行与MCP | `role-host-capabilities.mjs`、`role-host-mcp.mjs`、`role-host-call-queue.mjs`、`docker/role-host-mcp-server.mjs` | 现有传输内执行Git/check/已授权动作及选定stdio MCP；取消清理自有进程组，失败保留有限脱敏诊断。 |
+| 岗位材料发布 | `scripts/publish-role-profiles.mjs` | 暂停新派发后走Native认证HTTP CAS保存AGENTS/CAPABILITIES，原历史及登记同步链保留；不重建Agent。 |
+| 项目交付适配 | `scripts/role-project-delivery.mjs` | 项目已有入口优先；显式选择managed-project时复用固定manager/Harness。prepare后QA检查精确integration候选，发布复用同一PR且不自动合并。`tests/management/role-project-delivery-git.mjs`用本地bare remote验证真实Git行为。 |
+| 可编辑角色指令 | `bridge/role-instruction-store.mjs`、`docker/role-instruction-hook.mjs`、`scripts/migrate-role-instructions.mjs` | 原生Managed目录、保存与登记同步、旧内容保留、失败恢复；`role-instruction-*.test.mjs`覆盖迁移、保存和实际安装源码装配。运行前仍需本人窗口内的实际迁移与认证网页读回。 |
 | 原生角色调用门 | `docker/role-codex-gate.mjs`、`docker/bin/codex` | 精确Native运行许可、单次claim、原订阅与Docker隔离全工具执行。旧hello/Chief入口继续独立；工具逐项结果见本轮设计。 |
 | 角色阶段收尾 | `bridge/role-native-settlement.mjs` | Native事务绑定原输入与run，保存最终回复后交回本人待接手，防止缺失disposition的自动修复；真实合同待验收。 |
 | Research / PM 必需材料 | `bridge/role-materials.mjs`、`bridge/role-preparation.mjs`、`bridge/native-role-adapter.mjs` | 部署清单、摘要、引用和目录链预检；项目及角色私有知识按版本读取。已接原生执行器；Research真实来源报告已产生，PM和工具全项仍待验收。见[本轮设计与现场核查](plans/research-pm-m1.md)。 |
@@ -19,6 +25,8 @@
 | 项目工程运行时 | `scripts/project-runtime.mjs`、`scripts/vendor/leon-engineering/` | 固定 0.19.4 模块与来源校验，显式 Harness 和交付入口，旧回执续接；`tests/project-runtime.test.mjs` 和 `tests/management/project-runtime-git.mjs` |
 
 业务验收沿用固定 `gpt-6.1-sol` / `low`，预检拒绝旧 xhigh 配置。M2 首轮本地 Docker 全量为 515/515（`logs/m2-full-first.log`，加入配置工具前），不表示最终总数、Mini 激活或真实业务通过；后续精确候选须另留回执。
+
+`role-instruction-paths.mjs`把Managed入口与company、Agent、role绑定，复用Native已登记的本run材料副本及baseline；按当前或历史manifest匹配当次摘要。调用门和宿主传输使用完整路径及内容摘要，不再用同名文件的basename定位。网页后续保存不修改已经固定的Native副本。旧UUID许可的原路径合同继续保留。
 
 ## Chief 网页续接策略
 
@@ -65,7 +73,7 @@ docker run --rm --network none --read-only --tmpfs /tmp:rw,size=64m \
 
 ## 专职网络角色与Apps接线
 
-`bridge/network-role.mjs`定义网络职责、主题和只读动作白名单；`tests/network-role.test.mjs`覆盖跨域、写入请求及知识隔离。role-materials/role-preparation允许network-engineer，Native运行前校验可信operation的networkScope。原验收脚本按对应profile.projectId创建上下文，避免新网络项目误绑定Research项目。
+`bridge/network-role.mjs`定义网络职责、主题和动作范围；修改动作仍须Native许可绑定已授权登记ID，任意命令名不构成授权。`tests/network-role.test.mjs`覆盖范围及知识隔离；host测试覆盖实际执行权限。Native运行前校验可信operation的networkScope。原验收脚本按对应profile.projectId创建上下文，新任务则按当前Native项目解析。
 
 Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避免把真实token交给任务。MCP初始化/目录与本轮两个安全只读测试动作分别受限并留脱敏回执，实际能力以本轮真实结果为准；参见[Research/PM验收](plans/research-pm-m1.md)及[网络职责](network-engineer.md)。
 
@@ -75,7 +83,7 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 
 `bridge/role-labels.mjs`仅统一显示名；Native名称更新复用原ID。岗位拆分与新增执行器必须另外确认，不能从命名映射推断已实施。
 
-`bridge/team-roles.mjs`是11角色职责与层级清单，Native preparation、材料和最终CLI gate共用稳定角色键，避免清单已增加而最终执行门仍拒绝。`tests/team-roles.test.mjs`检查唯一ID、完整英文显示名、架构下属前后端、质量独立汇报及无额外高管岗位。System Resource Engineer单独只读scope，数据库业务/运行/物理资源职责分开。实际Native创建、启用、分派及通知须独立留证。
+`bridge/team-roles.mjs`是11角色职责与层级清单，Native preparation、材料和最终CLI gate共用稳定角色键，避免清单已增加而最终执行门仍拒绝。`tests/team-roles.test.mjs`检查唯一ID、完整英文显示名、架构下属前后端、质量独立汇报及无额外高管岗位。System Resource Engineer使用独立resourceScope，数据库业务/运行/物理资源职责分开。实际Native创建、启用、分派及通知须独立留证。
 
 ## Chief Native控制器
 
@@ -114,3 +122,5 @@ Host 策略依赖 Docker 将网关继续只发布到宿主 loopback。它不授�
 源 dirty、未知 ignored、未知锁/结果、任意进程或运行/停止容器对源及其祖先/子路径的引用都拒绝 apply。仅当真实检查完备且无占用，显式 --apply --expect-receipt-sha256 绑定dry-run摘要，才在原 integration/task 锁内重新核对；验证 WorkDisk UUID、APFS 与规范路径，无 symlink 中间目录。创建的 integration alias 只属于子任务，不认领父任务工作树；对账最多记录 ci_passed 及完整 adoption 证据，绝不记录 cleaned 或免除原 cleanup/enforce。见[工作流](agent-workflow.md#组合交付对账与收尾)。
 
 占用核对按 Docker mount 类型验证：bind 必须有有效绝对 Source，沿现存祖先还原缺失末段；tmpfs 以明确类型判定；volume 仅在 inspect 证明为标准 VM 内 local volume 且无驱动选项时排除宿主 bind 引用。未知结构、未知卷选项或来源无法还原均拒绝，不能把未知当空闲。远端原 feature 分支如存在必须仍绑定原 SHA；新的 integration alias 在远端必须不存在。
+
+本人于2026-11-20明确允许“区分只读缓存后正常回收”。已有对账入口增加显式 --allow-readonly-vm-cache：通过lsof逐FD访问模式和ps真实可执行文件识别macOS Virtualization的全只读源缓存，仅在无容器引用时允许普通受管流程。输出与adoption证据保留非零openPids，并单列readOnlyVmCachePids、activePids；不声称句柄自然归零。默认不忽略缓存；其他进程、读写/未知FD或容器引用仍等待。不重启Docker、不强删。

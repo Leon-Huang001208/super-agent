@@ -21,6 +21,24 @@ const NS='team.context.';
 const activeStates=['running','queued','scheduled_retry'];
 const terminalStates=['succeeded','failed','cancelled','timed_out'];
 
+/** A deployment switch does not turn an unrelated Native task into an M2 task. */
+export async function readManagedChiefContext({db,schema:s,orm:o,task,companyId,ownerId}){
+  if(!uuid.test(companyId??'')||!uuid.test(task?.id??'')||task.companyId!==companyId||
+    task.responsibleUserId!==ownerId||typeof ownerId!=='string'||task.parentId)fail('CHIEF_CONTEXT_TASK_SCOPE_DENIED');
+  const rows=await db.select().from(s.activityLog).where(o.and(o.eq(s.activityLog.companyId,companyId),
+    o.eq(s.activityLog.action,NS+'control'),o.eq(s.activityLog.entityId,task.id)));
+  if(!rows.length)return null;
+  for(const row of rows){
+    const v=row.details?.value;
+    if(!(row.actorType==='user'&&row.actorId===ownerId||row.actorType==='system'&&row.actorId===SYSTEM)||
+      !Number.isSafeInteger(row.details?._eventSequence)||row.details._eventSequence<1||
+      v?.schemaVersion!==1||v.managed!==true||v.companyId!==companyId||v.ownerId!==ownerId||
+      v.taskId!==task.id||v.projectId!==task.projectId)fail('CHIEF_CONTEXT_CONTROL_CHANGED');
+  }
+  const last=rows.reduce((a,b)=>a.details._eventSequence>b.details._eventSequence?a:b);
+  return Object.freeze(copy(last.details.value));
+}
+
 function noProvider(run){return run?.resultJson?.executionRecovery?.providerWorkStarted===false;}
 /** Existing private call evidence; never treats an unknown lock as an empty worker. */
 export function observeContextCallEvidence({task,ids,runs,root=ROOT}){

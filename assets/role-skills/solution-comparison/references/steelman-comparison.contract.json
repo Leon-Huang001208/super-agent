@@ -1,0 +1,1 @@
+{"methodId":"steelman-comparison","version":"1.0.0","permissions":"none","triggerTerms":["钢人化比较","最强版本","公平比较","steelman"],"antiTriggerTerms":["稻草人","只支持一方"],"positiveExamples":["先钢人化比较两个方案的最强版本","Steelman both alternatives before recommending one"],"negativeExamples":["用稻草人方式否定对手","只支持一方，不需要比较"]}

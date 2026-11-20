@@ -1,5 +1,27 @@
 # 运行维护与恢复
 
+## 岗位能力与项目接线
+
+项目代码配置由Native项目workspace API写入`metadata.superAgentProject`，包括源仓库宿主路径、任务工作树根、已登记checks、交付入口、宿主动作和选定MCP。只读/非代码项目可没有代码仓库。任务工作区与项目知识按Native project ID绑定，旧记录不搬迁。
+
+`publish-role-profiles.mjs --apply`要求暂停本团队新派发且无活动run，通过现有本人会话执行真正的网页文件读写接口；CAPABILITIES先保存，再CAS更新入口AGENTS，Native保存链保留旧内容并同步摘要。同内容重跑不增加变更。恢复原团队开关后才启动Chief主服务，避免把维护暂停误判为部署绑定错误。
+
+材料发布只保存Managed AGENTS/CAPABILITIES，保留原Native Agent简介及连接配置；简介PATCH会触发连接验证，材料发布不需要这一步。
+
+新运行候选必须同时包含bridge、docker与完整Skill资产包，provider broker需要其只读源码挂载；Actor另挂选定Skill入口、只读包和任务代码。宿主MCP配置只在宿主读取选定服务，不复制完整配置或凭据给模型。使用实际目录/调用验证能力，按失败码诊断，不自动安装缺依赖或补回已经停用的全局Hook。
+
+宿主检查与MCP使用异步子进程，取消或超时只终止本调用独立进程组；旧已开始而结果未知的动作保留原run目录和started记录，不重新执行。原生QA绑定真实Git候选与检查记录，发布继续使用目标项目已登记受管入口和允许动作。
+
+没有项目自有交付入口时，Native metadata可显式登记`delivery: {adapter: "managed-project", maximumAction: "pull_request"}`，使用本仓库固定manager/Harness。任务代码工作树在已登记的Projects根创建，prepare生成integration候选；QA须在该精确SHA运行登记checks并通过Native结果收存，再允许同一任务发布PR。此适配器不自动合并。`maximumAction: "artifact"`仅建立任务工作树和报告，不开始完整发布流程。CLI通过stdin接收私有许可：`node scripts/role-project-delivery.mjs --request-stdin`；检查及候选错误沿原host调用返回。
+
+## 角色指令迁移与保存
+
+本人已授权的角色指令修复使用`migrate-role-instructions.mjs`，先排空当前Native执行，再把每角色登记的精确材料复制为该Agent原生Managed bundle内的`<role>/AGENTS.md`。不得对共享旧materials目录直接一键迁移，也不得重跑一次性team-configure。迁移仅合并指令路径相关配置，保留角色身份、模型、汇报关系、工具和全部原历史。
+
+若同Agent原生目标已有历史目录，先核对归属及原生revision heads，保全其字节和恢复路径，再迁移到空的现役目录；不把旧文件当垃圾删除。原intent写入中断且Native配置尚未切换时，可重验源摘要并原子恢复本intent的部分文件；已经生效的未知新内容继续保护。
+
+网页保存沿原生文件服务执行，并通过`role-instruction-store.mjs`同步manifest及内容历史。错误返回时保留具体修改记录，按原修改对账恢复，不能删除记录或改写旧permit/claim。预检对尚未同步的角色明确拒绝。候选通过回归、评审后复用既有镜像，应用和宿主传输都切到同一候选；旧Compose和旧材料继续可恢复。现场验收见[验收手册](acceptance-runbook.md)。
+
 ## 独立 Chief 真实 RWB 试点
 
 单镜像复验使用 `docs/super-agent/chief-single-image-verification.md`。应用、独立模型容器和宿主发布器绑定同一个构建候选，复验中重启应用前后核对镜像 ID。

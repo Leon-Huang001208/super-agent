@@ -227,3 +227,27 @@ test('M2 authenticates before context parsing and preserves rejected syntax as a
   assert.equal(Object.hasOwn(state.calls[0],'command'),false);
   assert.equal(state.calls[0].bodySha256,createHash('sha256').update('/chief --unsafe do something').digest('hex'));
 });
+
+test('explicit project selection resolves registered Native identity after authenticating the owner',async()=>{
+ const chosen='77777777-7777-4777-8777-777777777777',selectors=[];
+ const h=harness({resolveProject:async selector=>{selectors.push(selector);return{id:chosen};}});
+ await h.receive(envelope('/chief --project "Research Workbench" 修复项目测试'));
+ assert.deepEqual(selectors,['Research Workbench']);assert.equal(h.calls[0].projectId,chosen);assert.equal(h.calls[0].goal,'修复项目测试');
+ const unauthorized=envelope('/chief --project RWB 切换');unauthorized.event.sender.sender_id.open_id='ou_other';
+ assert.equal((await h.receive(unauthorized)).kind,'rejected');assert.equal(selectors.length,1);
+});
+
+test('explicit project errors never fall back silently to the M1 default',async()=>{
+ const h=harness({resolveProject:async()=>{throw Object.assign(Error('ROLE_PROJECT_AMBIGUOUS'),{code:'ROLE_PROJECT_AMBIGUOUS'});}});
+ await assert.rejects(h.receive(envelope('/chief --project duplicate 核对')),{code:'ROLE_PROJECT_AMBIGUOUS'});assert.equal(h.calls.length,0);
+ for(const command of ['/chief --project','/chief --project RWB','/chief --project "unfinished 目标'])
+  assert.equal((await h.receive(envelope(command))).kind,'rejected');
+});
+
+test('M2 routes project selectors through authenticated context without calling the legacy project resolver',async()=>{
+ let resolved=0;
+ const h=harness({parseCommand:parseChiefContextCommand,resolveProject:async()=>{resolved++;throw Error('legacy resolver must not run');}});
+ await h.receive(envelope('/chief --project rwb status'));
+ assert.equal(resolved,0);assert.deepEqual(h.calls[0].command,{kind:'status',projectKeyOrAlias:'rwb'});
+ assert.equal(h.calls[0].projectId,binding().projectId);
+});

@@ -7,11 +7,27 @@ import { executeIsolatedRole } from '../bridge/role-isolated-transport.mjs';
 import { NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
 import {ROLE_KEYS} from '../bridge/role-labels.mjs';
 import {validateRoleMaterialSnapshot,ROLE_MATERIAL_ROOT} from '../bridge/role-material-snapshot.mjs';
+import {isRoleInstructionPermitPath} from '../bridge/role-instruction-paths.mjs';
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 const hash = value => createHash('sha256').update(value).digest('hex');
 const ROOT = '/paperclip/control/research-pm';
+function materialAndProjectScope(permit){
+ if(permit.projectContext&&permit.projectContext.id!==permit.projectId)return false;
+ if(permit.effectiveCapabilities&&(permit.effectiveCapabilities.role!==permit.role||!Array.isArray(permit.effectiveCapabilities.capabilityIds)||
+  !permit.effectiveCapabilities.capabilityIds.includes(permit.role)||permit.effectiveCapabilities.capabilityIds.some(role=>!ROLE_KEYS.includes(role))))return false;
+ if(!permit.materialFiles)return true;
+ const root=permit.materialSourcePath?path.dirname(path.dirname(permit.instructionsFilePath)):path.dirname(permit.instructionsFilePath);
+ if(permit.materialRoot!==root||!Array.isArray(permit.materialFiles)||!permit.materialFiles.length||permit.materialFiles.length>32)return false;
+ const seen=new Set();
+ for(const file of permit.materialFiles){
+  if(typeof file.path!=='string'||path.posix.normalize(file.path)!==file.path||path.posix.isAbsolute(file.path)||file.path.includes('\\')||
+   file.path.split('/').some(part=>!part||part==='..'||part==='.')||seen.has(file.path)||!/^[a-f0-9]{64}$/.test(file.sha256??''))return false;
+  seen.add(file.path);
+ }
+ return permit.materialFiles.some(file=>path.join(root,file.path)===permit.instructionsFilePath&&file.sha256===permit.materialSha256);
+}
 function readPrivate(filename) {
   let cursor = '/';
   for (const part of filename.slice(1).split('/')) {
@@ -48,7 +64,8 @@ export function validateRoleCall({ permit, args, env, cwd, now }) {
       permit.expiresAt <= now || permit.expiresAt - now > 300000 ||
       permit.cwd !== cwd || !(cwd.startsWith(ROOT + '/workspaces/') || cwd === '/paperclip/instances/default/projects/'+permit.companyId+'/'+permit.projectId+'/_default') ||
       !/^[a-f0-9]{64}$/.test(permit.materialSha256 ?? '') ||
-      (!materialSnapshot&&!/^\/paperclip\/control\/research-pm\/materials\/[a-f0-9-]{36}\.md$/.test(permit.instructionsFilePath ?? '')) ||
+      (!materialSnapshot&&!isRoleInstructionPermitPath(permit)) ||
+      !materialAndProjectScope(permit) ||
       ['OPENAI_API_KEY','CODEX_API_KEY','OPENAI_BASE_URL','ANTHROPIC_API_KEY'].some(k => Boolean(env[k])) ||
       env.PAPERCLIP_RUN_ID !== permit.runId || env.PAPERCLIP_AGENT_ID !== permit.agentId ||
       env.PAPERCLIP_COMPANY_ID !== permit.companyId || env.PAPERCLIP_TASK_ID !== permit.taskId ||
@@ -71,6 +88,7 @@ export async function runRoleGate() {
     if (hash(readPrivate(permit.instructionsFilePath)) !== permit.materialSha256) fail('ROLE_GATE_MATERIAL_CHANGED');
     if(permit.materialSnapshot){const snapshot=validateRoleMaterialSnapshot(permit);let total=0;for(const file of snapshot.manifest.files){const bytes=readPrivate(path.join(ROLE_MATERIAL_ROOT,file.path));total+=bytes.length;if(total>1048576||hash(bytes)!==file.sha256)fail('ROLE_GATE_MATERIAL_CHANGED');}
       process.stderr.write(JSON.stringify({code:'ROLE_GATE_MATERIALS_VERIFIED',runId:permit.runId,projectId:permit.projectId,role:permit.role,manifestSha256:snapshot.manifestSha256,fileCount:snapshot.manifest.files.length})+'\n');}
+    for(const file of permit.materialFiles??[])if(hash(readPrivate(path.join(permit.materialRoot,file.path)))!==file.sha256)fail('ROLE_GATE_MATERIAL_CHANGED');
     const auth = JSON.parse(readPrivate(process.env.CODEX_HOME + '/auth.json'));
     if (!isSubscriptionAuth(auth)) fail('ROLE_GATE_SUBSCRIPTION_REQUIRED');
     for (const name of ['claims','results']) {
