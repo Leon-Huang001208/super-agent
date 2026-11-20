@@ -2,6 +2,8 @@
 
 ## Mac原生和公司Skill验收
 
+公司Skill list/detail的字段投影单独验证；审查metadata需以选定来源的详情为准，不能用手造完整列表夹具代替安装版响应。
+
 本地导入真实集成需证明currentVersion已创建、逐文件摘要一致、重复同步不增版本或Agent配置修订。GitHub源与已审查本地快照并存以及上游frontmatter名称不同的场景，都须验证实际被选版本与条件加载。
 
 按[本轮合同](plans/native-skills-20261120.md)分别验证全部11角色的分配/Managed说明/完整包/依赖/最终CLI配置，以及预算内代表角色的真实订阅执行。核对`process.platform=darwin`、实际宿主cwd、CODEX_HOME、无冲突沙盒参数及原订阅，不能用CLI版本或文件存在替代真实模型结果。
