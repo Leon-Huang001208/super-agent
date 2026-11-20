@@ -99,6 +99,19 @@ try{
  exec(['exec','super-agent-paperclip-eval-paperclip-1','chown','-R','1000:1000',
   '/paperclip/control/research-pm/transport/'+runId+'/client',request.cwd]);
  const seccomp=app.HostConfig.SecurityOpt.find(x=>x.startsWith('seccomp='));
+ let evidence;
+ if(permit.evidencePacket){
+  const source=ROOT+'/team/qa-evidence-v2',manifestBytes=read(source+'/manifest.json');
+  if(sha(manifestBytes)!==permit.evidencePacket.manifestSha256)fail('ROLE_CONTAINER_EVIDENCE_CHANGED');
+  const manifest=JSON.parse(manifestBytes);if(manifest.rootTaskId!=='7956bcfe-85cd-424a-ac8f-c57752f36dfc'||!Array.isArray(manifest.files)||manifest.files.length>64)fail('ROLE_CONTAINER_EVIDENCE_DENIED');
+  evidence=dir+'/evidence';fs.mkdirSync(evidence,{mode:0o700});let total=0;
+  for(const entry of [...manifest.files,{path:'manifest.json',sha256:sha(manifestBytes)}]){
+   if(!/^(?:materials\/[a-z-]+\.md|audit\.json|manifest\.json)$/.test(entry.path))fail('ROLE_CONTAINER_EVIDENCE_DENIED');
+   const bytes=read(source+'/'+entry.path);total+=bytes.length;if(total>2097152||sha(bytes)!==entry.sha256)fail('ROLE_CONTAINER_EVIDENCE_CHANGED');
+   const target=path.join(evidence,entry.path);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,bytes,{mode:0o400,flag:'wx'});
+  }
+  exec(['exec','super-agent-paperclip-eval-paperclip-1','chown','-R','1000:1000','/paperclip/control/research-pm/transport/'+runId+'/evidence']);
+ }
  const args=['run','-i','--rm','--name',name,...base,'--user','1000:1000','--network',network,'--pids-limit','256','--memory','1536m','--cpus','2',
   '--tmpfs','/tmp:size=128m,mode=1777','--workdir',request.cwd,
   '--mount','type=bind,source='+cwd+',target='+request.cwd,
@@ -108,6 +121,7 @@ try{
   '--env','HOME=/tmp/role-home','--env','CODEX_HOME='+request.home,'--env','LANG=C.UTF-8','--env','SSL_CERT_FILE='+request.home+'/trust.pem','--env','CODEX_CA_CERTIFICATE='+request.home+'/trust.pem',
   '--env','HTTP_PROXY=http://provider:8090','--env','HTTPS_PROXY=http://provider:8090','--env','NO_PROXY=provider','--env','CODEX_CONNECTORS_TOKEN'];
  if(seccomp){const file=dir+'/seccomp.json';fs.writeFileSync(file,seccomp.slice(8),{mode:0o600,flag:'wx'});args.push('--security-opt','seccomp='+file);}
+ if(evidence)args.push('--mount','type=bind,source='+evidence+',target=/qa-evidence,readonly');
  args.push('--entrypoint','/usr/bin/timeout',IMAGE,'--signal=TERM','--kill-after=4s','600','/opt/paperclip/node_modules/.bin/codex',
   ...normalizeNativeRoleArgs(request.args).slice(0,-1),'--skip-git-repo-check',...NATIVE_ROLE_EXTRA_ARGS.slice(2),'-c','model_catalog_json='+JSON.stringify(request.home+'/models.json'),'-c','chatgpt_base_url="https://provider:8091/backend-api"','-');
  if(fs.existsSync(dir+'/cancel.json'))fail('ROLE_CONTAINER_CANCELLED_BEFORE_START');
@@ -119,7 +133,7 @@ try{
  // Deterministic management probe in this disposable task container. It does
  // not ask the model to violate its own tool policy or touch the host filesystem.
  let osProbe;
- if(permit.role==='qa')osProbe=setTimeout(()=>{
+ if(permit.role==='qa'&&!permit.evidencePacket)osProbe=setTimeout(()=>{
   const code=`const fs=require('node:fs'),crypto=require('node:crypto'),path=require('node:path');const proof={schemaVersion:1,runId:${JSON.stringify(runId)},uid:process.getuid(),at:new Date().toISOString(),source:'same task container, management Docker exec; outside Codex inner sandbox'};const target=${JSON.stringify('/etc/super-agent-isolation-'+runId+'.tmp')};try{fs.writeFileSync(target,'x',{flag:'wx'});fs.unlinkSync(target);proof.outsideWrite={denied:false};}catch(e){proof.outsideWrite={denied:true,code:e.code};}try{const b=fs.readFileSync('/paperclip/control/research-pm/fixtures/other-project/private-memory.txt');proof.privateRead={readable:true,sha256:crypto.createHash('sha256').update(b).digest('hex')};}catch(e){proof.privateRead={readable:false,code:e.code};}fs.writeFileSync(path.join(process.cwd(),'container-proof-'+proof.runId+'.json'),JSON.stringify(proof),{mode:292,flag:'wx'});console.log(JSON.stringify(proof));`;
   const probe=spawnSync(docker,[...common,'exec',name,'node','-e',code],{encoding:'utf8',timeout:5000,maxBuffer:4096});
   if(probe.status===0){try{const value=JSON.parse(probe.stdout);if(value.runId===runId&&value.uid===1000)durable(dir+'/container-proof.json',value);}catch{}}
