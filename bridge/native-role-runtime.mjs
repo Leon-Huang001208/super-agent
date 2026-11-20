@@ -67,6 +67,10 @@ export async function installNativeRoles() {
         try{ctx=await(await import('./team-native-runtime.mjs')).admitChiefInput(ctx,{database});}
         catch(error){return {exitCode:1,signal:null,timedOut:false,errorCode:/^(?:TEAM|NATIVE_ROLE)_[A-Z_]+$/.test(error.code??error.message)?(error.code??error.message):'NATIVE_ROLE_PREFLIGHT_FAILED',errorMessage:'The controlled Chief intake did not admit this execution.',resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};}
       }
+      if(ctx.context?.roleOperationId&&process.env.SUPER_AGENT_TEAM_COORDINATOR_ENABLED==='true'){
+        try{ctx=await(await import('./team-native-runtime.mjs')).bindNativeRetryAttempt(ctx,{database});}
+        catch(error){return {exitCode:1,signal:null,timedOut:false,errorCode:error.code??'TEAM_NATIVE_RETRY_PREFLIGHT_FAILED',errorMessage:'The existing Native retry did not pass controlled attempt admission.',resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};}
+      }
       const readRegistration=async()=>{
         const {role,registry:r}=registered(ctx.agent.id);
         const {schema:s,orm:o,db}=await database();

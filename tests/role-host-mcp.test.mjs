@@ -64,24 +64,26 @@ function descendantFixture(t,{exitWrapper=false}={}){
  const wrapper=`require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'inherit'});${exitWrapper?'setTimeout(()=>process.exit(0),20);':''}`;
  const ready=async()=>{for(let i=0;i<100&&!fs.existsSync(started);i++)await delay(10);assert.ok(fs.existsSync(started),'descendant started');return Number(fs.readFileSync(started,'utf8'));};
  const alive=pid=>{try{if(process.platform==='linux')return !/^\d+ \(.+\) Z /.test(fs.readFileSync('/proc/'+pid+'/stat','utf8'));process.kill(pid,0);return true;}catch(error){if(['ENOENT','ESRCH'].includes(error.code))return false;throw error;}};
- return {wrapper,ready,alive,completed};
+ // Pipe close can precede the kernel's visible process-exit state after SIGKILL.
+ const exited=async pid=>{const deadline=Date.now()+500;while(alive(pid)&&Date.now()<deadline)await delay(5);assert.equal(alive(pid),false,'owned descendant must exit within 500ms');};
+ return {wrapper,ready,exited,completed};
 }
 
 test('cancelling a wrapper kills its SIGTERM-resistant descendants and closes inherited stdio',async t=>{
  const f=descendantFixture(t,{exitWrapper:true}),controller=new AbortController();
  const pending=runHostCommand(process.execPath,['-e',f.wrapper],{signal:controller.signal,timeout:3000});const pid=await f.ready();await delay(50);
  const cancelledAt=Date.now();controller.abort();const result=await pending;
- assert.equal(result.error.code,'ABORT_ERR');assert.ok(Date.now()-cancelledAt<1000,'cancellation must not wait for the descendant task');
- assert.ok(!result.stdout.includes('descendant_finished'));assert.equal(f.alive(pid),false);assert.equal(fs.existsSync(f.completed),false);
+ assert.equal(result.error.code,'ABORT_ERR');await f.exited(pid);assert.ok(Date.now()-cancelledAt<1000,'cancellation must not wait for the descendant task');
+ assert.ok(!result.stdout.includes('descendant_finished'));assert.equal(fs.existsSync(f.completed),false);
 });
 
 test('a command timeout kills the whole owned wrapper group',async t=>{
  const f=descendantFixture(t);const startedAt=Date.now(),pending=runHostCommand(process.execPath,['-e',f.wrapper],{timeout:250});const pid=await f.ready();const result=await pending;
- assert.equal(result.error.code,'ETIMEDOUT');assert.ok(Date.now()-startedAt<1200);assert.equal(f.alive(pid),false);assert.ok(!result.stdout.includes('descendant_finished'));
+ assert.equal(result.error.code,'ETIMEDOUT');await f.exited(pid);assert.ok(Date.now()-startedAt<1200);assert.ok(!result.stdout.includes('descendant_finished'));assert.equal(fs.existsSync(f.completed),false);
 });
 
 test('MCP cancellation cleans descendants even after its launcher has exited',async t=>{
  const f=descendantFixture(t,{exitWrapper:true}),controller=new AbortController();
- const pending=callHostMcp({permit,serverId:'excel_relay_dev',toolName:'read_cell',signal:controller.signal,loadServer:async()=>({command:process.execPath,args:['-e',f.wrapper]}),timeoutMs:3000});const pid=await f.ready();await delay(50);controller.abort();
- await assert.rejects(pending,/ROLE_HOST_MCP_CANCELLED/);assert.equal(f.alive(pid),false);assert.equal(fs.existsSync(f.completed),false);
+ const pending=callHostMcp({permit,serverId:'excel_relay_dev',toolName:'read_cell',signal:controller.signal,loadServer:async()=>({command:process.execPath,args:['-e',f.wrapper]}),timeoutMs:3000});const pid=await f.ready();await delay(50);const cancelledAt=Date.now();controller.abort();
+ await assert.rejects(pending,/ROLE_HOST_MCP_CANCELLED/);await f.exited(pid);assert.ok(Date.now()-cancelledAt<1000);assert.equal(fs.existsSync(f.completed),false);
 });

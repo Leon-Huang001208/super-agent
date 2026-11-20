@@ -90,3 +90,11 @@
 ## 本人 /chief 入站验收
 
 先核对原唯一连接已释放、固定 app/tenant/open ID、Native owner/project/Chief绑定和宿主执行传输健康，再开启专用服务标志。仅在实际 connected 后请本人发送一条新的 `/chief` 目标；不代本人制造入站。保存原消息ID/摘要、Native root、首个Chief run、createdByAgentId的子任务、交接产物及最终通知。重复投递必须返回同一个task；unknown wake/send只能核对原结果，不能重置claim或换ID重试。关闭入口只停止新接收，原任务/调用/活动账本保留。
+
+## Native内置重试验收
+
+父角色run失败后，先只读核对Native已存在的`scheduled_retry`、父run、attempt序号和原子任务。不得另发manual wake或新建root。本人认证的`POST /issues/:id/scheduled-retry/retry-now`只推进原有run；Agent pause会取消scheduled retry，不能把pause/resume当作原attempt的无损暂停。
+
+后继run进入执行时核对：父run终态及结束时间、host result的run ID和非unknown/非超时/非取消、stdout/stderr实际SHA、原budget/operation映射、root/child输入版本、当前唯一Native执行与父Native租约释放。只对精确匹配的旧call锁归档和清除；失败产物有自己的run/operation/file/SHA只读archive。核对新operation的`acceptedRunId`为原Native后继run、`retryOfOperationId`指向旧操作，flow历史保留旧dispatch，Admission nonce、同child/root/session保持。确认物理调用开始后仅新增一条原根预算记录，六次上限及最多两次修复不变。
+
+离线回归覆盖伪造context retry声明、未启动的scheduled run、Native父关系不符、unknown/超时/取消或摘要错误、活动执行/未释放租约、输入改变、满额预算、错误锁和archive冲突。任何拒绝都保留旧证据。源码回归通过不代表真实重试、工具审批修复或业务验收已通过；这三项分别以实际Native和host回执记录。

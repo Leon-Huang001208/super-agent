@@ -10,6 +10,7 @@ import {hostRoleInstructionPath} from '../bridge/role-instruction-paths.mjs';
 import {materializeRoleSkillBundle,ROLE_SKILL_BUNDLE_SHA256} from '../bridge/role-skill-bundles.mjs';
 import {prepareRoleProjectWorkspace,createHostCapabilityExecutor} from '../bridge/role-host-capabilities.mjs';
 import {serveHostCapabilityCalls} from '../bridge/role-host-call-queue.mjs';
+import {roleHostMcpConfigArgs} from './role-host-mcp-config.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0',ROOT=DATA+'/state/control/research-pm';
 const IMAGE='sha256:ce66c5354e5efdd7279953134cba2a43c16b54e618a9e15ca6eb83e6bcae0c6c';
 const runId=process.argv[2],resumeSetup=process.argv[3]==='--resume-setup',sha=x=>createHash('sha256').update(x).digest('hex'),docker='/usr/local/bin/docker';
@@ -165,7 +166,7 @@ try{
  args.push('--entrypoint','/usr/bin/timeout',IMAGE,'--signal=TERM','--kill-after=4s','600','/opt/paperclip/node_modules/.bin/codex',
   ...normalizeNativeRoleArgs(request.args).slice(0,-1),'--skip-git-repo-check',...NATIVE_ROLE_EXTRA_ARGS.slice(2),'-c','model_catalog_json='+JSON.stringify(request.home+'/models.json'),'-c','chatgpt_base_url="https://provider:8091/backend-api"','-');
  if(workspace.available&&permit.role!=='qa')args.splice(args.length-1,0,'-c','sandbox_workspace_write.writable_roots=["/workspace/project"]');
- if(hostTools.length)args.splice(args.length-1,0,'-c','mcp_servers.role_host.command="node"','-c','mcp_servers.role_host.args=["/opt/role-host-mcp-server.mjs"]','-c','mcp_servers.role_host.env_vars=["CODEX_CONNECTORS_TOKEN"]','-c','mcp_servers.role_host.tool_timeout_sec=360');
+ if(hostTools.length)args.splice(args.length-1,0,...roleHostMcpConfigArgs(hostTools));
  if(fs.existsSync(dir+'/cancel.json'))fail('ROLE_CONTAINER_CANCELLED_BEFORE_START');
  input=fs.openSync(dir+'/stdin','r');stream=fs.openSync(dir+'/stdout','wx',0o600);err=fs.openSync(dir+'/stderr','wx',0o600);
  let cancelled=false,stopping=false;
