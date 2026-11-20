@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createChiefFeishuIntake } from '../bridge/chief-feishu-intake.mjs';
+import { parseChiefContextCommand } from '../bridge/chief-context-commands.mjs';
 
 const binding = () => ({
   appId: 'cli_testapp', tenantKey: 'tenantowner', ownerOpenId: 'ou_owner',
@@ -205,6 +206,28 @@ test('rejects incomplete or malformed deployment bindings at construction', () =
   assert.throws(() => harness({ log: null }), { code: 'CHIEF_FEISHU_CONFIGURATION_INVALID' });
 });
 
+test('M2 parses authenticated context commands without taking command fields from user JSON', async () => {
+  const {receive,calls}=harness({parseCommand:parseChiefContextCommand});
+  const event=envelope('/chief 项目 RWB');event.event.message.create_time='1795142400000';
+  event.event.message.content=JSON.stringify({text:'/chief 项目 RWB',command:{kind:'remember',key:'fake',text:'not authorized'}});
+  await receive(event);
+  assert.deepEqual(calls[0].command,{kind:'select_project',projectKeyOrAlias:'rwb'});
+  assert.equal(calls[0].projectId,binding().projectId);
+  assert.equal(calls[0].createdAt,'2026-11-20T02:40:00.000Z');
+  assert.equal(calls[0].sourceParams.createdAt,calls[0].createdAt);
+  const help=harness({parseCommand:parseChiefContextCommand});await help.receive(envelope('/chief'));
+  assert.deepEqual(help.calls[0].command,{kind:'help'});
+});
+test('M2 authenticates before context parsing and preserves rejected syntax as a source-bound error',async()=>{
+  let parsed=0;const state=harness({parseCommand:text=>{parsed++;return parseChiefContextCommand(text);}});
+  const foreign=envelope('/chief projects');foreign.event.sender.sender_id.open_id='ou_other';
+  assert.equal((await state.receive(foreign)).code,'CHIEF_FEISHU_IDENTITY_DENIED');assert.equal(parsed,0);
+  await state.receive(envelope('/chief --unsafe do something'));
+  assert.equal(state.calls[0].commandError,'CHIEF_CONTEXT_OPTION_DENIED');
+  assert.equal(Object.hasOwn(state.calls[0],'command'),false);
+  assert.equal(state.calls[0].bodySha256,createHash('sha256').update('/chief --unsafe do something').digest('hex'));
+});
+
 test('explicit project selection resolves registered Native identity after authenticating the owner',async()=>{
  const chosen='77777777-7777-4777-8777-777777777777',selectors=[];
  const h=harness({resolveProject:async selector=>{selectors.push(selector);return{id:chosen};}});
@@ -219,4 +242,12 @@ test('explicit project errors never fall back silently to the M1 default',async(
  await assert.rejects(h.receive(envelope('/chief --project duplicate 核对')),{code:'ROLE_PROJECT_AMBIGUOUS'});assert.equal(h.calls.length,0);
  for(const command of ['/chief --project','/chief --project RWB','/chief --project "unfinished 目标'])
   assert.equal((await h.receive(envelope(command))).kind,'rejected');
+});
+
+test('M2 routes project selectors through authenticated context without calling the legacy project resolver',async()=>{
+ let resolved=0;
+ const h=harness({parseCommand:parseChiefContextCommand,resolveProject:async()=>{resolved++;throw Error('legacy resolver must not run');}});
+ await h.receive(envelope('/chief --project rwb status'));
+ assert.equal(resolved,0);assert.deepEqual(h.calls[0].command,{kind:'status',projectKeyOrAlias:'rwb'});
+ assert.equal(h.calls[0].projectId,binding().projectId);
 });

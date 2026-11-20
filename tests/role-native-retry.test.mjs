@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {taskInputRevision} from '../bridge/task-input.mjs';
-import {requireNoPendingOwnerInput} from '../bridge/team-native-runtime.mjs';
+import {requireNoPendingOwnerInput,resolveNativeRetryScope,assertNativeRetryControl} from '../bridge/team-native-runtime.mjs';
 import {validateNativeRoleRetry,advanceNativeRetryFlow,archiveNativeRetryFailure,clearArchivedRetryLock,rebindNativeRetryContext,NATIVE_RETRY_CONTEXT} from '../bridge/role-native-retry.mjs';
 
 const id=n=>n.repeat(8)+'-'+n.repeat(4)+'-4'+n.repeat(3)+'-8'+n.repeat(3)+'-'+n.repeat(12);
@@ -32,6 +32,28 @@ test('Native DB successor binds a fresh operation without a new task, wake or bu
  assert.equal(flow.attemptHistory.backend[0].operationId,f.operation.id);assert.equal(flow.attemptHistory.backend[0].runId,f.parentRun.id);
  assert.equal(flow.attemptHistory.backend[0].retryRunId,f.run.id);assert.equal(flow.dispatches.backend.leaseNonce,f.registry.lease.nonce);
  assert.deepEqual(f,before);assert.equal(f.budgetCount,2);
+});
+test('M2 retry selects the original project and exact generation without capturing retired or portable flows',()=>{
+ const f=fixture(),personal=id('3'),workspaceId=id('4'),cwd='/paperclip/instances/default/projects/'+f.registry.companyId+'/'+f.task.projectId+'/_default';
+ f.registry.team.projectId=personal;f.registry.operations=[f.operation];f.registry.context={schemaVersion:1,enabled:true,catalog:{schemaVersion:1,defaultProjectKey:'personal',projects:[
+  {key:'personal',aliases:[],companyId:f.registry.companyId,ownerId:'owner',projectId:personal,adapterKey:'native-docs',allowedRoles:['backend-engineer'],maximumAction:'read_only',workspaceCwd:'/paperclip/instances/default/projects/'+f.registry.companyId+'/'+personal+'/_default'},
+  {key:'rwb',aliases:[],companyId:f.registry.companyId,ownerId:'owner',projectId:f.task.projectId,adapterKey:'rwb-docs',allowedRoles:['backend-engineer'],maximumAction:'read_only',workspaceCwd:cwd,projectWorkspaceId:workspaceId}]}};
+ f.task.projectWorkspaceId=workspaceId;f.rootTask.projectWorkspaceId=workspaceId;
+ const generation=id('5');Object.assign(f.operation,{contextVersion:1,projectKey:'rwb',workspaceCwd:cwd,projectWorkspaceId:workspaceId,artifactGeneration:generation});
+ Object.assign(f.flow,{contextVersion:1,projectKey:'rwb',workspaceCwd:cwd,projectWorkspaceId:workspaceId,artifactGeneration:generation});
+ const retired={...structuredClone(f.flow),artifactGeneration:id('6'),dispatches:{backend:{...f.flow.dispatches.backend,operationId:id('7')}}};
+ const before=structuredClone(f.registry),resolved=resolveNativeRetryScope({...f,flows:[{file:'retired',flow:retired},{file:'current',flow:f.flow}],log(){}});
+ assert.equal(resolved.registry.team.projectId,f.task.projectId);assert.equal(resolved.registry.contextProject.workspaceCwd,cwd);
+ assert.equal(resolved.file,'current');assert.equal(resolved.flow.artifactGeneration,generation);assert.deepEqual(f.registry,before);
+ const control={managed:true,inputRevision:taskInputRevision(f.rootTask),projectWorkspaceId:workspaceId,pendingInputs:[],pauseRequested:false,reviewBeforeDispatch:false};
+ assert.doesNotThrow(()=>assertNativeRetryControl({registry:resolved.registry,rootTask:f.rootTask,flow:f.flow,control}));
+ for(const change of [{pauseRequested:true},{pendingInputs:[{text:'owner supplement'}]},{inputRevision:'f'.repeat(64)},{projectWorkspaceId:id('8')},{reviewBeforeDispatch:true}])
+  assert.throws(()=>assertNativeRetryControl({registry:resolved.registry,rootTask:f.rootTask,flow:f.flow,control:{...control,...change}}),/TEAM_NATIVE_RETRY_CONTROL_CHANGED/);
+ assert.throws(()=>assertNativeRetryControl({registry:resolved.registry,rootTask:f.rootTask,flow:f.flow,control:null}),/TEAM_NATIVE_RETRY_CONTROL_CHANGED/);
+ assert.throws(()=>resolveNativeRetryScope({...f,task:{...f.task,projectWorkspaceId:id('8')},flows:[{file:'current',flow:f.flow}],log(){}}),/CONTEXT|TEAM_NATIVE_RETRY/);
+ const old={...f.operation};for(const key of ['contextVersion','projectKey','workspaceCwd','projectWorkspaceId','artifactGeneration'])delete old[key];
+ const oldFlow={...f.flow};for(const key of ['contextVersion','projectKey','workspaceCwd','projectWorkspaceId','artifactGeneration'])delete oldFlow[key];
+ assert.equal(resolveNativeRetryScope({...f,operation:old,flows:[{file:'legacy',flow:oldFlow}],log(){}}).registry.context.enabled,false);
 });
 test('missing or uncertain Native, transport, authority, lease and budget proof refuses a rebind',()=>{
  const cases=[f=>{f.run.retryOfRunId=null;f.run.contextSnapshot={retryOfRunId:f.parentRun.id};},f=>{f.run.status='scheduled_retry';},f=>{f.run.scheduledRetryAttempt=3;},f=>{f.parentRun.status='running';},f=>{f.parentRun.finishedAt=null;},
