@@ -112,9 +112,9 @@ function inspect(options,run=invoke){
   const list=output(git(['worktree','list','--porcelain']));
   const alias=`codex/integrate-${options.taskId}-adopted`,aliasPath=path.join(options.worktreeRoot,options.taskId+'-integration-adopted');
   const lsof=run('lsof',['-nP','-Fpcfa','+D',receipt.featureWorktree],{allowFailure:true});
-  requireThat(!lsof.error&&((lsof.status===0)||(lsof.status===1&&!lsof.stdout&&!lsof.stderr)),'OCCUPANCY_UNKNOWN');
+  requireThat(completeRead(lsof)||(!lsof.error&&!lsof.signal&&lsof.status===1&&!lsof.stdout&&!lsof.stderr),'OCCUPANCY_UNKNOWN');
   const pids=[...new Set(lsof.stdout.split('\n').filter(x=>/^p\d+$/.test(x)).map(x=>Number(x.slice(1))))];
-  const commands=options.allowReadOnlyVmCache?Object.fromEntries(pids.map(pid=>[pid,output(run('ps',['-p',String(pid),'-o','comm='],{allowFailure:true}))])):{};
+  const commands=options.allowReadOnlyVmCache?Object.fromEntries(pids.map(pid=>[pid,run('ps',['-p',String(pid),'-o','comm='],{allowFailure:true})])):{};
   const cachePids=options.allowReadOnlyVmCache?readOnlyVmCachePids(lsof.stdout,commands):[];
   const ids=output(run('docker',['--context','desktop-linux','ps','-aq']));
   const containers=ids?run('docker',['--context','desktop-linux','inspect','--format','{{json .Mounts}}',...ids.split(/\s+/)]).stdout.trim().split('\n').map((line,i)=>({Id:ids.split(/\s+/)[i],Mounts:JSON.parse(line)})):[];
@@ -198,5 +198,7 @@ export function readOnlyVmCachePids(output,commands){
     else if(line.startsWith('f')&&access.has(pid))access.get(pid).push(null);
     else if(line.startsWith('a')&&access.get(pid)?.length){const modes=access.get(pid);modes[modes.length-1]=line.slice(1);}
   }
-  return [...access].filter(([p,modes])=>commands[p]===vm&&modes.length>0&&modes.every(mode=>mode==='r')).map(([p])=>p);
+  return [...access].filter(([p,modes])=>completeRead(commands[p])&&commands[p].stdout.trim()===vm&&modes.length>0&&modes.every(mode=>mode==='r')).map(([p])=>p);
 }
+
+export function completeRead(result){return !!result&&!result.error&&result.status===0&&!result.signal&&!result.stderr;}

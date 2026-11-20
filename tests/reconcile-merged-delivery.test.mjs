@@ -74,9 +74,9 @@ import {readOnlyVmCachePids} from '../scripts/reconcile-merged-delivery.mjs';
 const vmCommand='/System/Library/Frameworks/Virtualization.framework/Versions/A/XPCServices/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine';
 test('only the actual VM process with read-only access to every source FD is a cache candidate',()=>{
   const output='p55883\ncvm\nf*482\nar\nf*255\nar\np99\ncother\nf3\nar\n';
-  assert.deepEqual(readOnlyVmCachePids(output,{55883:vmCommand,99:'/other'}),[55883]);
-  assert.deepEqual(readOnlyVmCachePids(output.replace('f*255\nar','f*255\nau'),{55883:vmCommand}),[]);
-  assert.deepEqual(readOnlyVmCachePids('p55883\nf3\n',{55883:vmCommand}),[]);
+  assert.deepEqual(readOnlyVmCachePids(output,{55883:{status:0,stdout:vmCommand,stderr:''},99:{status:0,stdout:'/other',stderr:''}}),[55883]);
+  assert.deepEqual(readOnlyVmCachePids(output.replace('f*255\nar','f*255\nau'),{55883:{status:0,stdout:vmCommand,stderr:''}}),[]);
+  assert.deepEqual(readOnlyVmCachePids('p55883\nf3\n',{55883:{status:0,stdout:vmCommand,stderr:''}}),[]);
 });
 test('explicit user cache option retains observed handles while allowing ordinary adoption',()=>{
   const f=fixture();f.local.openPids=[55883];f.local.readOnlyVmCachePids=[55883];
@@ -88,3 +88,6 @@ test('cache option never excuses another process, unknown access or container re
   f.local.openPids=[55883];f.local.readOnlyVmCachePids=[];assert.equal(planAdoption(f).status,'waiting');
   f.local.readOnlyVmCachePids=[55883];f.local.containerRefs=['real-container'];assert.equal(planAdoption(f).status,'waiting');
 });
+
+import {completeRead} from '../scripts/reconcile-merged-delivery.mjs';
+test('partial failed command output and scan warnings cannot prove a read-only VM cache',()=>{const output='p55883\nf3\nar\n';for(const failure of [{status:1,stdout:vmCommand,stderr:''},{status:0,signal:'SIGTERM',stdout:vmCommand,stderr:''},{status:0,error:{code:'ETIMEDOUT'},stdout:vmCommand,stderr:''},{status:0,stdout:vmCommand,stderr:'incomplete scan'}]){assert.equal(completeRead(failure),false);assert.deepEqual(readOnlyVmCachePids(output,{55883:failure}),[]);}assert.equal(completeRead({status:0,stdout:output,stderr:'lsof warning'}),false);});
