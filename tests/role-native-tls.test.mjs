@@ -8,6 +8,12 @@ import {rootCertificates} from 'node:tls';
 import {spawn} from 'node:child_process';
 import {createNativeRoleTls} from '../scripts/role-proxy-tls.mjs';
 
+let nativeTlsToolSkip=false;
+try{fs.statSync('/usr/bin/openssl');}catch(error){
+ if(error.code!=='ENOENT')throw error;
+ nativeTlsToolSkip='Native TLS requires /usr/bin/openssl, absent from the fixed Node-only image; real macOS target TLS/CA evidence is recorded separately';
+}
+
 function fixture(t){
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'native-role-tls-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -18,7 +24,7 @@ function request(url,options={}){return new Promise((resolve,reject)=>{
  const req=https.get(url,options,res=>{let body='';res.setEncoding('utf8');res.on('data',chunk=>body+=chunk);res.on('end',()=>resolve({status:res.statusCode,body}));});req.once('error',reject);
 });}
 
-test('task-local TLS trusts its loopback certificate and rejects unrelated CA or host',async t=>{
+test('task-local TLS trusts its loopback certificate and rejects unrelated CA or host',{skip:nativeTlsToolSkip},async t=>{
  const tls=fixture(t),other=fixture(t);
  const server=https.createServer({key:fs.readFileSync(tls.keyFile),cert:fs.readFileSync(tls.certFile)},(_req,res)=>res.end('local only'));
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
@@ -34,7 +40,7 @@ test('task-local TLS trusts its loopback certificate and rejects unrelated CA or
  assert.throws(()=>createNativeRoleTls({proxyRoot:tls.root+'/proxy',clientRoot:tls.root+'/client'}),/ROLE_NATIVE_TLS_/,'an existing run is not overwritten');
 });
 
-test('real Node stdio MCP client inherits only this run CA for the HTTPS broker',async t=>{
+test('real Node stdio MCP client inherits only this run CA for the HTTPS broker',{skip:nativeTlsToolSkip},async t=>{
  const tls=fixture(t);const server=https.createServer({key:fs.readFileSync(tls.keyFile),cert:fs.readFileSync(tls.certFile)},async(req,res)=>{
   assert.equal(req.headers.authorization,'Bearer synthetic-local-token');let body='';for await(const chunk of req)body+=chunk;const m=JSON.parse(body);
   res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{tools:[{name:'host.project_inspect',inputSchema:{type:'object'}}]}}));

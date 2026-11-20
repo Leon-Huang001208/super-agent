@@ -36,4 +36,6 @@ Chief 提示使用可信当前预算，扣除本次计划调用后，为 summary
 
 先通过无模型 TLS/恢复合同测试、完整离线回归、独立评审及精确 PR/CI，再在无活动模型/宿主传输且原 scheduled retry 已保全的窗口，切换同一 App 与 owned resident。三个 Role/Team/Feishu 开关和 registry/context 保持启用，全局 scheduler 关闭；启动恢复入口同步新候选。
 
+固定 Node-only 离线镜像没有 `/usr/bin/openssl`，两项 Native 证书/真实 TLS 检验只在工具确实缺失时条件 SKIP，不能记为 Linux 通过；Mac 目标宿主执行同一用例与真实 CLI 合同。工具存在时证书生成或握手失败仍失败，其他协议与恢复回归继续在 Linux 执行，不为测试安装依赖或更换镜像。
+
 最后仅通过常驻 App 的已认证单 Issue retry-now 接口推进既有行，请求前核对其精确 run/parent/attempt。持久一次性请求记录防止等待、超时或响应未知后重复 POST；运行后核对真实结果、预算、计划摘要、通知、进程组及 Native 环境租约。源码、无模型验证、实际推理、计划暂停和业务验收分别记录，失败不自动另起尝试。
