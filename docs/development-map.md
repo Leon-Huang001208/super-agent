@@ -2,6 +2,8 @@
 
 ## Mac原生执行和公司Skill
 
+`readCompanyRoleLibrary`组合Native轻量list与本次来源的detail，保持审查优先级和真实API字段一致。回归使用省略metadata的列表payload，验证已审查版本选择及详情身份漂移拒绝。
+
 真实本地包导入的版本创建及恢复由`sync-company-role-skills`使用Native版本API完成，测试覆盖currentVersion缺失与重入不增版本。审查过的目录别名（如Vercel React入口名不同）在岗位分配与运行条件过滤中一致处理；来源并存时不删除其他条目。
 
 本轮将执行策略贯穿preparation、Native adapter、CLI gate及宿主transport，broker/MCP使用宿主真实路径和loopback端点。公司库分配与最终CODEX_HOME物化使用同一选择，职责摘要、Managed bundle与权限同步。相关测试覆盖原生和旧Docker模式、完整Skill包、来源去重、依赖、参数、取消与恢复；见[本轮合同](plans/native-skills-20261120.md)。配置预检、真实订阅调用、Docker项目检查及运行切换各自留证。
