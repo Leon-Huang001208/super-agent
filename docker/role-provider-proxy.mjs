@@ -120,7 +120,13 @@ server.on('connect',async(req,client,head)=>{
   remote.on('error',()=>client.destroy());client.on('error',()=>remote.destroy());client.on('close',()=>remote.destroy());
  }catch{client.end('HTTP/1.1 403 Forbidden\r\n\r\n');}
 });
-server.listen(8090,'0.0.0.0',()=>audit({code:'ROLE_PROXY_READY',runId:config.runId}));
-tls?.listen(8091,'0.0.0.0',()=>audit({code:'ROLE_PROXY_TLS_READY',runId:config.runId}));
+const listenHost=process.env.SUPER_AGENT_ROLE_PROXY_LISTEN_HOST??'0.0.0.0';
+const listenPort=Number(process.env.SUPER_AGENT_ROLE_PROXY_PORT??8090);
+if(!['0.0.0.0','127.0.0.1'].includes(listenHost)||!Number.isInteger(listenPort)||listenPort<0||listenPort>65535)throw Error('ROLE_PROXY_LISTEN_DENIED');
+server.listen(listenPort,listenHost,()=>{
+ const address=server.address();audit({code:'ROLE_PROXY_READY',runId:config.runId,host:listenHost,port:address.port});
+ if(process.env.SUPER_AGENT_ROLE_PROXY_READY_FILE)fs.writeFileSync(process.env.SUPER_AGENT_ROLE_PROXY_READY_FILE,JSON.stringify({runId:config.runId,host:listenHost,port:address.port})+'\n',{mode:0o600,flag:'wx'});
+});
+tls?.listen(Number(process.env.SUPER_AGENT_ROLE_PROXY_TLS_PORT??8091),listenHost,()=>audit({code:'ROLE_PROXY_TLS_READY',runId:config.runId}));
 for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{tls?.close();server.close(()=>process.exit(0));});
 setTimeout(()=>process.exit(1),700000).unref();

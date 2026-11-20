@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "common": ["paperclip", "handoff", "verification-before-completion"],
+  "preferredSources": {"pdf": "https://github.com/anthropics/skills", "systematic-debugging": "https://github.com/obra/superpowers", "verification-before-completion": "https://github.com/obra/superpowers", "writing-plans": "https://github.com/obra/superpowers", "test-driven-development": "https://github.com/obra/superpowers", "react-best-practices": "https://github.com/vercel-labs/agent-skills", "supabase-postgres-best-practices": "https://github.com/supabase/agent-skills"},
+  "roles": {
+    "chief": {"skills": ["leader", "problem-framing", "engineering-delivery", "to-spec", "to-tickets", "internal-comms"]},
+    "research": {"skills": ["research", "agent-reach", "hv-analysis", "firecrawl-deep-research", "read-docs", "solution-comparison"], "conditional": [{"skills": ["content-strategy", "seo-audit"], "domains": ["content", "marketing", "seo"]}, {"skills": ["docx", "pdf", "xlsx", "jupyter-notebook"], "domains": ["report", "data", "research-report"]}]},
+    "pm": {"skills": ["product-manager-coach", "design-kpis", "grill-me", "to-spec", "to-tickets", "prototype", "doc-coauthoring"], "conditional": [{"skills": ["content-strategy", "seo-audit", "copywriting"], "domains": ["content", "marketing", "seo"]}, {"skills": ["docx", "pdf", "xlsx", "pptx"], "domains": ["report", "data", "presentation"]}]},
+    "designer": {"skills": ["frontend-design", "canvas-design", "theme-factory", "audit", "figma-generate-design", "figma-design-to-code"], "conditional": [{"skills": ["imagegen"], "domains": ["image", "visual"]}, {"skills": ["copywriting"], "domains": ["content", "marketing"]}]},
+    "architect": {"skills": ["codebase-design", "domain-modeling", "improve-codebase-architecture", "writing-plans", "security-threat-model"]},
+    "frontend-engineer": {"skills": ["frontend-design", "frontend-testing-debugging", "webapp-testing", "systematic-debugging", "test-driven-development"], "conditional": [{"skills": ["react-best-practices"], "stack": ["react", "next.js", "nextjs"]}, {"skills": ["shadcn"], "stack": ["shadcn", "shadcn/ui"]}]},
+    "backend-engineer": {"skills": ["systematic-debugging", "test-driven-development", "property-based-testing"], "conditional": [{"skills": ["supabase-postgres-best-practices"], "stack": ["postgres", "postgresql", "supabase"], "services": ["postgres", "postgresql", "supabase"]}]},
+    "qa": {"skills": ["code-review", "frontend-testing-debugging", "webapp-testing", "differential-review", "property-based-testing"]},
+    "devops": {"skills": ["gh-fix-ci", "gh-address-comments", "engineering-delivery", "systematic-debugging", "read-docs"]},
+    "network-engineer": {"skills": ["diagnosing-bugs", "systematic-debugging", "read-docs"]},
+    "system-resource-engineer": {"skills": ["storage-analyzer", "systematic-debugging"]}
+  }
+}

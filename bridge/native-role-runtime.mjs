@@ -292,8 +292,13 @@ export async function installNativeRoles() {
         }
         const capabilityRequests=operation.additionalCapabilities??[];
         const catalogFile=ROOT+'/apps-tool-catalog.json',catalog=fs.existsSync(catalogFile)?readControl(catalogFile):null;
+        let companySkills,companySkillVersions;
+        if(Object.hasOwn(agent.adapterConfig?.paperclipSkillSync??{},'desiredSkills')){
+          companySkills=await db.select().from(s.companySkills).where(o.eq(s.companySkills.companyId,r.companyId));
+          companySkillVersions=await db.select().from(s.companySkillVersions).where(o.eq(s.companySkillVersions.companyId,r.companyId));
+        }
         const {effectiveCapabilities,authorizedHostActions}=restrictNativeRoleAuthority({registry:r,task:issue,projectContext,
-          effectiveCapabilities:resolveRoleCapabilities({role:role.profile.role,additionalCapabilities:capabilityRequests,projectContext,toolCatalog:catalog?.result?.tools??[]}),
+          effectiveCapabilities:resolveRoleCapabilities({role:role.profile.role,additionalCapabilities:capabilityRequests,projectContext,toolCatalog:catalog?.result?.tools??[],agent,companySkills,companySkillVersions}),
           authorizedHostActions:operation.authorizedHostActions??[],toolCatalog:catalog?.result?.tools??[],log});
         return {binding:{companyId:r.companyId,projectId:issue.projectId,taskId:issue.id,agentId:agent.id,runId:run.id,
           ...(resolved.contextVersion===1&&issue.projectWorkspaceId?{projectWorkspaceId:issue.projectWorkspaceId}:{}),
@@ -356,6 +361,7 @@ export async function installNativeRoles() {
           const approvedOperation=registered(ctx.agent.id).registry.operations.find(x=>x.id===ctx.context.roleOperationId);
           write(ROOT+'/permits/'+ctx.runId+'.json',{schemaVersion:1,...r.binding,credentialGrantId:grantId,role:r.profile.role,
             model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:Date.now()+300000,cwd:executionCwd,
+            ...(r.profile.executionPolicy?{executionPolicy:r.profile.executionPolicy}:{}),
             instructionsFilePath:file,materialSha256:required.sha256,materialRoot:r.materialRoot,materialFiles:r.manifest.files,
             rootTaskId:r.rootTaskId,projectContext:r.projectContext,additionalCapabilities:r.capabilityRequests,effectiveCapabilities:r.effectiveCapabilities,
             authorizedHostActions:r.authorizedHostActions,networkScope:r.networkScope,resourceScope:r.resourceScope,reviewedArtifacts:r.reviewedArtifacts,codeCandidate:r.codeCandidate,codeReview:r.codeReview,

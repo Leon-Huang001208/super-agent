@@ -1,5 +1,13 @@
 # 受控真实验收手册
 
+## Mac原生和公司Skill验收
+
+按[本轮合同](plans/native-skills-20261120.md)分别验证全部11角色的分配/Managed说明/完整包/依赖/最终CLI配置，以及预算内代表角色的真实订阅执行。核对`process.platform=darwin`、实际宿主cwd、CODEX_HOME、无冲突沙盒参数及原订阅，不能用CLI版本或文件存在替代真实模型结果。
+
+取消、超时、进程恢复使用可控夹具覆盖；真实模型动作结果未知时核对原run。Skill与脚本依赖缺失标为NOT_RUN；其他岗位配置通过不等于其业务闭环通过。切换后的候选、实际调用数、失败和恢复分别写入本轮运行证据。
+
+实际macOS进程身份、进程组和完整host transport夹具仅在Mac执行。固定Node Linux镜像没有macOS的ps接口，且测试临时挂载不允许直接执行文件，因此Linux明确跳过这4项；参数/策略与loopback broker检查仍在Linux执行。必须另有Mac目标平台结果，不能用Linux的skip声称通过。
+
 ## 通用角色与跨项目能力
 
 逐角色核对职业说明、默认能力和实际工具目录；补充能力由Chief结构化计划进入原operation/permit，不接受工具参数自签。Skills完整包须可读取并验证依赖引用，MCP目录须与真正允许调用一致。现有版本源码合同测试必须使用固定Native schema/service的合法`metadata.superAgentProject`，不能用不存在的runtimeConfig字段假造通过。

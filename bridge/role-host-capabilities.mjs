@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
+import {isMacNative} from './role-execution-policy.mjs';
 import {callHostMcp,runHostCommand} from './role-host-mcp.mjs';
 
 const WORKDISK_UUID='2BC466D2-FD62-4395-86AC-45CFF653BC51';
@@ -284,8 +285,18 @@ export function createHostCapabilityExecutor(options={}){
   if(name==='host.project_check'){
    const check=context.checks?.find(value=>value.id===args.checkId);if(!check)fail('ROLE_HOST_CHECK_NOT_REGISTERED');
    let argv=check.argv;if(check.platform==='docker'){
-    if(!/^[A-Za-z0-9][A-Za-z0-9_.-]+$/.test(options.dockerContainerName??''))fail('ROLE_HOST_CHECK_DOCKER_UNAVAILABLE');
-    argv=[options.dockerBinary??'/usr/local/bin/docker','--context',options.dockerContext??'desktop-linux','exec','-w','/workspace/project',options.dockerContainerName,...check.argv];
+    if(isMacNative(permit)){
+     if(!/^sha256:[a-f0-9]{64}$/.test(check.image??''))fail('ROLE_HOST_CHECK_DOCKER_IMAGE_REQUIRED');
+     if(!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(permit.runId??'')||!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(check.id))fail('ROLE_HOST_CHECK_DOCKER_UNAVAILABLE');
+     argv=[options.dockerBinary??'/usr/local/bin/docker','--context',options.dockerContext??'desktop-linux','run','--rm','--pull','never',
+      '--name','sa-check-'+permit.runId+'-'+check.id,'--network','none','--read-only','--tmpfs','/tmp:rw,size=128m',
+      '--log-driver','json-file','--log-opt','max-size=2m','--log-opt','max-file=1',
+      '--mount','type=bind,source='+workspace.codeHostPath+',target=/workspace/project'+(permit.role==='qa'?',readonly':''),
+      '--workdir','/workspace/project','--entrypoint',check.argv[0],check.image,...check.argv.slice(1)];
+    }else{
+     if(!/^[A-Za-z0-9][A-Za-z0-9_.-]+$/.test(options.dockerContainerName??''))fail('ROLE_HOST_CHECK_DOCKER_UNAVAILABLE');
+     argv=[options.dockerBinary??'/usr/local/bin/docker','--context',options.dockerContext??'desktop-linux','exec','-w','/workspace/project',options.dockerContainerName,...check.argv];
+    }
    }else if(check.platform!=='macos')fail('ROLE_HOST_CHECK_PLATFORM_DENIED');
    if(preparedCandidate)fail('ROLE_HOST_CODE_PREPARED_REPORT_ONLY');
    const started=Date.now();try{

@@ -1,5 +1,7 @@
 # Research 与 PM 原生接入
 
+2026-11-20的执行环境与公司Skill分配改造见[当前合同](native-skills-20261120.md)：保留本页既有订阅、任务和验收证据，将最终Agent模型进程改为Mac原生，项目Docker检查按需调用。本页旧Docker执行记录不自动证明新执行器已通过。
+
 ## 当前事实，2026-11-19
 
 源码基线为 c83400cd08c99c28772c97929dfcd5044f2eca8a，非云盘主检出为 /Users/leon/Developer/Super Agent。实现及受管交付工作树在 WorkDisk 的 Projects/SuperAgent 下。WorkDisk APFS UUID 为 2BC466D2-FD62-4395-86AC-45CFF653BC51。

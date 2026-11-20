@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { resolveRoleProjectContext, selectNativeProject, readRoleProjectContext } from '../bridge/role-project-context.mjs';
+import {resolveRoleCapabilities} from '../bridge/role-capabilities.mjs';
 
 const legacyProfile={projectId:'m1',projectKey:'personal-automation-m1',agentId:'existing-agent',role:'pm'};
 const rule='Use project checks. Delivery stops at a PR.';
@@ -67,4 +68,37 @@ test('actual pinned API schema and service fixture survives raw DB reading witho
  const projected=resolveRoleProjectContext({companyId:fixture.project.companyId,ownerId:'owner',project:fixture.project,
   workspace:fixture.apiWorkspace,rootTaskId:'root-task'});
  assert.deepEqual(projected,context);
+});
+
+test('registered Native workspace domains reach the actual company Skill capability pipeline',async()=>{
+ const fixture=JSON.parse(fs.readFileSync(new URL('./fixtures/native-project-workspace-contract.json',import.meta.url),'utf8'));
+ const rawWorkspace=structuredClone(fixture.rawWorkspace);
+ rawWorkspace.metadata.superAgentProject.domains=[' Content ','SEO','content'];
+ const schema={projects:{id:'projects.id'},projectWorkspaces:{projectId:'workspaces.projectId'}};
+ const db={select:()=>({from:table=>({where:async()=>[structuredClone(table===schema.projects?fixture.project:rawWorkspace)]})})};
+ const projectContext=await readRoleProjectContext({db,schema,orm:{eq:(...args)=>args},task:{id:'root-task',projectId:fixture.project.id},
+  companyId:fixture.project.companyId,ownerId:'owner',legacyProfile});
+ assert.deepEqual(projectContext.domains,['content','seo']);
+ const names=['content-strategy','seo-audit','copywriting','pdf'];
+ const companySkills=names.map(name=>({id:name,key:'company/'+name,companyId:fixture.project.companyId,name,slug:name,currentVersionId:name+'-v1',compatibility:'compatible'}));
+ const companySkillVersions=companySkills.map(skill=>({id:skill.currentVersionId,companySkillId:skill.id,companyId:skill.companyId,fileInventory:[{path:'SKILL.md',content:'# '+skill.name}]}));
+ const agent={companyId:fixture.project.companyId,adapterConfig:{paperclipSkillSync:{desiredSkills:companySkills.map(skill=>skill.key)}}};
+ const capabilities=resolveRoleCapabilities({role:'pm',projectContext,agent,companySkills,companySkillVersions});
+ assert.deepEqual(capabilities.skills.map(skill=>skill.name),['content-strategy','seo-audit','copywriting']);
+ assert.ok(!capabilities.skills.some(skill=>skill.name==='pdf'));
+ rawWorkspace.metadata.superAgentProject.domains=['report'];
+ const reportContext=await readRoleProjectContext({db,schema,orm:{eq:(...args)=>args},task:{id:'root-task',projectId:fixture.project.id},
+  companyId:fixture.project.companyId,ownerId:'owner',legacyProfile});
+ const reportCapabilities=resolveRoleCapabilities({role:'pm',projectContext:reportContext,agent,companySkills,companySkillVersions});
+ assert.deepEqual(reportCapabilities.skills.map(skill=>skill.name),['pdf']);
+ assert.deepEqual(rawWorkspace.metadata.superAgentProject.domains,['report']);
+});
+
+test('Native domain metadata rejects malformed values and never reads domains from task prose',()=>{
+ for(const domains of ['content',[null],[''],[{}],['  ']]){
+  const invalid=structuredClone(workspace);invalid.metadata.superAgentProject.domains=domains;
+  assert.throws(()=>resolve({workspace:invalid}),/ROLE_PROJECT_DOMAINS_INVALID/);
+ }
+ const context=resolve({task:{id:'root-task',title:'enable content seo',domains:['content']}});
+ assert.deepEqual(context.domains,[]);
 });

@@ -1,5 +1,15 @@
 # 运行维护与恢复
 
+## 原生Agent切换
+
+本轮经本人授权采用[Mac原生执行和公司Skill](plans/native-skills-20261120.md)。切换前暂停新派发，核对Native无running/queued/scheduled_retry、无本次活动调用，保全当前Compose、registry、Agent配置及Managed指令版本。通过验证的源码候选与宿主执行器必须一致，不能只修改UI中的bypass开关。
+
+保持原Paperclip数据库、登录、飞书监听与项目服务。最终模型进程迁到Mac，每run broker与临时文件按原run收尾；项目Docker检查使用已登记镜像和命令，失败不安装替代依赖。原执行策略保留为回退配置；未知结果保留原认领和证据，不先回退再重跑。
+
+在应用容器中，`node /opt/super-agent/role/scripts/sync-company-role-skills.mjs --inventory <已审查清单> --package-root <固定完整包目录>`默认只读preview；排空且team暂停后加`--apply`，再运行`publish-role-profiles.mjs --apply`同步Managed说明。公司API不支持的审查metadata仅在原owner认证后按精确company/skill行补充，并保留Native activity；固定GitHub源码包的本地导入不能冒充GitHub自动同步。
+
+代表角色验收使用`native-skills-acceptance.mjs`：默认status，`--init --apply`幂等建立独立根及六子任务，之后分别指定`--role research|pm|frontend-engineer|qa|network-engineer|system-resource-engineer --apply`串行执行。仅`--reconcile --apply`可核对原run，不重试失败/未知调用。它保留原r.taskId、team flag、Agent及历史；六角色共用新根原有六次预算，只有真实终态和输出摘要核清后释放自身lease。
+
 ## 岗位能力与项目接线
 
 项目代码配置由Native项目workspace API写入`metadata.superAgentProject`，包括源仓库宿主路径、任务工作树根、已登记checks、交付入口、宿主动作和选定MCP。只读/非代码项目可没有代码仓库。任务工作区与项目知识按Native project ID绑定，旧记录不搬迁。

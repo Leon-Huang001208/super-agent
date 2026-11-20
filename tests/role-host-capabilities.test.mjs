@@ -261,3 +261,14 @@ test('project runtime replacement follows its prepared receipt contract after a 
  };
  await createHostCapabilityExecutor({...f.options,workspace,runner}).execute('host.project_git',{operation:'prepare'});assert.equal(replaced,true);
 });
+
+test('native actor runs Docker checks on demand only with a pinned project image',async t=>{
+ const f=fixture(t),workspace=await prepareRoleProjectWorkspace(f.options);f.permit.projectContext.checks=[{id:'container',label:'Tests',platform:'docker',image:'sha256:'+'a'.repeat(64),argv:['node','--test']}];
+ f.permit.executionPolicy={executor:'macos_native',sandbox:'none',approvalPolicy:'never',docker:'on_demand'};
+ const executor=createHostCapabilityExecutor({...f.options,workspace});
+ await executor.execute('host.project_check',{checkId:'container'});
+ const command=f.calls.find(call=>call.args.includes('run'));
+ assert.ok(command.args.includes('--pull'));assert.ok(command.args.includes('never'));assert.ok(command.args.includes('sha256:'+'a'.repeat(64)));
+ delete f.permit.projectContext.checks[0].image;
+ await assert.rejects(createHostCapabilityExecutor({...f.options,workspace}).execute('host.project_check',{checkId:'container'}),/DOCKER_IMAGE_REQUIRED/);
+});
