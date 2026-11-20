@@ -6,6 +6,7 @@ import{readRoleProjectContext}from'./role-project-context.mjs';
 import{validateNativeRoleRetry,advanceNativeRetryFlow,archiveNativeRetryFailure,clearArchivedRetryLock,rebindNativeRetryContext,settleNativeRetryWithoutProvider,canReleaseSettledNativeRetryPhase,NATIVE_RETRY_CONTEXT}from'./role-native-retry.mjs';
 import{consumeQueuedNativeRoleRetry}from'./role-native-retry-consumer.mjs';
 import{isInitialChiefPlan,isUnclaimedChiefGateFailure,bindChiefBootstrapRetry,withChiefBootstrapEvidence,chiefBootstrapEvidenceCode}from'./chief-bootstrap-retry.mjs';
+import{isChiefTransportPlanRetry,readChiefTransportFailureEvidence,bindChiefTransportRetry,withChiefTransportEvidence,chiefTransportEvidenceCode}from'./chief-transport-retry.mjs';
 import{renderTeamTaskDescription,teamTaskDescriptionForIntent}from'./team-task-description.mjs';
 import{teamContextEnabled,registryForContextRecord,projectForTask,projectForOperation,scopedRegistry,reconcileTeamDispatch,createTeamContextCoordinator,writeTeamArchive,buildTeamContinuationInput,observeTeamFlow,teamArtifactNames}from'./team-context.mjs';
 const P='/opt/paperclip/node_modules',sha=b=>createHash('sha256').update(b).digest('hex');
@@ -111,13 +112,14 @@ export function nativeRetryControlMode({registry,rootTask,flow,control}){
 export async function bindNativeRetryAttempt(ctx,{database}){
  const p=await database(),[observed]=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.eq(p.schema.heartbeatRuns.id,ctx.runId));
  if(!observed?.retryOfRunId)return ctx;
- let unclaimedBootstrapParent=false;
+ let unclaimedBootstrapParent=false,chiefTransportParent=false;
  try{return await p.db.transaction(async tx=>{
   const{s,o}= {s:p.schema,o:p.orm},[run]=await tx.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,ctx.runId)).for('update');
   const[parentRun]=await tx.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,run.retryOfRunId)).for('update');
   // Preserve uncertainty even if a private mapping/flow read fails before the Root branch is selected.
   unclaimedBootstrapParent=isUnclaimedChiefGateFailure(parentRun);
   let r=readControl(R+'/registry.json');const contextConfigured=r.context?.enabled===true;
+  chiefTransportParent=run.agentId===r.team?.ids?.chief&&parentRun?.scheduledRetryAttempt===1;
   if(run.agentId!==ctx.agent.id||run.issueId!==ctx.context?.issueId||!parentRun)fail('TEAM_NATIVE_RETRY_CONTEXT_CHANGED');
   const candidates=[];
   for(const value of r.operations.filter(value=>value.kind==='run'&&value.taskId===run.issueId&&value.agentId===run.agentId)){
@@ -140,6 +142,20 @@ export async function bindNativeRetryAttempt(ctx,{database}){
    await requireNoPendingOwnerInput({...p,db:tx},r,task.id);
    const meter=meterFor(r,task.projectId);
    try{return bindChiefBootstrapRetry({root:R,ctx,registry:r,task,operation,parentRun,run,wakeup,control,flows,taskRuns,activeRuns,leases,
+    editRegistry:editRoleRegistry,verifyPhaseLease:lease=>meter.verifyLease(lease).allowed===true,log});}finally{meter.close();}
+  });
+  if(isChiefTransportPlanRetry(operation,parentRun))return withChiefTransportEvidence(async()=>{
+   r=scopeTask(r,task,operation);projectForOperation(r,operation,{task,log});
+   const taskRuns=await tx.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.issueId,task.id));
+   const initialOperation=r.operations.find(value=>value.id===operation.retryOfOperationId),initialRun=taskRuns.find(value=>value.id===operation.retryOfRunId);
+   if(!initialRun)fail('TEAM_NATIVE_RETRY_CHIEF_TRANSPORT_INITIAL_EVIDENCE_CHANGED');
+   const[wakeup]=await tx.select().from(s.agentWakeupRequests).where(o.eq(s.agentWakeupRequests.id,initialRun.wakeupRequestId));
+   const control=await(await import('./chief-context-paperclip.mjs')).readManagedChiefContext({db:tx,schema:s,orm:o,task,companyId:r.companyId,ownerId:r.ownerId});
+   const activeRuns=await tx.select({id:s.heartbeatRuns.id,status:s.heartbeatRuns.status}).from(s.heartbeatRuns).where(o.inArray(s.heartbeatRuns.status,['running','queued','scheduled_retry']));
+   const leases=await tx.select({heartbeatRunId:s.environmentLeases.heartbeatRunId,status:s.environmentLeases.status,releasedAt:s.environmentLeases.releasedAt,cleanupStatus:s.environmentLeases.cleanupStatus}).from(s.environmentLeases).where(o.or(o.eq(s.environmentLeases.heartbeatRunId,parentRun.id),o.isNull(s.environmentLeases.releasedAt),o.eq(s.environmentLeases.status,'pending_cleanup'),o.eq(s.environmentLeases.cleanupStatus,'failed')));
+   await requireNoPendingOwnerInput({...p,db:tx},r,task.id);
+   const meter=meterFor(r,task.projectId);
+   try{return bindChiefTransportRetry({root:R,ctx,registry:r,task,operation,parentRun,run,initialOperation,initialRun,wakeup,control,flows,taskRuns,activeRuns,leases,
     editRegistry:editRoleRegistry,verifyPhaseLease:lease=>meter.verifyLease(lease).allowed===true,log});}finally{meter.close();}
   });
   const selected=resolveNativeRetryScope({registry:r,task,rootTask,operation,existingOperation:existing,flows,log});r=selected.registry;
@@ -191,7 +207,7 @@ export async function bindNativeRetryAttempt(ctx,{database}){
   log({code:'TEAM_NATIVE_RETRY_BOUND',runId:run.id,parentRunId:parentRun.id,operationId:next.id,retryOfOperationId:operation.id,taskId:task.id,rootTaskId:rootTask.id,nativeRetryAttempt:run.scheduledRetryAttempt});
   return rebindNativeRetryContext(ctx,next);
  });}catch(error){
-  const code=unclaimedBootstrapParent?chiefBootstrapEvidenceCode(error):/^(?:TEAM_NATIVE_RETRY_[A-Z_]+|TEAM_PENDING_OWNER_INPUT)$/.test(error?.code??'')?error.code:'TEAM_NATIVE_RETRY_PREFLIGHT_FAILED';
+  const code=unclaimedBootstrapParent?chiefBootstrapEvidenceCode(error):chiefTransportParent?chiefTransportEvidenceCode(error):/^(?:TEAM_NATIVE_RETRY_[A-Z_]+|TEAM_PENDING_OWNER_INPUT)$/.test(error?.code??'')?error.code:'TEAM_NATIVE_RETRY_PREFLIGHT_FAILED';
   log({code,runId:ctx.runId});fail(code);
  }
 }
@@ -406,7 +422,8 @@ export function startTeamCoordinator({database,contextRuntime}){
   if(queued.length===1&&queued[0].status==='queued'){
    const op=r.operations.find(value=>value.id===r.lease?.operationId),tasks=[];let parentRun=null;
    if(op){parentRun=await getRunForOp(p,op);for(const id of [op.taskId,op.rootTaskId])tasks.push(await p.issue.getById(id));}
-   if(await consumeQueuedNativeRoleRetry({registry:r,activeRuns:queued,parentRun,tasks,resume:(companyId,agentId)=>p.heartbeat.resumeQueuedRunsForAgent(companyId,agentId),log}))return;
+   const chiefTransportEvidence=isChiefTransportPlanRetry(op,parentRun)?readChiefTransportFailureEvidence({root:R,operation:op,parentRun}):undefined;
+   if(await consumeQueuedNativeRoleRetry({registry:r,activeRuns:queued,parentRun,tasks,chiefTransportEvidence,resume:(companyId,agentId)=>p.heartbeat.resumeQueuedRunsForAgent(companyId,agentId),log}))return;
   }
   if(!await releaseKnownIdle(p,r))return;
   if((await activeRuns(p)).length)return;const context=await contextFor(r,p);
