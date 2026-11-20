@@ -105,3 +105,5 @@ Host 策略依赖 Docker 将网关继续只发布到宿主 loopback。它不授�
 项目管理入口 scripts/reconcile-merged-delivery.mjs 默认只读 dry-run。它用于未发布、无历史集成或回收状态的 started 子任务，其原提交已完整保留于同仓父任务的已合 PR。它核对父/子回执归属、原基线→子提交→PR head→merge→实时默认分支的祖先链、精确 PR 身份、实时三个必需状态和服务端分支保护，不创建替代 PR、不推送或改写 vendor/runtime。Docker 夹具在 tests/reconcile-merged-delivery.test.mjs。
 
 源 dirty、未知 ignored、未知锁/结果、任意进程或运行/停止容器对源及其祖先/子路径的引用都拒绝 apply。仅当真实检查完备且无占用，显式 --apply --expect-receipt-sha256 绑定dry-run摘要，才在原 integration/task 锁内重新核对；验证 WorkDisk UUID、APFS 与规范路径，无 symlink 中间目录。创建的 integration alias 只属于子任务，不认领父任务工作树；对账最多记录 ci_passed 及完整 adoption 证据，绝不记录 cleaned 或免除原 cleanup/enforce。见[工作流](agent-workflow.md#组合交付对账与收尾)。
+
+占用核对按 Docker mount 类型验证：bind 必须有有效绝对 Source，沿现存祖先还原缺失末段；tmpfs 以明确类型判定；volume 仅在 inspect 证明为标准 VM 内 local volume 且无驱动选项时排除宿主 bind 引用。未知结构、未知卷选项或来源无法还原均拒绝，不能把未知当空闲。远端原 feature 分支如存在必须仍绑定原 SHA；新的 integration alias 在远端必须不存在。

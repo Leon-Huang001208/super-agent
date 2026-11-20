@@ -11,7 +11,7 @@ function fixture(){return {
   protection:{required_status_checks:{strict:true,contexts:['governance','offline-regression','independent-review']},required_pull_request_reviews:{required_approving_review_count:0},enforce_admins:{enabled:true},allow_force_pushes:{enabled:false},allow_deletions:{enabled:false},required_conversation_resolution:{enabled:true}},
   ci:{status:'passed',mergeCommit:merge,runs:[{name:'governance',conclusion:'SUCCESS'},{name:'offline-regression',conclusion:'SUCCESS'},{context:'independent-review',state:'SUCCESS'}]},
   ancestors:[[base,feature],[feature,head],[head,merge],[merge,tip]],
-  local:{head:feature,branch:'codex/network-feature',commonMatches:true,registered:true,dirty:false,ignored:[],aliasExists:false,aliasPathExists:false,openPids:[]}
+  local:{remoteFeatureCommit:null,remoteAliasCommit:null,head:feature,branch:'codex/network-feature',commonMatches:true,registered:true,dirty:false,ignored:[],aliasExists:false,aliasPathExists:false,openPids:[]}
 };}
 test('already merged child is mapped to exact parent PR without pretending cleaned',()=>{const p=planAdoption(fixture());assert.equal(p.status,'ready');assert.equal(p.integrationBranch,'codex/integrate-network-adopted');assert.equal(p.integrationWorktree,'/worktrees/network-integration-adopted');assert.equal(p.integrationCommit,head);assert.equal(p.remoteCommit,merge);assert.equal(p.nextStatus,'ci_passed');});
 test('any occupied source waits and cannot be treated as idle using TTL',()=>{const f=fixture();f.local.openPids=[55883];const p=planAdoption(f);assert.equal(p.status,'waiting');assert.deepEqual(p.openPids,[55883]);});
@@ -49,7 +49,7 @@ import {referencedContainers,assertCanonicalTree} from '../scripts/reconcile-mer
 test('mount references include ancestors, exact source, descendants and symlink aliases',t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'reconcile-mount-'));t.after(()=>fs.rmSync(root,{recursive:true}));
   const source=path.join(root,'delivery/network');fs.mkdirSync(source,{recursive:true});fs.symlinkSync(path.join(root,'delivery'),path.join(root,'alias'));
-  const mounts=[{Id:'parent',Mounts:[{Source:root}]},{Id:'exact',Mounts:[{Source:source}]},{Id:'child',Mounts:[{Source:path.join(source,'file')}]},{Id:'alias',Mounts:[{Source:path.join(root,'alias')}]},{Id:'sibling',Mounts:[{Source:path.join(root,'delivery/network-other')}]},{Id:'root',Mounts:[{Source:'/'}]}];
+  const mounts=[{Id:'parent',Mounts:[{Type:'bind',Source:root}]},{Id:'exact',Mounts:[{Type:'bind',Source:source}]},{Id:'child',Mounts:[{Type:'bind',Source:path.join(source,'file')}]},{Id:'alias',Mounts:[{Type:'bind',Source:path.join(root,'alias')}]},{Id:'sibling',Mounts:[{Type:'bind',Source:path.join(root,'delivery/network-other')}]},{Id:'root',Mounts:[{Type:'bind',Source:'/'}]}];
   assert.deepEqual(referencedContainers(mounts,source),['parent','exact','child','alias','root']);
   const f=fixture();f.local.containerRefs=referencedContainers(mounts,source);assert.equal(planAdoption(f).status,'waiting');
 });
@@ -63,3 +63,9 @@ test('apply rechecks the full deletion closure and cannot copy another task hist
   assert.throws(()=>recordVerifiedAdoption(f.checked,f.options,()=>assert.fail('foreign history must not mutate')),/RECONCILE_UNKNOWN_DELIVERY_STATE/);
   assert.equal(fs.existsSync(path.join(f.state,'deliveries/network.reconcile-intent.json')),false);
 });
+test('unknown mount structures and bind Sources cannot become an empty reference set',()=>{for(const mounts of [undefined,null,[{}],[{Type:'bind'}],[{Type:'bind',Source:''}],[{Type:'unknown',Source:'/tmp'}]])assert.throws(()=>referencedContainers([{Id:'x',Mounts:mounts}],'/tmp'),/RECONCILE_/);});
+test('a bind path with a missing final component still resolves its existing symlink ancestor',t=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'reconcile-missing-'));t.after(()=>fs.rmSync(root,{recursive:true}));const source=path.join(root,'source');fs.mkdirSync(source);fs.symlinkSync(source,path.join(root,'alias'));assert.deepEqual(referencedContainers([{Id:'alias-child',Mounts:[{Type:'bind',Source:path.join(root,'alias/not-created-yet')}]}],source),['alias-child']);});
+
+test("tmpfs and verified default VM volumes do not pretend to be host bind paths",()=>{const c=[{Id:"tmp",Mounts:[{Type:"tmpfs"}]},{Id:"vol",Mounts:[{Type:"volume",Name:"cache",Source:"/var/lib/docker/volumes/cache/_data"}]}],v={cache:{Name:"cache",Driver:"local",Mountpoint:"/var/lib/docker/volumes/cache/_data",Options:null}};assert.deepEqual(referencedContainers(c,"/tmp",v),[]);assert.throws(()=>referencedContainers(c,"/tmp"),/RECONCILE_VOLUME_REFERENCE_UNKNOWN/);v.cache.Options={o:"bind",device:"/tmp"};assert.throws(()=>referencedContainers(c,"/tmp",v),/RECONCILE_VOLUME_REFERENCE_UNKNOWN/);});
+
+test("unknown remote alias or changed remote feature cannot be cleaned by inherited branch names",()=>{for(const change of [f=>f.local.remoteAliasCommit=head,f=>f.local.remoteFeatureCommit=head]){const f=fixture();change(f);assert.throws(()=>planAdoption(f),/RECONCILE_REMOTE_RESOURCE_UNKNOWN/);}});

@@ -34,6 +34,7 @@ export function planAdoption(f){
   requireThat(f.ci.status==='passed'&&f.ci.mergeCommit===f.merge&&Array.isArray(runs)&&runs.every(x=>['SUCCESS','NEUTRAL','SKIPPED'].includes(x.conclusion??x.state))&&required.every(name=>runs.some(x=>(x.name??x.context)===name&&(x.conclusion??x.state)==='SUCCESS')),'CI_UNVERIFIED');
   const local=f.local;
   requireThat(local.head===f.feature&&local.branch===r.featureBranch&&local.commonMatches===true&&local.registered===true&&local.dirty===false&&Array.isArray(local.ignored)&&local.ignored.length===0&&local.aliasExists===false&&local.aliasPathExists===false,'LOCAL_STATE');
+  requireThat(local.remoteAliasCommit===null&&(local.remoteFeatureCommit===null||local.remoteFeatureCommit===f.feature),'REMOTE_RESOURCE_UNKNOWN');
   requireThat(Array.isArray(local.openPids)&&local.openPids.every(x=>Number.isSafeInteger(x)&&x>0)&&Array.isArray(local.containerRefs??[]),'OCCUPANCY_UNKNOWN');
   return {status:local.openPids.length||(local.containerRefs??[]).length?'waiting':'ready',nextStatus:'ci_passed',taskId:f.taskId,parentTaskId:f.parentTaskId,featureCommit:f.feature,integrationCommit:f.head,remoteCommit:f.merge,liveTip:f.tip,pullRequest:{url,number:f.prNumber},integrationBranch:`codex/integrate-${f.taskId}-adopted`,integrationWorktree:path.join(f.worktreeRoot,f.taskId+'-integration-adopted'),openPids:local.openPids,containerRefs:local.containerRefs??[]};
 }
@@ -43,10 +44,32 @@ function invoke(command,args,{allowFailure=false,cwd}={}){
   return r;
 }
 function regularFile(file){const s=fs.lstatSync(file);requireThat(s.isFile()&&!s.isSymbolicLink(),'STATE_FILE_INVALID');return fs.readFileSync(file,'utf8');}
-export function referencedContainers(containers,source){
-  const canonical=p=>{requireThat(typeof p==='string'&&path.isAbsolute(p),'MOUNT_UNKNOWN');try{return fs.realpathSync(p);}catch(error){if(error.code==='ENOENT')return path.resolve(p);throw Error('RECONCILE_MOUNT_UNKNOWN');}};
+export function referencedContainers(containers,source,volumes={}){
+  const canonical=p=>{
+    requireThat(typeof p==='string'&&path.isAbsolute(p),'MOUNT_UNKNOWN');
+    let current=path.resolve(p);const suffix=[];
+    for(;;){try{return path.join(fs.realpathSync(current),...suffix);}catch(error){
+      if(error.code!=='ENOENT')throw Error('RECONCILE_MOUNT_UNKNOWN');
+      try{if(fs.lstatSync(current).isSymbolicLink())throw Error('RECONCILE_MOUNT_UNKNOWN');}catch(e){if(e.code!=='ENOENT')throw e;}
+      const parent=path.dirname(current);requireThat(parent!==current,'MOUNT_UNKNOWN');suffix.unshift(path.basename(current));current=parent;
+    }}
+  };
   const target=canonical(source),inside=(a,b)=>a===b||a.startsWith(b.endsWith(path.sep)?b:b+path.sep);
-  return containers.filter(c=>c.Mounts?.some(m=>m.Source&&(inside(canonical(m.Source),target)||inside(target,canonical(m.Source))))).map(c=>c.Id);
+  requireThat(Array.isArray(containers),'MOUNT_UNKNOWN');
+  return containers.filter(c=>{
+    requireThat(c&&typeof c.Id==='string'&&Array.isArray(c.Mounts),'MOUNT_UNKNOWN');let references=false;
+    for(const m of c.Mounts){
+      requireThat(m&&['bind','tmpfs','volume'].includes(m.Type),'MOUNT_UNKNOWN');
+      if(m.Type==='tmpfs')continue;
+      if(m.Type==='volume'){
+        const v=volumes[m.Name];
+        requireThat(v&&v.Name===m.Name&&v.Driver==='local'&&typeof m.Source==='string'&&m.Source===v.Mountpoint&&m.Source.startsWith('/var/lib/docker/volumes/')&&(v.Options===null||(v.Options&&typeof v.Options==='object'&&!Array.isArray(v.Options)&&Object.keys(v.Options).length===0)),'VOLUME_REFERENCE_UNKNOWN');
+        continue;
+      }
+      const mount=canonical(m.Source);if(inside(mount,target)||inside(target,mount))references=true;
+    }
+    return references;
+  }).map(c=>c.Id);
 }
 export function assertCanonicalTree(root,source,allowedRoot){
   requireThat(root===allowedRoot&&fs.realpathSync(root)===root&&fs.realpathSync(source)===source,'STORAGE_CANONICAL');
@@ -91,8 +114,13 @@ function inspect(options,run=invoke){
   const pids=[...new Set(lsof.stdout.split('\n').filter(x=>/^p\d+$/.test(x)).map(x=>Number(x.slice(1))))];
   const ids=output(run('docker',['--context','desktop-linux','ps','-aq']));
   const containers=ids?run('docker',['--context','desktop-linux','inspect','--format','{{json .Mounts}}',...ids.split(/\s+/)]).stdout.trim().split('\n').map((line,i)=>({Id:ids.split(/\s+/)[i],Mounts:JSON.parse(line)})):[];
-  const refs=referencedContainers(containers,receipt.featureWorktree);
+  const names=[...new Set(containers.flatMap(c=>{requireThat(Array.isArray(c.Mounts),'MOUNT_UNKNOWN');return c.Mounts.filter(m=>m?.Type==='volume').map(m=>{requireThat(typeof m.Name==='string'&&m.Name.length>0,'MOUNT_UNKNOWN');return m.Name;});}))];
+  const volumes=names.length?Object.fromEntries(JSON.parse(run('docker',['--context','desktop-linux','volume','inspect',...names]).stdout).map(v=>[v.Name,v])):{};
+  const refs=referencedContainers(containers,receipt.featureWorktree,volumes);
+  const remoteRefs=output(git(['ls-remote','origin','refs/heads/'+receipt.featureBranch,'refs/heads/'+alias])).split('\n').filter(Boolean).map(line=>line.split(/\s+/));
+  const refCommit=branch=>remoteRefs.find(([,name])=>name==='refs/heads/'+branch)?.[0]??null;
   const facts={...options,repositoryRoot:root,remoteUrl,defaultBranch:branch,tip,receipt,parent,pr,protection,ci,ancestors,local:{head:output(git(['rev-parse','HEAD'],false,receipt.featureWorktree)),branch:output(git(['branch','--show-current'],false,receipt.featureWorktree)),commonMatches:fs.realpathSync(path.resolve(receipt.featureWorktree,output(git(['rev-parse','--git-common-dir'],false,receipt.featureWorktree))))===common,registered:list.split('\n\n').some(block=>block.includes('worktree '+receipt.featureWorktree+'\n')&&block.includes('branch refs/heads/'+receipt.featureBranch)),dirty:!!output(git(['status','--porcelain','--untracked-files=all'],false,receipt.featureWorktree)),ignored:output(git(['ls-files','--others','--ignored','--exclude-standard'],false,receipt.featureWorktree)).split('\n').filter(Boolean),aliasExists:git(['show-ref','--verify','refs/heads/'+alias],true).status===0,aliasPathExists:fs.existsSync(aliasPath),openPids:pids,containerRefs:refs}};
+  facts.local.remoteFeatureCommit=refCommit(receipt.featureBranch);facts.local.remoteAliasCommit=refCommit(alias);
   return {facts,plan:planAdoption(facts),state,common,receiptFile,parentFile,receiptBytes,parentBytes,receiptSha256:sha(receiptBytes),parentSha256:sha(parentBytes)};
 }
 export function withReconcileLocks(directory,taskId,perform){
