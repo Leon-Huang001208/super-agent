@@ -187,15 +187,120 @@ async function application(t){
   const catalog={schemaVersion:1,defaultProjectKey:f.project.key,projects:[f.project,other]};
   const registry={companyId:f.binding.companyId,ownerId:f.binding.nativeOwnerId,team:{projectId:f.project.projectId,ids:f.agentIds},context:{schemaVersion:1,enabled:true,catalog}};
   const original=f.services.issueService;
-  f.services.issueService=connection=>({...original(connection),create:async(company,options)=>{f.calls.create++;const row={...options,companyId:company,identifier:'LEO-'+(60+f.calls.create)};f.data.issues.push(row);return structuredClone(row);}});
-  const messages=[],client={im:{message:{create:async value=>{messages.push({method:'create',value});if(f.calls.failReplyOnce){f.calls.failReplyOnce=false;throw Error('fixture unknown send result');}return {code:0,data:{message_id:'om_send'+messages.length}};},reply:async value=>{messages.push({method:'reply',value});return {code:0,data:{message_id:'om_send'+messages.length}};}}}};
-  const app=await createChiefContextApplication({database:f.database,binding:f.binding,registry,client,log:()=>{},currentScope:()=>{},knowledgeRoot:folder+'/knowledge',loadServices:async()=>f.services,
+  f.services.issueService=connection=>({...original(connection),create:async(company,options)=>{f.calls.create++;
+    if(f.calls.createGate){const gate=f.calls.createGate;delete f.calls.createGate;gate.entered();await gate.wait;}
+    const row={...options,companyId:company,identifier:'LEO-'+(60+f.calls.create)};f.data.issues.push(row);return structuredClone(row);}});
+  const priorMessageId='om_priorowner';
+  const priorParams={source:'feishu',eventType:'im.message.receive_v1',appId:f.binding.appId,tenantKey:f.binding.tenantKey,ownerOpenId:f.binding.ownerOpenId,
+    messageId:priorMessageId,chatId:'oc_test',bodySha256:sha('prior authenticated owner goal'),eventId:'event_prior'};
+  f.data.activityLog.push({id:randomUUID(),companyId:f.binding.companyId,actorType:'user',actorId:f.binding.nativeOwnerId,action:'team.feishu.registered',entityId:f.task.id,
+    details:{schemaVersion:1,operationId:chiefFeishuOperation({...f.binding,messageId:priorMessageId}),taskId:f.task.id,identifier:f.task.identifier,companyId:f.binding.companyId,
+      ownerId:f.binding.nativeOwnerId,chiefAgentId:f.binding.chiefAgentId,projectId:f.binding.projectId,sourceParams:priorParams,bodySha256:priorParams.bodySha256}});
+  const messages=[],officialMessages=new Map(),logs=[],client={im:{message:{
+    get:async value=>{f.calls.get=(f.calls.get??0)+1;if(f.calls.failGet)throw Error('private official GET failure');return {code:0,data:{items:[structuredClone(officialMessages.get(value.path.message_id))]}};},
+    create:async value=>{messages.push({method:'create',value});if(f.calls.failReplyOnce){f.calls.failReplyOnce=false;throw Error('fixture unknown send result');}return {code:0,data:{message_id:'om_send'+messages.length}};},
+    reply:async value=>{messages.push({method:'reply',value});if(f.calls.failGoalReplyOnce){f.calls.failGoalReplyOnce=false;throw Error('unknown goal ACK fixture');}return {code:0,data:{message_id:'om_send'+messages.length}};}}}};
+  const app=await createChiefContextApplication({database:f.database,binding:f.binding,registry,client,log:event=>logs.push(event),currentScope:()=>{},knowledgeRoot:folder+'/knowledge',loadServices:async()=>f.services,
     observeLocalExecution:()=>({unknown:false,budgetUsed:0}),observeLocalOperation:()=>null});
   let number=0;
   const snapshot=text=>{const messageId='om_input'+(++number),bodySha256=sha(text);return {...f.binding,text,goal:text.slice(6).trim(),command:parseChiefContextCommand(text),messageId,chatId:'oc_test',bodySha256,
     createdAt:'2026-11-20T03:00:00.000Z',sourceParams:{source:'feishu',eventType:'im.message.receive_v1',appId:f.binding.appId,tenantKey:f.binding.tenantKey,ownerOpenId:f.binding.ownerOpenId,messageId,chatId:'oc_test',bodySha256,createdAt:'2026-11-20T03:00:00.000Z'}};};
-  return {...f,app,registry,other,messages,snapshot};
+  const putOfficial=source=>officialMessages.set(source.messageId,{message_id:source.messageId,chat_id:source.chatId,msg_type:'text',create_time:String(Date.parse(source.createdAt)),
+    update_time:String(Date.parse(source.createdAt)),updated:true,deleted:false,sender:{id_type:'open_id',id:f.binding.ownerOpenId,sender_type:'user',tenant_key:f.binding.tenantKey},body:{content:JSON.stringify({text:source.text})}});
+  return {...f,app,registry,other,messages,snapshot,putOfficial,officialMessages,logs};
 }
+
+test('official recovery previews without effects, applies exactly once and never drains or wakes',async t=>{
+  const f=await application(t),source=f.snapshot('/chief --project rwb --plan-first new 原消息资料任务');f.putOfficial(source);
+  const request={messageId:source.messageId,expectedBodySha256:source.bodySha256},before=f.data.activityLog.length;
+  const preview=await f.app.recoverOfficialGoal(request);
+  assert.equal(preview.mode,'preview');assert.equal(preview.verified,true);assert.equal(preview.commandKind,'new');
+  assert.equal(Object.hasOwn(preview,'text'),false);assert.equal(Object.hasOwn(preview,'result'),false);
+  assert.equal(f.data.activityLog.length,before);assert.equal(f.calls.create,0);assert.equal(f.calls.wake,0);assert.equal(f.messages.length,0);
+  const first=await f.app.recoverOfficialGoal(request,{apply:true}),again=await f.app.recoverOfficialGoal(request,{apply:true});
+  assert.equal(first.mode,'apply');assert.equal(first.result.taskId,again.result.taskId);assert.equal(f.calls.create,1);assert.equal(f.messages.length,1);assert.equal(f.calls.wake,0);
+  const intent=f.data.activityLog.find(row=>row.action==='team.context.intent'&&row.details.sourceKey===chiefFeishuOperation(source)).details;
+  assert.equal(intent.sourceParams.eventType,'feishu.message_api_recovery');assert.equal(Object.hasOwn(intent.sourceParams,'eventId'),false);
+  assert.equal(intent.project.projectId,f.other.projectId);assert.equal(JSON.stringify(f.logs).includes(source.text),false);
+});
+
+test('API-first recovery and late SDK receipt share the original intent without a new task or ACK',async t=>{
+  const f=await application(t),source=f.snapshot('/chief new 只恢复同一原目标');source.sourceParams.eventId='event_late_sdk';f.putOfficial(source);
+  const recovered=await f.app.recoverOfficialGoal({messageId:source.messageId,expectedBodySha256:source.bodySha256},{apply:true});
+  const before=f.data.activityLog.filter(row=>row.action==='team.context.intent').map(row=>structuredClone(row.details));
+  const late=await f.app.receiveTrusted(source);
+  assert.equal(late.taskId,recovered.result.taskId);assert.equal(f.calls.create,1);assert.equal(f.messages.length,1);assert.equal(f.calls.wake,0);
+  assert.deepEqual(f.data.activityLog.filter(row=>row.action==='team.context.intent').map(row=>row.details),before);
+  assert.ok(f.logs.some(row=>row.code==='CHIEF_CONTEXT_GOAL_ORIGIN_REUSED'&&row.incomingOrigin==='im.message.receive_v1'&&row.originalOrigin==='feishu.message_api_recovery'));
+});
+
+test('SDK-first receipt and official recovery keep the stored SDK fingerprint and actual event ID',async t=>{
+  const f=await application(t),source=f.snapshot('/chief new 正常先入站');source.eventId='event_first_sdk';source.sourceParams.eventId=source.eventId;f.putOfficial(source);
+  const first=await f.app.receiveTrusted(source),intentBefore=structuredClone(f.data.activityLog.find(row=>row.action==='team.context.intent').details);
+  const recovered=await f.app.recoverOfficialGoal({messageId:source.messageId,expectedBodySha256:source.bodySha256},{apply:true});
+  assert.equal(recovered.result.taskId,first.taskId);assert.equal(f.calls.create,1);assert.equal(f.messages.length,1);assert.equal(f.calls.wake,0);
+  assert.deepEqual(f.data.activityLog.find(row=>row.action==='team.context.intent').details,intentBefore);
+  assert.equal(intentBefore.sourceParams.eventId,'event_first_sdk');
+  assert.ok(f.logs.some(row=>row.code==='CHIEF_CONTEXT_GOAL_ORIGIN_REUSED'&&row.incomingOrigin==='feishu.message_api_recovery'&&row.originalOrigin==='im.message.receive_v1'));
+});
+
+test('concurrent API and SDK receipt coalesce before registration and a conflicting body never borrows the in-flight result',async t=>{
+  const f=await application(t),source=f.snapshot('/chief new 并发原消息');source.sourceParams.eventId='event_concurrent';f.putOfficial(source);
+  const request={messageId:source.messageId,expectedBodySha256:source.bodySha256};
+  const [api,sdk]=await Promise.all([f.app.recoverOfficialGoal(request,{apply:true}),f.app.receiveTrusted(source)]);
+  assert.equal(api.result.taskId,sdk.taskId);assert.equal(f.calls.create,1);assert.equal(f.messages.length,1);assert.equal(f.calls.wake,0);
+  const changed={...source,text:'/chief new 修改后的正文',goal:'修改后的正文',command:parseChiefContextCommand('/chief new 修改后的正文')};
+  changed.bodySha256=sha(changed.text);changed.sourceParams={...source.sourceParams,bodySha256:changed.bodySha256};
+  await assert.rejects(f.app.receiveTrusted(changed),{code:'CHIEF_CONTEXT_SOURCE_CONFLICT'});
+  assert.equal(f.calls.create,1);assert.equal(f.messages.length,1);
+});
+
+test('a registered goal with no ACK claim can be reconciled once while an unknown claimed ACK is never resent',async t=>{
+  const f=await application(t),source=f.snapshot('/chief new ACK受理窗口');f.putOfficial(source);
+  const first=await f.app.receiveTrusted(source),key=chiefFeishuOperation(source);
+  f.data.activityLog=f.data.activityLog.filter(row=>!(row.action.startsWith('team.feishu.ack_')&&row.details.operationId===key));f.messages.length=0;
+  const recovered=await f.app.recoverOfficialGoal({messageId:source.messageId,expectedBodySha256:source.bodySha256},{apply:true});
+  assert.equal(recovered.result.taskId,first.taskId);assert.equal(f.messages.length,1);assert.equal(f.calls.create,1);
+  const uncertain=await application(t),other=uncertain.snapshot('/chief new ACK未知窗口');uncertain.putOfficial(other);uncertain.calls.failGoalReplyOnce=true;
+  const accepted=await uncertain.app.receiveTrusted(other);assert.equal(uncertain.messages.length,1);
+  const same=await uncertain.app.recoverOfficialGoal({messageId:other.messageId,expectedBodySha256:other.bodySha256},{apply:true});
+  assert.equal(same.result.taskId,accepted.taskId);assert.equal(uncertain.messages.length,1);assert.equal(uncertain.calls.create,1);assert.equal(uncertain.calls.wake,0);
+});
+
+test('either authenticated origin can lead an in-flight creation without a competing goal, ACK or borrowed conflicting result',async t=>{
+  for(const firstOrigin of ['api','sdk']){
+    const f=await application(t),source=f.snapshot('/chief new 指定并发交接');source.sourceParams.eventId='event_concurrent_original';f.putOfficial(source);
+    let enter,release;const entered=new Promise(resolve=>{enter=resolve;}),wait=new Promise(resolve=>{release=resolve;});f.calls.createGate={entered:enter,wait};
+    const request={messageId:source.messageId,expectedBodySha256:source.bodySha256};
+    const api=()=>f.app.recoverOfficialGoal(request,{apply:true}).then(value=>value.result),sdk=()=>f.app.receiveTrusted(source);
+    const first=(firstOrigin==='api'?api:sdk)();await entered;
+    const second=(firstOrigin==='api'?sdk:api)();
+    const changed=structuredClone(source);changed.text='/chief new 不同正文不得借用并发结果';changed.bodySha256=sha(changed.text);
+    changed.command=parseChiefContextCommand(changed.text);changed.goal=changed.command.goal;changed.sourceParams.bodySha256=changed.bodySha256;
+    const rejected=assert.rejects(f.app.receiveTrusted(changed),{code:'CHIEF_CONTEXT_SOURCE_CONFLICT'});
+    await new Promise(resolve=>setImmediate(resolve));assert.equal(f.calls.create,1);assert.equal(f.messages.length,0);release();
+    const [one,two]=await Promise.all([first,second]);await rejected;
+    assert.equal(one.taskId,two.taskId);assert.equal(one.kind,'new');assert.equal(f.calls.create,1);assert.equal(f.messages.length,1);assert.equal(f.calls.wake,0);
+    assert.equal(f.data.activityLog.filter(row=>row.action==='team.context.intent'&&row.details.sourceKey===chiefFeishuOperation(source)).length,1);
+  }
+});
+
+test('official recovery failures and raw recovery-shaped JSON have no task, ACK or wake effects',async t=>{
+  const mutations=[item=>{item.message_id='om_other';},item=>{item.sender.id='ou_other';},item=>{item.sender.tenant_key='wrong';},item=>{item.chat_id='oc_foreign';},
+    item=>{item.msg_type='post';},item=>{item.sender.sender_type='app';},item=>{item.deleted=true;},item=>{item.body.content=JSON.stringify({text:'/chief new 别的正文'});}];
+  for(const alter of mutations){const f=await application(t),source=f.snapshot('/chief new 不应恢复');f.putOfficial(source);alter(f.officialMessages.get(source.messageId));const before=f.data.activityLog.length;
+    await assert.rejects(f.app.recoverOfficialGoal({messageId:source.messageId,expectedBodySha256:source.bodySha256},{apply:true}));
+    assert.equal(f.calls.create,0);assert.equal(f.calls.wake,0);assert.equal(f.messages.length,0);assert.equal(f.data.activityLog.length,before);}
+  for(const text of ['/chief remember 格式 先证据','/chief share 格式 rwb','/chief continue']){const f=await application(t),source=f.snapshot(text);f.putOfficial(source);
+    await assert.rejects(f.app.recoverOfficialGoal({messageId:source.messageId,expectedBodySha256:source.bodySha256},{apply:true}),{code:'CHIEF_MESSAGE_RECOVERY_NEW_GOAL_REQUIRED'});assert.equal(f.calls.create,0);assert.equal(f.messages.length,0);}
+  const forged=await application(t),raw=forged.snapshot('/chief new 伪原消息');raw.sourceParams.eventType='feishu.message_api_recovery';raw.sourceParams.origin='official_message_get';
+  await assert.rejects(forged.app.receiveTrusted(raw),{code:'CHIEF_CONTEXT_BINDING_DENIED'});assert.equal(forged.calls.create,0);assert.equal(forged.messages.length,0);
+  const badInput=await application(t);await assert.rejects(badInput.app.recoverOfficialGoal({messageId:'om_x',expectedBodySha256:'a'.repeat(64),appId:'cli_other'},{apply:true}),{code:'CHIEF_MESSAGE_RECOVERY_REQUEST_INVALID'});
+  assert.equal(badInput.calls.get??0,0);assert.equal(badInput.calls.create,0);assert.equal(badInput.messages.length,0);
+  const apiError=await application(t),apiSource=apiError.snapshot('/chief new API暂不可用');apiError.putOfficial(apiSource);apiError.calls.failGet=true;
+  await assert.rejects(apiError.app.recoverOfficialGoal({messageId:apiSource.messageId,expectedBodySha256:apiSource.bodySha256},{apply:true}),{code:'CHIEF_MESSAGE_RECOVERY_API_FAILED'});
+  assert.equal(apiError.calls.create,0);assert.equal(apiError.calls.wake,0);assert.equal(apiError.messages.length,0);
+});
 test('typed project and memory actions retain Native truth and create no model task',async t=>{
   const f=await application(t);
   await f.app.receiveTrusted(f.snapshot('/chief 记住 报告规范 先结论再证据'));
