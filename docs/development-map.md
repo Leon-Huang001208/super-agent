@@ -1,5 +1,15 @@
 # 开发地图
 
+## 真实任务驱动的迭代
+
+`bridge/task-call-policy.mjs`统一原根默认6/可信复杂任务12次上限，`scripts/task-call-budget.mjs`只在关闭派发且排空后登记已授权的原任务复杂档；不改写任何旧预算文件。物理调用、Chief提示、续接、Native失败重试与普通QA返修共用同一上限。`tests/task-call-policy.test.mjs`与原budget/retry/context测试验证累计计数、伪造上限拒绝和原记录保持。
+
+`bridge/team-qa-repair.mjs`和`team-native-runtime.mjs`把普通成功QA的NEEDS_WORK回交原执行子任务，最多两轮；每轮使用新operation/run/session和独有输出，原开发、QA及失败历史不覆写。采集绑定当前dispatch操作，旧QA不进入新reviewedArtifacts。预算不足、需要多项衍生重建或修复负责人不明确时保留可恢复阻断，不冒充Native失败重试。相关驱动与边界见`tests/team-qa-repair.test.mjs`。
+
+`bridge/rwb-release.mjs`只供专门登记的DevOps原任务消费`host.rwb_release`操作，复用RWB的GitSafety和resident；普通项目delivery上限保持。host-call原队列按登记操作去重，未知结果不重放。`tests/rwb-release.test.mjs`、host capability/queue/context回归只证明接口合同，真实合并部署仍须当前写窗口和RWB实际回执。
+
+`scripts/publish-role-profiles.mjs`使用Native Owner/CAS保存；旧生成基线不匹配时保留本人自定义内容，不能用新模板直接覆盖。生成器与六阶段能力说明见[持续迭代](agent-iteration.md)，Native发布、新run加载及业务验收分别记录。
+
 Native HTTPS、每 run 证书/信任、TLS ready 与 MCP CA 传播的合同及测试见[HTTPS 恢复专题](plans/native-https-recovery.md)。Chief 首计划第二次 Native retry 同时维护队列选择、严格物理失败证明、旧锁归档、M2 settled 观察及可信剩余预算提示；只改传输或只让队列消费均不构成完整修复。Mac 宿主检查与 Linux 离线 CI 分别留证。
 
 ## Document Specialist

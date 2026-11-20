@@ -17,29 +17,45 @@
 公司Skill分配以Agent的paperclipSkillSync.desiredSkills为唯一选择来源；每run固定公司版本与完整文件摘要。未配置公司选择的历史run保留旧包兼容，显式空选择不恢复旧专业包。
 公司默认分配：paperclip、handoff、verification-before-completion、frontend-design、canvas-design、theme-factory、audit、figma-generate-design、figma-design-to-code。条件技能只在任务stack/services/domains匹配时启用；上方公司分配优先，以下为保留的历史包来源说明。
 
-entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+入口文件摘要entrypointSha256校验SKILL.md实际文件字节；文件集摘要fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
 
-- frontend-design：host-skills/frontend-design@local；文件 frontend-design/SKILL.md；入口文件摘要 entrypointSha256=d91970639e9f5c37682ac7ab60094d35f1c7c1f38d731bd56396563aee10c1d3；文件集摘要 fileSetSha256=46f1d8baf51bad0908bd60784c6a2a1ad8a844f7e161988dfcff6be5090979c7。
-- audit：openai-curated-remote/product-design@0.1.56；文件 packages/product-design/0.1.56/skills/audit/SKILL.md；入口文件摘要 entrypointSha256=087f798c3fe02e91b4cca18cc0f42c358a4dc2c02ccf37a348b476fb19b64aa3；文件集摘要 fileSetSha256=5259daf2db93667763adabf06d8d04adfebdbea91084501626e6e3a731fc4dec。
-- product-design-index：openai-curated-remote/product-design@0.1.56；文件 packages/product-design/0.1.56/skills/index/SKILL.md；入口文件摘要 entrypointSha256=8e9916d9e5dc3b6a394bedcaa38cd9c8833a1f3b0c4538b75647cf9f62f779fc；文件集摘要 fileSetSha256=6b1fbf42669f34a9bf9b80c9a820d585f13045e5cbd4edb5d760d063ff5117c6。
-- user-context：openai-curated-remote/product-design@0.1.56；文件 packages/product-design/0.1.56/skills/user-context/SKILL.md；入口文件摘要 entrypointSha256=5690a7f99cf896970493f5d0bd7f35f62ab9cbe21744352acf84dc0ceea4194c；文件集摘要 fileSetSha256=7b48422c65ed303fd187079668a427ef3086055b437162476a05b24717a8785f。
-- figma-generate-design：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-generate-design/SKILL.md；入口文件摘要 entrypointSha256=b3247e893ece4cd8437e06aa8b498b584b95c9785aa902dd6bd9e51b41eaa022；文件集摘要 fileSetSha256=2966b1653810b7e951e1e6df19a9e54bc77f39700196992c161e09029b24900c。
-- figma-use：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-use/SKILL.md；入口文件摘要 entrypointSha256=38206a581f30f7a919e230f8cb342067ea8f8bb788247528844c901d01b66eb7；文件集摘要 fileSetSha256=c77ab5c3ba577648909f35edd5e009bcaef3a474cbdd1dcf88f46a5e48cb2030。
-- figma-generate-library：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-generate-library/SKILL.md；入口文件摘要 entrypointSha256=e9662f643049f897fe7295453d53783617235e7dcd23c270bbcd85b49f30bb95；文件集摘要 fileSetSha256=635f76e1279b939156f66f096bf057292987a767e42fb9939b3b2499bf8a37e5。
-- figma-create-new-file：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-create-new-file/SKILL.md；入口文件摘要 entrypointSha256=bb7bc48c487f0ad7e738c23d0685bad5ec0bbbca8f5b5bb6295dc0666cc9ddf1；文件集摘要 fileSetSha256=3d891426df580724e5bc42e04ce1b6daa2338508a5245d7acedb6d040a2dfdd6。
-- figma-design-to-code：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-design-to-code/SKILL.md；入口文件摘要 entrypointSha256=a6e852421e4db72260b2ca641929b1f84684e5b067aead081e35111f5b5feee4；文件集摘要 fileSetSha256=8684bdbead462c0100601b59aa17a6e564ebf9dd445a43963e9b0d11fbb648c7。
+下面摘要仅显示前12位供人核对；机器能力结果保留完整entrypointSha256与fileSetSha256，完整包索引保留逐文件清单，截短值不用于认证。
+- frontend-design：frontend-design/SKILL.md；host-skills/frontend-design@local；entrypointSha256=d91970639e9f…；fileSetSha256=46f1d8baf51b…。
+- audit：packages/product-design/0.1.56/skills/audit/SKILL.md；openai-curated-remote/product-design@0.1.56；entrypointSha256=087f798c3fe0…；fileSetSha256=5259daf2db93…。
+- product-design-index：packages/product-design/0.1.56/skills/index/SKILL.md；openai-curated-remote/product-design@0.1.56；entrypointSha256=8e9916d9e5dc…；fileSetSha256=6b1fbf42669f…。
+- user-context：packages/product-design/0.1.56/skills/user-context/SKILL.md；openai-curated-remote/product-design@0.1.56；entrypointSha256=5690a7f99cf8…；fileSetSha256=7b48422c65ed…。
+- figma-generate-design：packages/figma/20.0.0/skills/figma-generate-design/SKILL.md；openai-curated-remote/figma@20.0.0；entrypointSha256=b3247e893ece…；fileSetSha256=2966b1653810…。
+- figma-use：packages/figma/20.0.0/skills/figma-use/SKILL.md；openai-curated-remote/figma@20.0.0；entrypointSha256=38206a581f30…；fileSetSha256=c77ab5c3ba57…。
+- figma-generate-library：packages/figma/20.0.0/skills/figma-generate-library/SKILL.md；openai-curated-remote/figma@20.0.0；entrypointSha256=e9662f643049…；fileSetSha256=635f76e1279b…。
+- figma-create-new-file：packages/figma/20.0.0/skills/figma-create-new-file/SKILL.md；openai-curated-remote/figma@20.0.0；entrypointSha256=bb7bc48c487f…；fileSetSha256=3d891426df58…。
+- figma-design-to-code：packages/figma/20.0.0/skills/figma-design-to-code/SKILL.md；openai-curated-remote/figma@20.0.0；entrypointSha256=a6e852421e4d…；fileSetSha256=8684bdbead46…。
 
 ## 工具触发与依赖
 
 通用MCP只开放目录中带annotations.readOnlyHint=true的插件发现与GitHub只读工具。GitHub写入及交付走项目已有宿主受管入口，MCP不直接开放merge。
 岗位按真实目录匹配MCP namespace：figma；调用前检查具体方法、输入、连接和范围。
 宿主候选工具：host.project_inspect、host.project_check、host.project_git。这些名称表示岗位候选权限；是否已经接通须看实际目录与传输，具体仓库、动作、路径和服务参数仍由当前任务约束。
+
 projectContext.hostMcpServers登记本岗位可用的服务和方法时，才能提供host.mcp_call；services仅描述项目服务，不能替代具体MCP登记。
 Skill完整只读包在独立资产目录，CODEX_HOME/skills入口指向所需包；包内相对引用、必要references/scripts及每文件摘要保留。未配置的可选技能或工具仍不可调用。
 Skill文件存在只证明资料存在；Mac原生CLI、Python、浏览器、Figma连接、项目受管发布器等运行依赖必须单独核实。缺依赖写明NOT_RUN和缺失项，保留已完成成果。
 需要新增安装、外部写入或高影响动作而现有授权不足时，只提交具体缺口；授权内自主执行，不导入无条件重复审批。
 
+## 能力证据阶段
+
+| 阶段 | 实际证明 |
+| --- | --- |
+| assigned | 本run岗位与任务选择了该能力；只证明分配。 |
+| materialized | 本run实际读取并校验包、文件及依赖物化结果。 |
+| discovered | 当前真实工具目录返回对应工具名。 |
+| connected | 目标连接通过适用身份、权限和可达性检查。 |
+| action-tested | 在授权目标上执行了所需具体动作并取得结果。 |
+| business-accepted | 实际交付满足当前任务验收并通过独立质量核验。 |
+
+各阶段分别记录证据；没有对应回执统一为NOT_RUN，不能从先前阶段或另一项目推导。解析器只确认assigned及目录中的discovered，不把缓存目录、Skill索引或工具自述升级为materialized、connected、action-tested或business-accepted；后续阶段由其真实运行回执另行证明。
+持续迭代时，把实际失败、缺依赖、连接或动作结果交回主责岗位，沿原任务修复并由独立QA复核。方法更新归AGENTS/SOP，工具和依赖事实归CAPABILITIES，派发/预算/恢复缺陷归运行代码，业务缺陷归对应项目；新材料经评审、PR和Native CAS发布后仅对下个run生效。
+
 ## 失败与证据
 
 按实际工具响应区分已完成、失败、NOT_RUN和结果未知。记录候选、来源、命令或调用摘要及可定位的脱敏日志；未知结果先核对原操作，不更换ID盲目重发。
-资产包摘要：58e8e0974314f3566e1b36a17fc4719a59551d6f306dbb9909c8dedfdc183511。
+资产包摘要（前12位）：58e8e0974314…；完整值见机器能力结果skillBundleSha256。

@@ -1,5 +1,13 @@
 # Paperclip 集成架构
 
+## 当前执行合同
+
+Paperclip继续拥有任务、运行、会话及正式重试。当前业务模型使用Mac原生Codex、个人订阅gpt-6.1-sol/low、无沙盒和approvalPolicy=never；Docker保留App、依赖、离线测试及按需项目执行。下方标注早期Docker基线的记录不代表当前模型执行位置。全局单执行、原调用计数和未知结果核对保留。
+
+真实工作中发现的岗位、工具和流程缺口沿[Agent迭代](agent-iteration.md)修复。普通QA NEEDS_WORK由既有Native推进流程回交同一执行任务，再由独立QA复核，不创建第二个调度器或重置根预算。默认6次、可信复杂任务12次；两轮质量修复与每run64 responses限制不变。
+
+RWB普通项目仍只交付PR。本人已授权历史有效改动按批交付时，仅任务绑定的DevOps发布能力调用原RWB GitSafety/resident流程；inspect不执行会合并的delivery status，未知副作用只核对原操作，切换需交接当前写窗口。这项例外不来自岗位描述、仓库正文或模型参数。
+
 Mac 原生 provider 通道采用每 run 的 loopback HTTPS、任务 CA 与原 broker 校验；CLI 与 Node MCP 各自获得对应信任，TLS 实际监听后才可消费就绪记录。原首计划已启动 CLI 但在 HTTPS-origin 检查前未发模型 response 的已结算失败，通过窄的第二次 Native retry 合同恢复，保留旧失败与原根预算；不改写 Native NoProvider 字段。见[原生 HTTPS 与首计划恢复](plans/native-https-recovery.md)。
 
 ## 当前原生执行改造

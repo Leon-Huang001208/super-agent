@@ -1,5 +1,13 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {randomUUID} from 'node:crypto';
 import {readRootCallBudget,validateRootCallBudget} from '../bridge/native-role-budget.mjs';
+import {grantComplexTaskBudget} from '../bridge/task-call-policy.mjs';
+test('trusted complex tier counts all earlier spent slots and still reserves the summary',t=>{
+ const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'complex-budget-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const task=randomUUID(),operation=randomUUID(),directory=root+'/budget/'+task;fs.mkdirSync(directory,{recursive:true,mode:0o700});
+ for(let n=0;n<6;n++)fs.writeFileSync(directory+'/'+randomUUID()+'.json','{}',{mode:0o600});
+ const registry=grantComplexTaskBudget({companyId:'c',ownerId:'o',tasks:[task],taskRoots:{[task]:task}},{task:{id:task,companyId:'c',responsibleUserId:'o',status:'in_review'},approvalSource:'user-task-tier-policy'});
+ assert.deepEqual(readRootCallBudget({root,rootTaskId:task,operationId:operation,registry}),{maximum:12,usedBeforeCurrent:6,currentCallNumber:7,remainingAfterCurrent:5,maxPlanTasks:4});
+ assert.throws(()=>readRootCallBudget({root,rootTaskId:task,operationId:operation}),/BUDGET_DENIED/);assert.equal(fs.readdirSync(directory).length,6);
+});
 test('trusted Chief budget counts the pending third call once and reserves only two child calls plus summary',t=>{
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'role-budget-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const task=randomUUID(),operation=randomUUID(),directory=root+'/budget/'+task;fs.mkdirSync(directory,{recursive:true,mode:0o700});
  for(let n=0;n<2;n++)fs.writeFileSync(directory+'/'+randomUUID()+'.json','{}',{mode:0o600});

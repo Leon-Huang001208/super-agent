@@ -3,6 +3,7 @@ import {taskInputRevision} from './task-input.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
+import {rootCallLimit} from './task-call-policy.mjs';
 
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const hash=/^[a-f0-9]{64}$/;
@@ -237,9 +238,10 @@ export function createTeamContextCoordinator({syncTask,checkpoint,archiveFlow,lo
     }
     const descriptor=operation??{id:operationId,taskId:view.task.id,rootTaskId:view.task.id,inputRevision:taskInputRevision(view.task),role:'chief',phase:'plan'};
     const observed=await args.lookupRun(descriptor);
-    const prior=await reconcileTeamDispatch({operation:operation??(observed?descriptor:null),used:args.used,lookupRun:async()=>observed,log});
+    const limit=rootCallLimit(view.registry,view.task.id);
+    const prior=await reconcileTeamDispatch({operation:operation??(observed?descriptor:null),used:args.used,limit,lookupRun:async()=>observed,log});
     if (prior.kind!=='new') return {...view,runId:prior.run?.id??null,reconciled:true};
-    if(6-args.used<3){emit(log,{code:'TEAM_CONTEXT_REPLAN_BUDGET_EXHAUSTED',taskId:view.task.id,used:args.used});fail('TEAM_CONTEXT_REPLAN_BUDGET_EXHAUSTED');}
+    if(limit-args.used<3){emit(log,{code:'TEAM_CONTEXT_REPLAN_BUDGET_EXHAUSTED',taskId:view.task.id,used:args.used});fail('TEAM_CONTEXT_REPLAN_BUDGET_EXHAUSTED');}
     if(args.flow?.notification?.status==='sent')await archiveFlow({registry:view.registry,task:view.task,flow:args.flow,file:args.file});
     const flow={rootTaskId:view.task.id,inputRevision:taskInputRevision(view.task),
       projectId:view.task.projectId,projectKey:view.registry.contextProject.key,

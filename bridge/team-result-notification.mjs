@@ -10,7 +10,7 @@ export async function sendTeamResult({task,summary,registry,sourceRunId}){
  const base={schemaVersion:1,taskId:task.id,sourceRunId,summarySha256:summary.sha256,uuid,createdAt:new Date().toISOString()};writeControl(file,{...base,status:'sending'});
  try{
   const sdk=require('@larksuiteoapi/node-sdk'),noop=()=>{},client=new sdk.Client({appId:credentials.appId,appSecret:credentials.appSecret,logger:{trace:noop,debug:noop,info:noop,warn:noop,error:noop}});
-  const text='Chief Coordinator 已收回成果\n任务：'+(task.identifier??task.id)+'\nNative ID：'+task.id+'\n版本：'+summary.sha256.slice(0,12)+'\n\n'+summary.text.slice(0,2400)+'\n\n完整成果和验证记录已保存在同一Native任务。未合并或部署RWB。';
+  const text='Chief Coordinator 已收回成果\n任务：'+(task.identifier??task.id)+'\nNative ID：'+task.id+'\n版本：'+summary.sha256.slice(0,12)+'\n\n'+summary.text.slice(0,2400)+'\n\n完整成果和验证记录已保存在同一Native任务；发布、部署和业务验收状态以对应实际回执为准。';
   const response=await client.im.message.create({params:{receive_id_type:'open_id'},data:{receive_id:owner.ownerOpenId,msg_type:'text',content:JSON.stringify({text}),uuid}});
   if(response.code!==0||!/^om_[A-Za-z0-9]+$/.test(response.data?.message_id??''))throw Object.assign(Error('TEAM_NOTIFICATION_RESPONSE_UNKNOWN'),{safeCode:response.code});
   const receipt={...base,status:'sent',messageId:response.data.message_id,sentAt:new Date().toISOString(),reused:false};writeControl(file,receipt);return receipt;

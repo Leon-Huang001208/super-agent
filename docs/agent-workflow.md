@@ -47,7 +47,7 @@ CI 成功不等于业务验收。合并后验证远端默认分支包含候选�
 
 固定模块沿用 Git common directory 的 `leon-engineering/harness` 和 `leon-engineering/deliveries` 存储，以及原主机资源账本。已有任务以原 project、task ID 和 session ID 续接。旧 `.ai/harness` 可先用 `storage --preview` 检查，再按已有迁移合同处理。Codex 全局 Hooks 退役后，通过上述显式入口创建任务和记录结果，待补清资源通过受管交付或 `lifecycle event` 的原恢复事件处理。入口自身的脱敏日志写入 `SUPER_AGENT_LOG_ROOT` 或 `logs/project-runtime.jsonl`。
 
-RWB 代办使用 RWB 自身入口及规则，最高交付 PR；不得调用可能合并的 `delivery --status`。真实任务操作另见 [验收手册](acceptance-runbook.md)。
+RWB普通代办使用RWB自身入口及规则，最高交付PR；不得调用可能合并的`delivery --status`。本人本次已授权的历史有效改动，按[持续迭代](agent-iteration.md)核对原任务/分支/PR及依赖批次；只有可信Native项目为该原任务登记的DevOps `host.rwb_release`操作可以消费合并/部署例外，不全局提高RWB默认上限。共享发布窗口先取得原持有者的安全交接，RWB自身验证、独评、CI、恢复及验收条件仍全部适用。真实任务操作另见[验收手册](acceptance-runbook.md)。
 
 ## 组合交付对账与收尾
 

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import {rwbReleaseTimeoutPolicy} from './rwb-release.mjs';
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const ROOT='/paperclip/control/research-pm';
@@ -33,7 +34,7 @@ export async function executeIsolatedRole({permit,args,input,home}) {
   }finally{fs.closeSync(fd);}
  };
  try{
-  const deadline=Date.now()+660000;
+  const deadline=Date.now()+(rwbReleaseTimeoutPolicy(permit)?.transportMs??660000);
   while(Date.now()<deadline){
    if(outputFailed)fail('ROLE_TRANSPORT_OUTPUT_UNKNOWN');
    out=stream(dir+'/stdout',out,process.stdout);err=stream(dir+'/stderr',err,process.stderr);

@@ -16,6 +16,7 @@ import {serveHostCapabilityCalls} from '../bridge/role-host-call-queue.mjs';
 import {prepareDocumentRuntimeEnvironment} from '../bridge/document-runtime.mjs';
 import {roleHostMcpConfigArgs} from './role-host-mcp-config.mjs';
 import {createNativeRoleTls} from './role-proxy-tls.mjs';
+import {rwbReleaseTimeoutPolicy} from '../bridge/rwb-release.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0';
 const ROOT=DATA+'/state/control/research-pm';
 const fail=code=>{throw Object.assign(Error(code),{code});};
@@ -47,7 +48,7 @@ export function nativeRoleCliArgs({permit,client,instructionPath,endpoint,hostTo
   '-c','model_providers.paperclip_broker.wire_api="responses"','-c','model_providers.paperclip_broker.requires_openai_auth=true',
   '-c','model_providers.paperclip_broker.supports_websockets=false',
   '-c','model_instructions_file='+JSON.stringify(instructionPath),
-  ...roleHostMcpConfigArgs(hostTools,{scriptPath:mcpScriptPath,nodePath:process.execPath,endpoint:endpoint+'/role-host-mcp'}),'-'];
+  ...roleHostMcpConfigArgs(hostTools,{scriptPath:mcpScriptPath,nodePath:process.execPath,endpoint:endpoint+'/role-host-mcp',releaseTimeouts:rwbReleaseTimeoutPolicy(permit)}),'-'];
 }
 function processTable(){
  const result=spawnSync('/bin/ps',['-axo','pid=,ppid=,pgid=,uid=,lstart=,stat=,comm='],{encoding:'utf8',timeout:2000,maxBuffer:4*1024*1024});
@@ -199,8 +200,9 @@ export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/le
  const advanced=Boolean(permit.projectContext&&permit.effectiveCapabilities),workspace=advanced?await prepareRoleProjectWorkspace({permit,controlRoot:root,log}):{available:false};
  const controller=new AbortController(),hostExecutor=advanced?createHostCapabilityExecutor({permit,workspace,controlRoot:root,executionPolicy:permit.executionPolicy,signal:controller.signal,log}):null;
  const hostTools=hostExecutor?.listTools()??[],key=randomBytes(32).toString('hex');
+ const releaseTimeouts=rwbReleaseTimeoutPolicy(permit);
  const {companySkillSnapshot:_privateSkillSnapshot,...brokerCapabilities}=permit.effectiveCapabilities??{};
- durable(proxy+'/config.json',{runId,key,expiresAt:Date.now()+660000,role:advanced?permit.role:undefined,taskId:permit.taskId,projectId:permit.projectId,projectContext:permit.projectContext,
+ durable(proxy+'/config.json',{runId,key,expiresAt:Date.now()+(releaseTimeouts?.brokerMs??660000),role:advanced?permit.role:undefined,companyId:permit.companyId,rootTaskId:permit.rootTaskId,authorizedHostActions:permit.authorizedHostActions,taskId:permit.taskId,projectId:permit.projectId,projectContext:permit.projectContext,
   readOnlyToolsOnly:Boolean(snapshot&&permit.projectContext?.delivery?.maximumAction==='artifact'),additionalCapabilities:permit.additionalCapabilities??[],effectiveCapabilities:permit.effectiveCapabilities?brokerCapabilities:undefined,hostTools,mcpAllowedTools:permit.effectiveCapabilities?.mcpAllowedTools??[]});
  const auth=JSON.parse(read(dir+'/provider/auth.json')),claims=JSON.parse(Buffer.from(auth.tokens.id_token.split('.')[1],'base64url'));
  const account=auth.tokens.account_id??claims['https://api.openai.com/auth']?.chatgpt_account_id;if(typeof account!=='string'||!account)fail('ROLE_HOST_PROVIDER_ACCOUNT_DENIED');
@@ -227,8 +229,8 @@ export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/le
   if(hostExecutor)hostTimer=setInterval(()=>void serveHostCapabilityCalls({root:audit+'/host-calls',permit,executor:hostExecutor,log}).catch(error=>{log({code:'HOST_CALL_QUEUE_FAILED',errorCode:error.code??'HOST_CALL_QUEUE_FAILED'});controller.abort();}),50);
   const documentEnvironment=prepareDocumentRuntimeEnvironment({role:permit.role,runDirectory:client});
   if(permit.role==='document-specialist')documentEnvironment.PAPERCLIP_DOCUMENT_ENGINEERING_RULES=path.join(skillAssetRoot,'shared','engineering.md');
-  const result=await runNativeRoleProcess({command:codexPath,args:nativeRoleCliArgs({permit,client,instructionPath,endpoint,hostTools}),directory:dir,inputFile:dir+'/host-stdin',cwd,
-   env:{PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:client+'/home',CODEX_HOME:client,CODEX_CONNECTORS_TOKEN:key,ROLE_HOST_MCP_ENDPOINT:endpoint+'/role-host-mcp',SSL_CERT_FILE:tls.trustFile,CODEX_CA_CERTIFICATE:tls.trustFile,NODE_EXTRA_CA_CERTS:tls.caFile,...proxyEnvironment(),...documentEnvironment},redactValues:[key],onCancel:()=>controller.abort()});
+  const result=await runNativeRoleProcess({command:codexPath,args:nativeRoleCliArgs({permit,client,instructionPath,endpoint,hostTools}),directory:dir,inputFile:dir+'/host-stdin',cwd,timeoutMs:releaseTimeouts?.processMs??600000,
+   env:{PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:client+'/home',CODEX_HOME:client,CODEX_CONNECTORS_TOKEN:key,ROLE_HOST_MCP_ENDPOINT:endpoint+'/role-host-mcp',...(releaseTimeouts?{ROLE_HOST_RWB_RELEASE:'1'}:{}),SSL_CERT_FILE:tls.trustFile,CODEX_CA_CERTIFICATE:tls.trustFile,NODE_EXTRA_CA_CERTS:tls.caFile,...proxyEnvironment(),...documentEnvironment},redactValues:[key],onCancel:()=>controller.abort()});
   durable(dir+'/native-proof.json',{schemaVersion:1,runId,executor:'macos_native',platform:process.platform,codexPath,cwd,executionPolicy:permit.executionPolicy,skillManifestSha256:roleSkills?.sha256,inputSha256:sha(input),process:JSON.parse(read(dir+'/process.json')),...(permit.role==='document-specialist'?{documentRuntime:{status:documentEnvironment.PAPERCLIP_DOCUMENT_RUNTIME_STATUS,python:documentEnvironment.PAPERCLIP_DOCUMENT_PYTHON,soffice:documentEnvironment.PAPERCLIP_DOCUMENT_SOFFICE,fontConfig:documentEnvironment.FONTCONFIG_FILE}}:{}),at:new Date().toISOString()});
   await stopOwnedGroup(brokerGroup);brokerGroup=null;
   for(const filename of [client+'/auth.json',proxy+'/config.json'])if(fs.existsSync(filename))fs.unlinkSync(filename);
