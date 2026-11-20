@@ -13,6 +13,7 @@ import {hostRoleInstructionPath} from '../bridge/role-instruction-paths.mjs';
 import {createRoleMaterialProjection} from './role-container-transport.mjs';
 import {prepareRoleProjectWorkspace,createHostCapabilityExecutor} from '../bridge/role-host-capabilities.mjs';
 import {serveHostCapabilityCalls} from '../bridge/role-host-call-queue.mjs';
+import {prepareDocumentRuntimeEnvironment} from '../bridge/document-runtime.mjs';
 import {roleHostMcpConfigArgs} from './role-host-mcp-config.mjs';
 import {createNativeRoleTls} from './role-proxy-tls.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0';
@@ -224,9 +225,11 @@ export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/le
   brokerGroup=ownedProcessGroup(broker,{directory:dir,prefix:'broker-process',command:process.execPath});durable(dir+'/broker-process.json',brokerGroup.record);
   const endpoint=await waitBroker(readyFile,broker,runId);
   if(hostExecutor)hostTimer=setInterval(()=>void serveHostCapabilityCalls({root:audit+'/host-calls',permit,executor:hostExecutor,log}).catch(error=>{log({code:'HOST_CALL_QUEUE_FAILED',errorCode:error.code??'HOST_CALL_QUEUE_FAILED'});controller.abort();}),50);
+  const documentEnvironment=prepareDocumentRuntimeEnvironment({role:permit.role,runDirectory:client});
+  if(permit.role==='document-specialist')documentEnvironment.PAPERCLIP_DOCUMENT_ENGINEERING_RULES=path.join(skillAssetRoot,'shared','engineering.md');
   const result=await runNativeRoleProcess({command:codexPath,args:nativeRoleCliArgs({permit,client,instructionPath,endpoint,hostTools}),directory:dir,inputFile:dir+'/host-stdin',cwd,
-   env:{PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:client+'/home',CODEX_HOME:client,CODEX_CONNECTORS_TOKEN:key,ROLE_HOST_MCP_ENDPOINT:endpoint+'/role-host-mcp',SSL_CERT_FILE:tls.trustFile,CODEX_CA_CERTIFICATE:tls.trustFile,NODE_EXTRA_CA_CERTS:tls.caFile,...proxyEnvironment()},redactValues:[key],onCancel:()=>controller.abort()});
-  durable(dir+'/native-proof.json',{schemaVersion:1,runId,executor:'macos_native',platform:process.platform,codexPath,cwd,executionPolicy:permit.executionPolicy,skillManifestSha256:roleSkills?.sha256,inputSha256:sha(input),process:JSON.parse(read(dir+'/process.json')),at:new Date().toISOString()});
+   env:{PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:client+'/home',CODEX_HOME:client,CODEX_CONNECTORS_TOKEN:key,ROLE_HOST_MCP_ENDPOINT:endpoint+'/role-host-mcp',SSL_CERT_FILE:tls.trustFile,CODEX_CA_CERTIFICATE:tls.trustFile,NODE_EXTRA_CA_CERTS:tls.caFile,...proxyEnvironment(),...documentEnvironment},redactValues:[key],onCancel:()=>controller.abort()});
+  durable(dir+'/native-proof.json',{schemaVersion:1,runId,executor:'macos_native',platform:process.platform,codexPath,cwd,executionPolicy:permit.executionPolicy,skillManifestSha256:roleSkills?.sha256,inputSha256:sha(input),process:JSON.parse(read(dir+'/process.json')),...(permit.role==='document-specialist'?{documentRuntime:{status:documentEnvironment.PAPERCLIP_DOCUMENT_RUNTIME_STATUS,python:documentEnvironment.PAPERCLIP_DOCUMENT_PYTHON,soffice:documentEnvironment.PAPERCLIP_DOCUMENT_SOFFICE,fontConfig:documentEnvironment.FONTCONFIG_FILE}}:{}),at:new Date().toISOString()});
   await stopOwnedGroup(brokerGroup);brokerGroup=null;
   for(const filename of [client+'/auth.json',proxy+'/config.json'])if(fs.existsSync(filename))fs.unlinkSync(filename);
   durable(dir+'/result.json',{runId,...result,executor:'macos_native',stdoutSha256:sha(fs.readFileSync(dir+'/stdout')),stderrSha256:sha(fs.readFileSync(dir+'/stderr')),at:new Date().toISOString()});terminal=true;log({code:'ROLE_HOST_TRANSPORT_COMPLETED',exitCode:result.exitCode});return result;

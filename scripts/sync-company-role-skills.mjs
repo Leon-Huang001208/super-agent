@@ -6,6 +6,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {ROLE_SKILL_BUNDLES,DEFAULT_ROLE_SKILL_ASSET_ROOT} from '../bridge/role-skill-bundles.mjs';
 import {resolveRoleSkillAssignments,rolePermissions} from '../bridge/company-role-skills.mjs';
 import {TEAM_ROLES} from '../bridge/team-roles.mjs';
+import {ROLE_KEYS} from '../bridge/role-labels.mjs';
 import {createRoleOwnerApi} from './role-owner-api.mjs';
 import {editRoleRegistry} from '../bridge/role-control-store.mjs';
 import {MACOS_NATIVE_EXECUTION_POLICY} from '../bridge/role-execution-policy.mjs';
@@ -70,7 +71,10 @@ export function validateReviewedImportedVersion({files,version}){
 
 /** A preview performs only reads. Apply uses existing authenticated Native endpoints. */
 export async function syncCompanyRoleSkills({registry,readLibrary,readAgent,readImportedVersion,createImportedVersion,importSource,syncSkills,updateAgent,updatePermissions,updateRegistry,saveBefore,recordReview,importSources=[],assetRoot=DEFAULT_ROLE_SKILL_ASSET_ROOT,apply=false,log=()=>{}}){
- if(!registry?.companyId||!registry.ownerId||!Array.isArray(registry.agents)||registry.agents.length!==11)fail('COMPANY_ROLE_SYNC_REGISTRY_INVALID');
+ if(!registry?.companyId||!registry.ownerId||!Array.isArray(registry.agents)||registry.agents.length!==ROLE_KEYS.length||
+  new Set(registry.agents.map(entry=>entry.profile?.agentId)).size!==ROLE_KEYS.length||
+  new Set(registry.agents.map(entry=>entry.profile?.role)).size!==ROLE_KEYS.length||
+  ROLE_KEYS.some(role=>!registry.agents.some(entry=>entry.profile?.role===role)))fail('COMPANY_ROLE_SYNC_REGISTRY_INVALID');
  if(apply&&registry.team?.enabled!==false)fail('COMPANY_ROLE_SYNC_DISPATCH_BUSY');
  let library=await readLibrary();if(!Array.isArray(library))fail('COMPANY_ROLE_SYNC_LIBRARY_INVALID');
  const agents=await Promise.all(registry.agents.map(entry=>readAgent(entry.profile.agentId)));

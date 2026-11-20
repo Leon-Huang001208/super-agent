@@ -20,7 +20,7 @@ export function validateTeamPlan(plan,{remainingCalls}={}){
  const done=new Set();while(done.size<keys.size){let changed=false;for(const t of plan.tasks)if(!done.has(t.key)&&t.dependsOn.every(k=>done.has(k))){done.add(t.key);changed=true;}if(!changed)fail('TEAM_PLAN_DEPENDENCY_DENIED');}
  const reviews=plan.tasks.filter(t=>t.role==='qa');if(reviews.length>1)fail('TEAM_PLAN_REVIEW_SCOPE_DENIED');
  for(const review of reviews){const ancestors=key=>{const seen=new Set();const visit=k=>{if(seen.has(k))return;seen.add(k);for(const dep of plan.tasks.find(t=>t.key===k).dependsOn)visit(dep);};visit(key);return seen;};const reviewed=ancestors(review.key);if(plan.tasks.some(t=>t.role!=='qa'&&!reviewed.has(t.key)&&!(t.role==='devops'&&ancestors(t.key).has(review.key))))fail('TEAM_PLAN_REVIEW_DEPENDENCY_REQUIRED');}
- if(plan.tasks.some(t=>['frontend-engineer','backend-engineer'].includes(t.role))&&!plan.tasks.some(t=>t.role==='qa'))fail('TEAM_PLAN_INDEPENDENT_REVIEW_REQUIRED');
+ if(plan.tasks.some(t=>['frontend-engineer','backend-engineer','document-specialist'].includes(t.role))&&!plan.tasks.some(t=>t.role==='qa'))fail('TEAM_PLAN_INDEPENDENT_REVIEW_REQUIRED');
  return structuredClone(plan);
 }
 export function authorizeChiefOwnerInput({registry,task,run,wakeup,previousRuns}){

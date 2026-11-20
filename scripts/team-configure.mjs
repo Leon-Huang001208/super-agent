@@ -18,7 +18,7 @@ if(fs.existsSync(intentFile))intent=JSON.parse(fs.readFileSync(intentFile));else
  if(before.some(a=>!Object.values(ids).includes(a.id)))throw Error('TEAM_CONFIG_FOREIGN_AGENT');
  intent={schemaVersion:1,companyId:r.companyId,ownerId:r.ownerId,projectId:r.projectId,ids,materials:Object.fromEntries(Object.keys(TEAM_ROLES).map(k=>[k,randomUUID()+'.md'])),at:new Date().toISOString()};write(intentFile,intent);write(R+'/team-config-original.private.json',{registry:r,agents:before});
 }
-if(intent.companyId!==r.companyId||intent.ownerId!==r.ownerId||Object.keys(intent.ids).length!==11)throw Error('TEAM_CONFIG_INTENT_CHANGED');
+if(intent.companyId!==r.companyId||intent.ownerId!==r.ownerId||Object.keys(intent.ids).length!==Object.keys(TEAM_ROLES).length||Object.keys(TEAM_ROLES).some(role=>!intent.ids[role]))throw Error('TEAM_CONFIG_INTENT_CHANGED');
 const original=JSON.parse(fs.readFileSync(R+'/team-config-original.private.json'));
 r.team={schemaVersion:1,ids:intent.ids,enabled:false,projectId:intent.projectId};r.materialHistory??=[];r.policy={newTasksPerShanghaiDay:null,concurrentExecutions:1,maxRootRoleCalls:6,maxResponsesPerRun:64,maxFixRounds:2};
 for(const[key,role]of Object.entries(TEAM_ROLES)){

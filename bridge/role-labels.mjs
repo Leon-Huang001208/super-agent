@@ -4,5 +4,6 @@ export const ROLE_DISPLAY_NAMES=Object.freeze({
  architect:'Software Architect','frontend-engineer':'Frontend Engineer','backend-engineer':'Backend Engineer',
  qa:'Quality Assurance Engineer',devops:'Platform Operations Engineer','network-engineer':'Network Engineer',
  'system-resource-engineer':'System Resource Engineer',
+ 'document-specialist':'Document Specialist',
 });
 export const ROLE_KEYS=Object.freeze(Object.keys(ROLE_DISPLAY_NAMES));
