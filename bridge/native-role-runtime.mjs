@@ -8,6 +8,8 @@ import { createRolePreparation } from './role-preparation.mjs';
 import { settleNativeRole } from './role-native-settlement.mjs';
 import { validateNetworkScope } from './network-role.mjs';
 import { validateResourceScope } from './system-resource-role.mjs';
+import {assertRoleInstructionsReady} from './role-instruction-store.mjs';
+import {pinRoleInstruction} from './role-instruction-paths.mjs';
 
 const ROOT='/paperclip/control/research-pm',PKG='/opt/paperclip/node_modules';
 const sha=x=>createHash('sha256').update(x).digest('hex');
@@ -29,6 +31,7 @@ function registered(agentId) {
   const registry=json(ROOT+'/registry.json');
   const role=registry.agents.find(x=>x.profile.agentId===agentId);
   if(registry.enabled!==true||!role)fail('NATIVE_ROLE_NOT_REGISTERED');
+  assertRoleInstructionsReady({companyId:registry.companyId,agentId});
   return {registry,role};
 }
 let connection;
@@ -83,7 +86,7 @@ export async function installNativeRoles() {
            issue.responsibleUserId!==r.ownerId||issue.assigneeAgentId!==agent.id||run.agentId!==agent.id||run.companyId!==r.companyId||
            run.responsibleUserId!==r.ownerId||run.issueId!==issue.id||run.status!=='running'||agent.adapterType!=='codex_local')fail('NATIVE_ROLE_DATABASE_BINDING_DENIED');
         return {binding:{companyId:r.companyId,projectId:issue.projectId,taskId:issue.id,agentId:agent.id,runId:run.id,
-          ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:role.profile,materialRoot:ROOT+'/materials',manifest:role.manifest,
+          ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:role.profile,materialRoot:role.materialRoot??ROOT+'/materials',manifest:role.manifest,
           rootTaskId:operation.rootTaskId??issue.id,phase:operation.phase,additionalInput:operation.additionalInput,reviewedArtifacts:operation.reviewedArtifacts,teamRoster:role.profile.role==='chief'?r.team?.ids:undefined};
       };
       const readContext=async()=>{
@@ -114,16 +117,18 @@ export async function installNativeRoles() {
             const prior=json(operationFile);
             if(prior.runId!==ctx.runId)fail('NATIVE_ROLE_OPERATION_ALREADY_STARTED');
           }else write(operationFile,{operationId:ctx.context.roleOperationId,runId:ctx.runId,taskId:r.binding.taskId,agentId:r.binding.agentId});
-          const required=r.manifest.files.find(x=>ROOT+'/materials/'+x.path===file);
+          const required=r.manifest.files.find(x=>path.join(r.materialRoot,x.path)===file);
           if(!required||sha(fs.readFileSync(file))!==required.sha256)fail('NATIVE_ROLE_MATERIAL_CHANGED');
+          const executionFile=r.materialRoot===ROOT+'/materials'?file:pinRoleInstruction({source:file,sha256:required.sha256,runId:ctx.runId,role:r.profile.role});
           const approvedOperation=registered(ctx.agent.id).registry.operations.find(x=>x.id===ctx.context.roleOperationId);
           write(ROOT+'/permits/'+ctx.runId+'.json',{schemaVersion:1,...r.binding,credentialGrantId:grantId,role:r.profile.role,
             model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:Date.now()+300000,cwd:executionCwd,
-            instructionsFilePath:file,materialSha256:required.sha256,
+            instructionsFilePath:executionFile,materialSha256:required.sha256,
+            ...(executionFile!==file?{materialSourcePath:file}:{}),
             ...(approvedOperation?.phase==='qa-supplement'?{evidencePacket:{name:'qa-evidence-v2',manifestSha256:approvedOperation.evidenceManifestSha256}}:{})});
           const operation=registered(ctx.agent.id).registry.operations.find(x=>x.kind==='run'&&x.role===r.profile.role&&x.id===ctx.context.roleOperationId&&x.taskId===r.binding.taskId&&x.agentId===r.binding.agentId);
           return withRoleCall({registry:registered(ctx.agent.id).registry,operation,log,
-            perform:async()=>{nativeEntered=true;const result=await original.execute({...checked,onLog:async(stream,chunk)=>{
+            perform:async()=>{nativeEntered=true;const result=await original.execute({...checked,config:{...checked.config,instructionsFilePath:executionFile},onLog:async(stream,chunk)=>{
                 if(stream==='stderr'&&gateStderr.length<8192)gateStderr+=String(chunk).slice(0,8192-gateStderr.length);
                 return checked.onLog(stream,chunk);
               }});
@@ -145,7 +150,7 @@ export async function installNativeRoles() {
       try{return await wrapped(ctx);}
       catch(error){
         if(nativeEntered)throw error;
-        const code=/^(?:NATIVE_ROLE|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
+        const code=/^(?:NATIVE_ROLE|ROLE_INSTRUCTION|ROLE_MATERIAL|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
         return {exitCode:1,signal:null,timedOut:false,errorCode:code,errorMessage:code,
           resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
       }
