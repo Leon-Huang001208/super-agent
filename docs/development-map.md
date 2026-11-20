@@ -6,6 +6,8 @@ Native HTTPS、每 run 证书/信任、TLS ready 与 MCP CA 传播的合同及�
 
 角色键/职业说明/能力/公司技能矩阵新增`document-specialist`；`document-runtime`为原生子进程定位已有文档Python/LibreOffice，并使用本run字体配置，原11岗不注入。回归覆盖12岗完整名册、9项技能及PDF来源、Doc→QA和原控制预算/交接格式、Native材料/知识/调用门，以及工具发现和运行私有缓存。安装脚本与正式接入仍依主窗口窗口，不把源码定义当Native已就绪。
 
+本岗格式职责同时涵盖常见文本/数据交换、Markdown/reST/HTML文档与LaTeX/BibTeX，规则和代表格式见[文档岗合同](plans/document-specialist.md)。范围扩展只更新Doc职业说明与能力正文及生成模板，9项公司技能、工具权限和运行环境保持；语法/schema、内容语义、实际编译/渲染分开验证，代码/配置行为仍交对应技术负责人。相关现有检查为`team-roles`、`document-specialist-role`及`role-capabilities`测试与文档同步映射检查。
+
 ## Mac原生执行和公司Skill
 
 `docker/role-ai-binding-hook.mjs`修复固定Native路由的未变订阅误判；`server-entry.loadServer`与ChiefWeb在同一装配点加载/验证/注销，`role-preload`不预先导入路由。回归覆盖JSONB键顺序、真实provider/method/connection变化、源漂移、组合模块缓存及实际安装源字节合同。Dockerfile与受管镜像输入清单同步分发新helper。
