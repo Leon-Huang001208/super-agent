@@ -30,6 +30,12 @@ CI 从目标分支读取原治理清单，通过 `--baseline-manifest` 同时检
 
 Chief 网页操作策略沿 bridge 和 plugins 路径映射维护架构、开发地图与验收手册。离线路由、策略、意图消费与 Native repository 适配用例分别核对。真实 Paperclip 网页、回合收尾、对话行锁和运行回执另行验证。
 
+## M2 上下文与配置
+
+[跨项目专题](cross-project-context.md)维护 `/chief` 命令、catalog/可选 workspace ID、同根续接预算、确认记忆及只读材料隔离；[M2计划](plans/cross-project-context-m2.md)保留实施范围与未完成的真实验收。catalog、Native命令/协调、知识库和材料snapshot各源码路径，以及配置工具与定点测试，在机器清单中映射到专题、开发地图和验收手册；改配置命令须同步preview/apply与部分结果对账边界。
+
+源回归的宿主/context、精确日志和测试计数须标时点。`515/515`仅指加入配置工具前的首轮本地Docker，不自动成为最终总数、Mini运行、记忆召回或飞书收发证据。上游通用岗位能力、Managed指令保存及原项目发布合同继续独立维护；合并M2文档不能覆盖这些事实或把旧RWB primary/回调写成已迁移。
+
 ## 角色材料
 
 本任务 assets 下的受控角色材料保存明确来源、原包摘要和逐文件摘要。变更必须同步开发地图或 Research/PM 设计，并复核材料清单；导入文件不表示全局安装或实际模型加载。

@@ -2,6 +2,9 @@
 
 | 子系统 | 本仓库入口 | 维护与验证 |
 |---|---|---|
+| M2 项目与本人命令 | `bridge/context-projects.mjs`、`bridge/chief-context-commands.mjs`、`bridge/chief-context-native.mjs` | catalog 绑定 Native project/可选 workspace ID；原 activity 持久化项目/任务选择、补充、暂停、继续与 linked followup。`context-projects`、`chief-context-commands`、`chief-context-native` 同名测试核对契约。 |
+| M2 记忆与协调 | `bridge/project-knowledge-store.mjs`、`bridge/team-context.mjs`、`bridge/team-native-runtime.mjs` | owner-confirmed 当前版本按项目共享/角色私有先隔离后检索；新 session 不带旧任务 history；六次同根额度、原操作对账和分代产物保留。对应 `project-knowledge-store`、`team-context` 测试。 |
+| M2 材料与配置 | `bridge/role-material-snapshot.mjs`、`bridge/native-role-runtime.mjs`、`scripts/role-container-transport.mjs`、`scripts/context-configure.mjs` | 专用只读 snapshot，manifest/permit/项目/workspace 同域；配置默认 preview、显式 apply，保留旧 RWB primary/回调。`native-role-runtime-context`、`role-container-materials`、`context-configure` 及既有 gate/adapter/preparation 测试；合同见[跨项目专题](cross-project-context.md)。 |
 | 原生角色调用门 | `docker/role-codex-gate.mjs`、`docker/bin/codex` | 精确Native运行许可、单次claim、原订阅与Docker隔离全工具执行。旧hello/Chief入口继续独立；工具逐项结果见本轮设计。 |
 | 角色阶段收尾 | `bridge/role-native-settlement.mjs` | Native事务绑定原输入与run，保存最终回复后交回本人待接手，防止缺失disposition的自动修复；真实合同待验收。 |
 | Research / PM 必需材料 | `bridge/role-materials.mjs`、`bridge/role-preparation.mjs`、`bridge/native-role-adapter.mjs` | 部署清单、摘要、引用和目录链预检；项目及角色私有知识按版本读取。已接原生执行器；Research真实来源报告已产生，PM和工具全项仍待验收。见[本轮设计与现场核查](plans/research-pm-m1.md)。 |
@@ -15,7 +18,7 @@
 | 受管 PR 复用 | `scripts/existing-pr-runner.mjs` | 精确候选、同仓库同基线、拒绝其他动作和 SHA 条件合并；真实保护、CI 与评审状态仍必需 |
 | 项目工程运行时 | `scripts/project-runtime.mjs`、`scripts/vendor/leon-engineering/` | 固定 0.19.4 模块与来源校验，显式 Harness 和交付入口，旧回执续接；`tests/project-runtime.test.mjs` 和 `tests/management/project-runtime-git.mjs` |
 
-本轮候选要求已改为 `gpt-6.1-sol` / `low`，预检拒绝旧 xhigh 配置；`acceptance` 仍为 NOT_RUN。此更改不修改运行实例的 Agent 配置或 hello 历史，也不代表业务模型调用已发生。
+业务验收沿用固定 `gpt-6.1-sol` / `low`，预检拒绝旧 xhigh 配置。M2 首轮本地 Docker 全量为 515/515（`logs/m2-full-first.log`，加入配置工具前），不表示最终总数、Mini 激活或真实业务通过；后续精确候选须另留回执。
 
 ## Chief 网页续接策略
 
@@ -84,7 +87,7 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 
 `team-result-notification.mjs`复用已有飞书SDK和本人绑定，持久化结果outbox；发送成功不重复调用，未知结果停止等待核对。`scripts/role-transport-resident.mjs`是既有宿主Node的Docker管理传输与只读宿主快照，模型及产品协调逻辑仍在Docker。只读Snapshot不授予系统修改权，使用WorkDisk/原数据卷前核对固定UUID。新宿主开机服务不在本轮配置。
 
-`team-configure.mjs`明确新角色paused纯登记，保护原ID/配置/材料；`team-bootstrap.mjs`串行复用原Native lifecycle，保留真实探针与无新探针的区别。296项当前离线回归已通过；Native11配置及8新探针通过，新的Chief联合闭环尚未作为通过记录。
+`team-configure.mjs`明确新角色paused纯登记，保护原ID/配置/材料；`team-bootstrap.mjs`串行复用原Native lifecycle，保留真实探针与无新探针的区别。原 M1 阶段的296项离线回归、Native11配置及8新探针是各自时点证据；不能替代 M2 精确候选或多项目真实业务验收。M2 复用原角色，不重跑一次性 team-configure 重建身份。
 
 ## Chief 飞书入口
 
