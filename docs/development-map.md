@@ -1,5 +1,9 @@
 # 开发地图
 
+## Mac原生执行和公司Skill
+
+本轮将执行策略贯穿preparation、Native adapter、CLI gate及宿主transport，broker/MCP使用宿主真实路径和loopback端点。公司库分配与最终CODEX_HOME物化使用同一选择，职责摘要、Managed bundle与权限同步。相关测试覆盖原生和旧Docker模式、完整Skill包、来源去重、依赖、参数、取消与恢复；见[本轮合同](plans/native-skills-20261120.md)。配置预检、真实订阅调用、Docker项目检查及运行切换各自留证。
+
 | 子系统 | 本仓库入口 | 维护与验证 |
 |---|---|---|
 | M2 项目与本人命令 | `bridge/context-projects.mjs`、`bridge/chief-context-commands.mjs`、`bridge/chief-context-native.mjs` | catalog 绑定 Native project/可选 workspace ID；原 activity 持久化项目/任务选择、补充、暂停、继续与 linked followup。`context-projects`、`chief-context-commands`、`chief-context-native` 同名测试核对契约。 |

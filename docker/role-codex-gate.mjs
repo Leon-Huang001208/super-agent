@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { isSubscriptionAuth } from './codex-hello-gate.mjs';
 import { executeIsolatedRole } from '../bridge/role-isolated-transport.mjs';
-import { NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
+import {roleManagedArgs,roleExecutionPolicy} from '../bridge/role-execution-policy.mjs';
 import {ROLE_KEYS} from '../bridge/role-labels.mjs';
 import {validateRoleMaterialSnapshot,ROLE_MATERIAL_ROOT} from '../bridge/role-material-snapshot.mjs';
 import {isRoleInstructionPermitPath} from '../bridge/role-instruction-paths.mjs';
@@ -28,7 +28,7 @@ function materialAndProjectScope(permit){
  }
  return permit.materialFiles.some(file=>path.join(root,file.path)===permit.instructionsFilePath&&file.sha256===permit.materialSha256);
 }
-function readPrivate(filename) {
+function readPrivate(filename,maximumBytes=262144) {
   let cursor = '/';
   for (const part of filename.slice(1).split('/')) {
     cursor = path.join(cursor, part);
@@ -38,7 +38,7 @@ function readPrivate(filename) {
   const fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
   try {
     const s = fs.fstatSync(fd);
-    if (!s.isFile() || s.nlink !== 1 || s.size > 262144 || (s.mode & 0o077)) fail('ROLE_GATE_FILE_DENIED');
+    if (!s.isFile() || s.nlink !== 1 || s.size > maximumBytes || (s.mode & 0o077)) fail('ROLE_GATE_FILE_DENIED');
     return fs.readFileSync(fd);
   } finally { fs.closeSync(fd); }
 }
@@ -55,6 +55,7 @@ export function normalizeNativeRoleArgs(args) {
 }
 
 export function validateRoleCall({ permit, args, env, cwd, now }) {
+  try{roleExecutionPolicy(permit);}catch{fail('ROLE_GATE_SCOPE_DENIED');}
   let materialSnapshot;try{materialSnapshot=validateRoleMaterialSnapshot(permit);}catch{fail('ROLE_GATE_MATERIAL_SNAPSHOT_DENIED');}
   if(permit?.evidencePacket&&(permit.role!=='qa'||permit.evidencePacket.name!=='qa-evidence-v2'||!/^[a-f0-9]{64}$/.test(permit.evidencePacket.manifestSha256??'')))fail('ROLE_GATE_EVIDENCE_DENIED');
   if (!permit || permit.schemaVersion !== 1 || !ROLE_KEYS.includes(permit.role) ||
@@ -71,7 +72,7 @@ export function validateRoleCall({ permit, args, env, cwd, now }) {
       env.PAPERCLIP_COMPANY_ID !== permit.companyId || env.PAPERCLIP_TASK_ID !== permit.taskId ||
       !new RegExp('^/tmp/paperclip-ai-'+permit.companyId+'-'+permit.credentialGrantId+'-[A-Za-z0-9]+/provider$').test(env.CODEX_HOME ?? '')) fail('ROLE_GATE_SCOPE_DENIED');
   args = normalizeNativeRoleArgs(args);
-  const base = ['exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"',...NATIVE_ROLE_MANAGED_ARGS,'-'];
+  const base = ['exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"',...roleManagedArgs(permit),'-'];
   const allowed = [base, [...base.slice(0,2),'--skip-git-repo-check',...base.slice(2)]]
     .map(value => ['--search', ...value]);
   if (!Array.isArray(args) || !allowed.some(value => JSON.stringify(value) === JSON.stringify(args))) fail('ROLE_GATE_ARGUMENTS_DENIED');
@@ -83,7 +84,7 @@ export async function runRoleGate() {
   let claim, permit;
   try {
     if (process.platform !== 'linux' || process.getuid() !== 0 || !uuid.test(process.env.PAPERCLIP_RUN_ID ?? '')) fail('ROLE_GATE_ENVIRONMENT_DENIED');
-    const raw = readPrivate(ROOT + '/permits/' + process.env.PAPERCLIP_RUN_ID + '.json');
+    const raw = readPrivate(ROOT + '/permits/' + process.env.PAPERCLIP_RUN_ID + '.json',16*1024*1024);
     permit = validateRoleCall({permit:JSON.parse(raw),args:process.argv.slice(2),env:process.env,cwd:process.cwd(),now:Date.now()});
     if (hash(readPrivate(permit.instructionsFilePath)) !== permit.materialSha256) fail('ROLE_GATE_MATERIAL_CHANGED');
     if(permit.materialSnapshot){const snapshot=validateRoleMaterialSnapshot(permit);let total=0;for(const file of snapshot.manifest.files){const bytes=readPrivate(path.join(ROLE_MATERIAL_ROOT,file.path));total+=bytes.length;if(total>1048576||hash(bytes)!==file.sha256)fail('ROLE_GATE_MATERIAL_CHANGED');}

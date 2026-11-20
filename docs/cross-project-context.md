@@ -1,5 +1,7 @@
 # 跨项目、续接与记忆 M2
 
+Mac原生与公司Skill的当次运行快照见[当前合同](plans/native-skills-20261120.md)。项目stack/services及domains用于按需选择已分配技能；它们只描述技术或业务领域，不能授予额外操作权限。旧项目catalog的动作上界和历史任务保持原约束。
+
 ## 范围与当前证据
 
 M2复用唯一的本人飞书 `/chief` 入口、Paperclip Native事务/activity与现有11角色，不增加调度器、任务库、数据库schema、依赖或第二条长连接。项目选择和owner输入以Native为准，部署catalog只缩小允许项目、workspace、角色和动作范围。

@@ -18,3 +18,9 @@ test('task MCP settings are absent without tools and reject invalid tool config 
  assert.throws(()=>roleHostMcpConfigArgs([{name:'host.project_inspect"=x'}]),/ROLE_HOST_MCP_CONFIG_INVALID/);
  assert.throws(()=>roleHostMcpConfigArgs(null),/ROLE_HOST_MCP_CONFIG_INVALID/);
 });
+
+test('native task MCP uses the actual host script and endpoint without enabling unknown tools',()=>{
+ const args=roleHostMcpConfigArgs([{name:'host.network_observe'}],{scriptPath:'/Volumes/WorkDisk/Projects/runtime/docker/role-host-mcp-server.mjs',nodePath:'/usr/local/bin/node',endpoint:'http://127.0.0.1:45678/backend-api/role-host-mcp'});
+ assert.ok(args.includes('mcp_servers.role_host.args=["/Volumes/WorkDisk/Projects/runtime/docker/role-host-mcp-server.mjs"]'));
+ assert.ok(args.includes('mcp_servers.role_host.env_vars=["CODEX_CONNECTORS_TOKEN","ROLE_HOST_MCP_ENDPOINT"]'));
+});

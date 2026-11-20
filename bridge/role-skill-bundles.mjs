@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {readFileSync,lstatSync,mkdirSync,symlinkSync,readlinkSync} from 'node:fs';
 import {resolve,join,dirname,relative,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {materializeCompanyRoleSkills} from './company-role-skills.mjs';
 
 export const DEFAULT_ROLE_SKILL_ASSET_ROOT=fileURLToPath(new URL('../assets/role-skills/',import.meta.url));
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -61,3 +62,13 @@ export function materializeRoleSkillBundle({codexHome,skillNames,assetRoot=DEFAU
  return {schemaVersion:1,sha256:ROLE_SKILL_BUNDLE_SHA256,packageRoot,readOnlyMountRequired:true,skills:links.map(({skill,path,target})=>({name:skill.name,path,sourcePath:join(target,'SKILL.md'),source:skill.source}))};
 }
 export const materializeRoleSkills=materializeRoleSkillBundle;
+
+/** Company desiredSkills select packages; legacy runs retain their verified bundled set. */
+export function materializeEffectiveRoleSkills({codexHome,effectiveCapabilities,assetRoot=DEFAULT_ROLE_SKILL_ASSET_ROOT,packageRoot=assetRoot}){
+ const snapshot=effectiveCapabilities?.companySkillSnapshot;
+ if(!snapshot)return materializeRoleSkillBundle({codexHome,skillNames:effectiveCapabilities?.skills?.map(skill=>skill.name)??[],assetRoot,packageRoot});
+ const company=materializeCompanyRoleSkills({codexHome,packageRoot,snapshot});
+ const bundledNames=snapshot.skills.filter(skill=>skill.bundledName).map(skill=>skill.bundledName);
+ const bundled=bundledNames.length?materializeRoleSkillBundle({codexHome,skillNames:bundledNames,assetRoot,packageRoot:assetRoot}):{skills:[]};
+ return{...company,skills:[...bundled.skills,...company.skills],selectionSource:'company'};
+}

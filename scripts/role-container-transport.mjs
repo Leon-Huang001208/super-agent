@@ -9,7 +9,7 @@ import {validateRoleCall,normalizeNativeRoleArgs} from '../docker/role-codex-gat
 import {loadRoleMaterials} from '../bridge/role-materials.mjs';
 import {validateRoleMaterialSnapshot,ROLE_MATERIAL_ROOT} from '../bridge/role-material-snapshot.mjs';
 import {hostRoleInstructionPath} from '../bridge/role-instruction-paths.mjs';
-import {materializeRoleSkillBundle,ROLE_SKILL_BUNDLE_SHA256} from '../bridge/role-skill-bundles.mjs';
+import {materializeEffectiveRoleSkills,ROLE_SKILL_BUNDLE_SHA256} from '../bridge/role-skill-bundles.mjs';
 import {prepareRoleProjectWorkspace,createHostCapabilityExecutor} from '../bridge/role-host-capabilities.mjs';
 import {serveHostCapabilityCalls} from '../bridge/role-host-call-queue.mjs';
 import {roleHostMcpConfigArgs} from './role-host-mcp-config.mjs';
@@ -19,7 +19,7 @@ const runId=process.argv[2],resumeSetup=process.argv[3]==='--resume-setup',sha=x
 const common=['--context','desktop-linux'],fail=code=>{throw Object.assign(new Error(code),{code});};
 function read(file){
  const s=fs.lstatSync(file);
- if(!s.isFile()||s.isSymbolicLink()||s.uid!==process.getuid()||s.nlink!==1||(s.mode&0o077)||s.size>1048576)fail('ROLE_CONTAINER_FILE_DENIED');
+ if(!s.isFile()||s.isSymbolicLink()||s.uid!==process.getuid()||s.nlink!==1||(s.mode&0o077)||s.size>16*1024*1024)fail('ROLE_CONTAINER_FILE_DENIED');
  return fs.readFileSync(file);
 }
 function exec(args){const r=spawnSync(docker,[...common,...args],{encoding:'utf8',timeout:15000,maxBuffer:1048576});if(r.status!==0||r.error||r.signal)fail('ROLE_CONTAINER_DOCKER_UNKNOWN');return r.stdout;}
@@ -172,8 +172,8 @@ try{
  const skillAssetRoot=fileURLToPath(new URL('../assets/role-skills/',import.meta.url));
  let roleSkills;
  if(permit.effectiveCapabilities){
-  if(permit.effectiveCapabilities.skillBundleSha256!==ROLE_SKILL_BUNDLE_SHA256)fail('ROLE_CONTAINER_SKILL_BUNDLE_CHANGED');
-  roleSkills=materializeRoleSkillBundle({codexHome:client,skillNames:permit.effectiveCapabilities.skills.map(skill=>skill.name),assetRoot:skillAssetRoot,packageRoot:'/opt/role-skill-packages'});
+  if(!permit.effectiveCapabilities.companySkillSnapshot&&permit.effectiveCapabilities.skillBundleSha256!==ROLE_SKILL_BUNDLE_SHA256)fail('ROLE_CONTAINER_SKILL_BUNDLE_CHANGED');
+  roleSkills=materializeEffectiveRoleSkills({codexHome:client,effectiveCapabilities:permit.effectiveCapabilities,assetRoot:skillAssetRoot,packageRoot:permit.effectiveCapabilities.companySkillSnapshot?dir+'/skill-packages':'/opt/role-skill-packages'});
   if(!fs.existsSync(dir+'/role-skills.json'))durable(dir+'/role-skills.json',{...roleSkills,runId});
   else if(JSON.parse(read(dir+'/role-skills.json')).sha256!==roleSkills.sha256)fail('ROLE_CONTAINER_SKILL_BUNDLE_CHANGED');
  }
@@ -205,7 +205,9 @@ try{
  else if(!materialProjection)args.push('--mount',instructionMount);
  if(seccomp){const file=dir+'/seccomp.json';fs.writeFileSync(file,seccomp.slice(8),{mode:0o600,flag:'wx'});args.push('--security-opt','seccomp='+file);}
  if(workspace.available)args.push('--mount','type=bind,source='+workspace.codeHostPath+',target=/workspace/project'+(permit.role==='qa'?',readonly':''));
- if(roleSkills)args.push('--mount','type=bind,source='+skillAssetRoot+',target=/opt/role-skill-packages,readonly','--mount','type=bind,source='+client+'/skills,target='+request.home+'/skills,readonly');
+ if(roleSkills){args.push('--mount','type=bind,source='+skillAssetRoot+',target=/opt/role-skill-packages,readonly','--mount','type=bind,source='+client+'/skills,target='+request.home+'/skills,readonly');
+  if(permit.effectiveCapabilities.companySkillSnapshot)args.push('--mount','type=bind,source='+dir+'/skill-packages,target='+dir+'/skill-packages,readonly','--mount','type=bind,source='+skillAssetRoot+',target='+skillAssetRoot+',readonly');
+ }
  if(hostTools.length)args.push('--mount','type=bind,source='+path.join(runtimeSource,'docker/role-host-mcp-server.mjs')+',target=/opt/role-host-mcp-server.mjs,readonly');
  if(evidence)args.push('--mount','type=bind,source='+evidence+',target=/qa-evidence,readonly');
  args.push('--entrypoint','/usr/bin/timeout',IMAGE,'--signal=TERM','--kill-after=4s','600','/opt/paperclip/node_modules/.bin/codex',

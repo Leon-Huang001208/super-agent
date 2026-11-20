@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { loadRoleMaterials, selectRoleKnowledge } from './role-materials.mjs';
+import {isMacNative,roleExecutionPolicy} from './role-execution-policy.mjs';
 import {TEAM_ROLES} from './team-roles.mjs';
 import {createHash} from 'node:crypto';
 
@@ -14,13 +15,14 @@ export function createRolePreparation({ readContext, readKnowledge, log }) {
     try {
       binding = structuredClone(binding);
       profile = structuredClone(profile);
+      const native=isMacNative(profile),executionPolicy=roleExecutionPolicy(profile);
       const initial = structuredClone(await readContext(binding?.taskId));
       if (!binding || !['companyId', 'projectId', 'taskId', 'agentId', 'runId'].every(key => uuid.test(binding[key] ?? '')) ||
           !hash.test(binding.inputRevision ?? '') || typeof binding.ownerId !== 'string' || !binding.ownerId.trim() ||
           !profile || profile.agentId !== binding.agentId || profile.projectId !== binding.projectId ||
           !TEAM_ROLES[profile.role] || profile.engine !== 'codex_local' ||
           profile.model !== 'gpt-6.1-sol' || profile.reasoningEffort !== 'low' ||
-          profile.dangerouslyBypassApprovalsAndSandbox !== false || !['read-only', 'workspace-write'].includes(profile.sandbox) ||
+          profile.dangerouslyBypassApprovalsAndSandbox !== native || !(native?profile.sandbox==='none':['read-only', 'workspace-write'].includes(profile.sandbox)) ||
           !Array.isArray(profile.tools) || profile.tools.some(tool => !['read_materials', 'read_sources', 'shell', 'apply_patch', 'apps', 'plugins'].includes(tool))) {
         fail('ROLE_PREPARE_SCOPE_DENIED');
       }
@@ -51,7 +53,8 @@ export function createRolePreparation({ readContext, readKnowledge, log }) {
         binding: structuredClone(binding), nativeRevision: final.revision,
         adapterType: profile.engine, sessionMode: 'new',
         config: { model: profile.model, reasoningEffort: profile.reasoningEffort,
-          dangerouslyBypassApprovalsAndSandbox: false, sandbox: profile.sandbox,
+          dangerouslyBypassApprovalsAndSandbox: native, sandbox: profile.sandbox,
+          ...(profile.executionPolicy?{executionPolicy}:{}),
           instructionsFilePath: materials.instructionsFilePath },
         materials: materials.files, knowledge, requestedTools: [...profile.tools],
         ...(contextVersion===1?{contextVersion,workspaceCwd}:{}),
