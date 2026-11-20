@@ -69,3 +69,25 @@ test('a bind path with a missing final component still resolves its existing sym
 test("tmpfs and verified default VM volumes do not pretend to be host bind paths",()=>{const c=[{Id:"tmp",Mounts:[{Type:"tmpfs"}]},{Id:"vol",Mounts:[{Type:"volume",Name:"cache",Source:"/var/lib/docker/volumes/cache/_data"}]}],v={cache:{Name:"cache",Driver:"local",Mountpoint:"/var/lib/docker/volumes/cache/_data",Options:null}};assert.deepEqual(referencedContainers(c,"/tmp",v),[]);assert.throws(()=>referencedContainers(c,"/tmp"),/RECONCILE_VOLUME_REFERENCE_UNKNOWN/);v.cache.Options={o:"bind",device:"/tmp"};assert.throws(()=>referencedContainers(c,"/tmp",v),/RECONCILE_VOLUME_REFERENCE_UNKNOWN/);});
 
 test("unknown remote alias or changed remote feature cannot be cleaned by inherited branch names",()=>{for(const change of [f=>f.local.remoteAliasCommit=head,f=>f.local.remoteFeatureCommit=head]){const f=fixture();change(f);assert.throws(()=>planAdoption(f),/RECONCILE_REMOTE_RESOURCE_UNKNOWN/);}});
+
+import {readOnlyVmCachePids} from '../scripts/reconcile-merged-delivery.mjs';
+const vmCommand='/System/Library/Frameworks/Virtualization.framework/Versions/A/XPCServices/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine';
+test('only the actual VM process with read-only access to every source FD is a cache candidate',()=>{
+  const output='p55883\ncvm\nf*482\nar\nf*255\nar\np99\ncother\nf3\nar\n';
+  assert.deepEqual(readOnlyVmCachePids(output,{55883:{status:0,stdout:vmCommand,stderr:''},99:{status:0,stdout:'/other',stderr:''}}),[55883]);
+  assert.deepEqual(readOnlyVmCachePids(output.replace('f*255\nar','f*255\nau'),{55883:{status:0,stdout:vmCommand,stderr:''}}),[]);
+  assert.deepEqual(readOnlyVmCachePids('p55883\nf3\n',{55883:{status:0,stdout:vmCommand,stderr:''}}),[]);
+});
+test('explicit user cache option retains observed handles while allowing ordinary adoption',()=>{
+  const f=fixture();f.local.openPids=[55883];f.local.readOnlyVmCachePids=[55883];
+  assert.equal(planAdoption(f).status,'waiting');f.allowReadOnlyVmCache=true;const p=planAdoption(f);
+  assert.equal(p.status,'ready');assert.deepEqual(p.openPids,[55883]);assert.deepEqual(p.readOnlyVmCachePids,[55883]);assert.deepEqual(p.activePids,[]);
+});
+test('cache option never excuses another process, unknown access or container references',()=>{
+  const f=fixture();f.allowReadOnlyVmCache=true;f.local.openPids=[55883,99];f.local.readOnlyVmCachePids=[55883];assert.equal(planAdoption(f).status,'waiting');
+  f.local.openPids=[55883];f.local.readOnlyVmCachePids=[];assert.equal(planAdoption(f).status,'waiting');
+  f.local.readOnlyVmCachePids=[55883];f.local.containerRefs=['real-container'];assert.equal(planAdoption(f).status,'waiting');
+});
+
+import {completeRead} from '../scripts/reconcile-merged-delivery.mjs';
+test('partial failed command output and scan warnings cannot prove a read-only VM cache',()=>{const output='p55883\nf3\nar\n';for(const failure of [{status:1,stdout:vmCommand,stderr:''},{status:0,signal:'SIGTERM',stdout:vmCommand,stderr:''},{status:0,error:{code:'ETIMEDOUT'},stdout:vmCommand,stderr:''},{status:0,stdout:vmCommand,stderr:'incomplete scan'}]){assert.equal(completeRead(failure),false);assert.deepEqual(readOnlyVmCachePids(output,{55883:failure}),[]);}assert.equal(completeRead({status:0,stdout:output,stderr:'lsof warning'}),false);});
