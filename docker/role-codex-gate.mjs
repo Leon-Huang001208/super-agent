@@ -38,6 +38,7 @@ export function normalizeNativeRoleArgs(args) {
 }
 
 export function validateRoleCall({ permit, args, env, cwd, now }) {
+  if(permit?.evidencePacket&&(permit.role!=='qa'||permit.evidencePacket.name!=='qa-evidence-v2'||!/^[a-f0-9]{64}$/.test(permit.evidencePacket.manifestSha256??'')))fail('ROLE_GATE_EVIDENCE_DENIED');
   if (!permit || permit.schemaVersion !== 1 || !ROLE_KEYS.includes(permit.role) ||
       !['runId','taskId','agentId','companyId','projectId','credentialGrantId'].every(k => uuid.test(permit[k] ?? '')) ||
       permit.model !== 'gpt-6.1-sol' || permit.reasoningEffort !== 'low' || permit.apiFallback !== false ||

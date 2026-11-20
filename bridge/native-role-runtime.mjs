@@ -116,9 +116,11 @@ export async function installNativeRoles() {
           }else write(operationFile,{operationId:ctx.context.roleOperationId,runId:ctx.runId,taskId:r.binding.taskId,agentId:r.binding.agentId});
           const required=r.manifest.files.find(x=>ROOT+'/materials/'+x.path===file);
           if(!required||sha(fs.readFileSync(file))!==required.sha256)fail('NATIVE_ROLE_MATERIAL_CHANGED');
+          const approvedOperation=registered(ctx.agent.id).registry.operations.find(x=>x.id===ctx.context.roleOperationId);
           write(ROOT+'/permits/'+ctx.runId+'.json',{schemaVersion:1,...r.binding,credentialGrantId:grantId,role:r.profile.role,
             model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:Date.now()+300000,cwd:executionCwd,
-            instructionsFilePath:file,materialSha256:required.sha256});
+            instructionsFilePath:file,materialSha256:required.sha256,
+            ...(approvedOperation?.phase==='qa-supplement'?{evidencePacket:{name:'qa-evidence-v2',manifestSha256:approvedOperation.evidenceManifestSha256}}:{})});
           const operation=registered(ctx.agent.id).registry.operations.find(x=>x.kind==='run'&&x.role===r.profile.role&&x.id===ctx.context.roleOperationId&&x.taskId===r.binding.taskId&&x.agentId===r.binding.agentId);
           return withRoleCall({registry:registered(ctx.agent.id).registry,operation,log,
             perform:async()=>{nativeEntered=true;const result=await original.execute({...checked,onLog:async(stream,chunk)=>{

@@ -6,6 +6,15 @@ import { AdmissionMeter } from './admission.mjs';
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const uuid=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 const ROOT='/paperclip/control/research-pm';
+function seventhQaAllowed(registry,operation,budgetTaskId){
+  const grant=registry.qaSupplementAllowances?.[budgetTaskId];
+  return grant?.maximum===7&&grant.approvedBy===registry.ownerId&&typeof registry.ownerId==='string'&&
+    grant.companyId===registry.companyId&&grant.rootTaskId===budgetTaskId&&
+    operation.rootTaskId===budgetTaskId&&operation.kind==='run'&&operation.role==='qa'&&operation.phase==='qa-supplement'&&
+    operation.taskId===grant.qaTaskId&&operation.agentId===grant.agentId&&operation.agentId===registry.team?.ids?.qa&&operation.id===grant.operationId&&
+    /^[a-f0-9]{64}$/.test(grant.evidenceManifestSha256??'')&&operation.evidenceManifestSha256===grant.evidenceManifestSha256&&
+    Number.isSafeInteger(grant.expiresAt)&&grant.expiresAt>Date.now();
+}
 function write(file,value) {
   const fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
   try{fs.writeFileSync(fd,JSON.stringify(value)+'\n');fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
@@ -20,6 +29,7 @@ export async function withRoleCall({registry,operation,log,perform,completed}, {
   const budgetTaskId=operation.rootTaskId??operation.taskId;
   if(!uuid.test(budgetTaskId)||operation.rootTaskId&&
     (registry.taskRoots?.[operation.taskId]!==budgetTaskId||!registry.tasks?.includes(budgetTaskId)))fail('ROLE_CALL_ROOT_DENIED');
+  if(registry.taskRoots?.[operation.taskId]&&registry.taskRoots[operation.taskId]!==budgetTaskId)fail('ROLE_CALL_ROOT_DENIED');
   if(lease?.taskId!==operation.taskId||!uuid.test(lease.projectId??''))fail('ROLE_CALL_LEASE_DENIED');
   const databaseStat=fs.lstatSync(admissionFile);
   if(!databaseStat.isFile()||databaseStat.isSymbolicLink()||(databaseStat.mode&0o077))fail('ROLE_CALL_LEASE_DENIED');
@@ -34,7 +44,8 @@ export async function withRoleCall({registry,operation,log,perform,completed}, {
       const stat=fs.lstatSync(directory);
       if(!stat.isDirectory()||stat.isSymbolicLink()||stat.uid!==0||(stat.mode&0o777)!==0o700)fail('ROLE_CALL_BUDGET_DENIED');
       const names=fs.readdirSync(directory);
-      if(names.some(n=>!uuid.test(n.slice(0,-5))||!n.endsWith('.json'))||names.length>=6)fail('ROLE_CALL_BUDGET_DENIED');
+      if(names.some(n=>!uuid.test(n.slice(0,-5))||!n.endsWith('.json'))||
+        names.length>=6&&!(names.length===6&&seventhQaAllowed(registry,operation,budgetTaskId)))fail('ROLE_CALL_BUDGET_DENIED');
       write(directory+'/'+operation.id+'.json',{schemaVersion:1,...operation,at:new Date().toISOString()});
       safe=false;
       const result=await perform();

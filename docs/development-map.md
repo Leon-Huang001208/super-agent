@@ -85,3 +85,9 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 ## Chief 飞书入口
 
 `bridge/chief-feishu-intake.mjs`校验SDK来源的本人单聊、固定应用/租户及消息摘要；`chief-feishu-native.mjs`将登记、发送和唤醒认领保存到Native事务/activity ledger。`chief-feishu-service.mjs`复用已固定的1.76.0 SDK与原连接工厂，默认关闭，唯一主进程监听；不新增依赖、调度器或任务库。测试覆盖身份负例、源消息冲突、并发去重、合理等待、陈旧输入及未知结果不能重发。真实连接、本人发送、Chief分派和通知必须另验。
+
+## 单根QA补核例外
+
+本人仅批准LEO-23根7956bcfe的第七次调用用于原QA补核。`role-call-budget.mjs`在原全局调用锁内匹配受保护授权的owner/company/root/既有child/QA Agent/operation/phase/证据manifest及有效期；仅原目录已有六条时放行一次。第八次、其他角色/目的/Root、换ID或省略父映射均拒绝；未知结果保留原锁。其他根仍六次，不修改Chief计划预算。
+
+补包只按签定manifest和逐文件摘要复制到该run专属目录，UID1000只读挂载`/qa-evidence`，不挂整个控制状态或会话内容。原QA NEEDS_WORK、Chief汇总和原通知不覆盖；补核只关闭指定证据缺口。已验证的环境/隔离探针不重跑。Native构件、最终收存及新版本通知各自记录，不能把权限例外当业务通过。
