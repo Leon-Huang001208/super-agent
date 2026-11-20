@@ -15,7 +15,7 @@ const entries={
  devops:{purpose:'Docker、CI/CD、服务可观测性、备份恢复和已授权发布。',skills:['engineering-delivery','systematic-debugging','read-docs'],namespaces:['firecrawl'],hostTools:['host.project_publish']},
  'network-engineer':{purpose:'宿主网络、路由、DNS/TLS、网关和代理的诊断与授权变更。',skills:['diagnosing-bugs','systematic-debugging'],namespaces:[],hostTools:['host.network_observe','host.network_apply']},
  'system-resource-engineer':{purpose:'宿主卷身份、容量、RAM/Swap、CPU/I/O及授权资源治理。',skills:['storage-analyzer','systematic-debugging'],namespaces:[],hostTools:['host.resources_observe','host.resources_apply']},
- 'document-specialist':{purpose:'Excel、Word、PPT、Markdown与PDF文件的制作、转换、排版和可核验交付。',skills:['verification-before-completion'],namespaces:['codex_document_control'],hostTools:[],serviceMcp:true},
+ 'document-specialist':{purpose:'常见文本与数据交换（TXT/LOG、CSV/TSV、JSON/JSONL、YAML/YML、XML、TOML/INI）、Markdown/reST/HTML文档、LaTeX/BibTeX及Excel/Word/PPT/PDF的制作、转换、结构和编译/渲染核验；按实际工具与格式能力保留信息，内容和代码/配置语义交对应负责人。',skills:['verification-before-completion'],namespaces:['codex_document_control'],hostTools:[],serviceMcp:true},
 };
 for(const [id,value]of Object.entries(entries)){
  value.id=id;value.domain=id;

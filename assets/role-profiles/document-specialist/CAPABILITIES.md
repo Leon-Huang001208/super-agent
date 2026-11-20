@@ -12,7 +12,7 @@
 
 ## 默认专业能力
 
-Excel、Word、PPT、Markdown与PDF文件的制作、转换、排版和可核验交付。
+常见文本与数据交换（TXT/LOG、CSV/TSV、JSON/JSONL、YAML/YML、XML、TOML/INI）、Markdown/reST/HTML文档、LaTeX/BibTeX及Excel/Word/PPT/PDF的制作、转换、结构和编译/渲染核验；按实际工具与格式能力保留信息，内容和代码/配置语义交对应负责人。
 
 公司Skill分配以Agent的paperclipSkillSync.desiredSkills为唯一选择来源；每run固定公司版本与完整文件摘要。未配置公司选择的历史run保留旧包兼容，显式空选择不恢复旧专业包。
 公司默认分配：paperclip、handoff、verification-before-completion、xlsx、docx、pptx、pdf、doc-coauthoring、theme-factory。条件技能只在任务stack/services/domains匹配时启用；上方公司分配优先，以下为保留的历史包来源说明。
