@@ -96,3 +96,39 @@ test('migration refuses a pre-existing foreign file instead of copying or deleti
   assert.equal(fs.readFileSync(destination + '/foreign.md', 'utf8'), 'retain me');
   assert.equal(f.registry.agents.some(a => a.materialRoot), false);
 });
+
+test('the original pending intent repairs a partial Native materialization before Managed configuration is applied', async t => {
+  const f = fixture(t), nativeMaterialize = f.options.ports.materializeManagedBundle;
+  let interrupted = false;
+  f.options.ports.materializeManagedBundle = async (agent, files, input) => {
+    if (!interrupted) {
+      interrupted = true;
+      const destination = f.options.ports.resolveManagedRoot(agent), [name, content] = Object.entries(files)[0];
+      fs.mkdirSync(path.dirname(destination + '/' + name), { recursive: true });
+      fs.writeFileSync(destination + '/' + name, content.slice(0, 4));
+      throw Error('Native materialization interrupted');
+    }
+    return nativeMaterialize(agent, files, input);
+  };
+  await assert.rejects(migrateRoleInstructions(f.options), /Native materialization interrupted/);
+  assert.equal(f.registry.agents[0].instructionMigration.state, 'pending');
+  assert.equal(f.agents.get(f.registry.agents[0].profile.agentId).adapterConfig.instructionsBundleMode, undefined);
+  assert.equal((await migrateRoleInstructions(f.options)).status, 'complete');
+  const entry = f.registry.agents[0];
+  assert.equal(fs.readFileSync(entry.materialRoot + '/research/AGENTS.md', 'utf8'), 'research instructions');
+  assert.equal(f.registry.materialHistory.length, 2);
+});
+
+test('a pending migration preserves changed bytes after Native configuration already switched to Managed', async t => {
+  const f = fixture(t), update = f.options.ports.updateAgentConfiguration;
+  let interrupted = false;
+  f.options.ports.updateAgentConfiguration = async (id, patch) => {
+    await update(id, patch);
+    if (!interrupted) { interrupted = true; throw Error('interrupted after config applied'); }
+  };
+  await assert.rejects(migrateRoleInstructions(f.options), /interrupted after config applied/);
+  const agent = f.agents.get(f.registry.agents[0].profile.agentId), filename = agent.adapterConfig.instructionsFilePath;
+  fs.writeFileSync(filename, 'new user content after configuration switched');
+  await assert.rejects(migrateRoleInstructions(f.options), /ROLE_MIGRATION_FILE_CHANGED/);
+  assert.equal(fs.readFileSync(filename, 'utf8'), 'new user content after configuration switched');
+});

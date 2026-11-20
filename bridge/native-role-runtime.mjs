@@ -9,7 +9,7 @@ import { settleNativeRole } from './role-native-settlement.mjs';
 import { validateNetworkScope } from './network-role.mjs';
 import { validateResourceScope } from './system-resource-role.mjs';
 import {assertRoleInstructionsReady} from './role-instruction-store.mjs';
-import {pinRoleInstruction} from './role-instruction-paths.mjs';
+import {resolveRoleInstructionCopy} from './role-instruction-paths.mjs';
 
 const ROOT='/paperclip/control/research-pm',PKG='/opt/paperclip/node_modules';
 const sha=x=>createHash('sha256').update(x).digest('hex');
@@ -85,8 +85,17 @@ export async function installNativeRoles() {
         if(!operation||active.some(x=>x.id!==ctx.runId)||!issue||!run||!agent||!r.tasks.includes(issue.id)||issue.companyId!==r.companyId||issue.projectId!==role.profile.projectId||
            issue.responsibleUserId!==r.ownerId||issue.assigneeAgentId!==agent.id||run.agentId!==agent.id||run.companyId!==r.companyId||
            run.responsibleUserId!==r.ownerId||run.issueId!==issue.id||run.status!=='running'||agent.adapterType!=='codex_local')fail('NATIVE_ROLE_DATABASE_BINDING_DENIED');
+        let material={materialRoot:ROOT+'/materials',manifest:role.manifest};
+        if(role.materialRoot){
+          const[workingCopy]=await db.select().from(s.agentInstructionWorkingCopies).where(o.and(o.eq(s.agentInstructionWorkingCopies.companyId,r.companyId),o.eq(s.agentInstructionWorkingCopies.runId,ctx.runId)));
+          const snapshots=await import(PKG+'/@paperclipai/adapter-utils/dist/workspace-restore-merge.js');
+          const baseline=snapshots.parseDirectorySnapshot(workingCopy?.receipt?.baseline);
+          if(!baseline||workingCopy.receipt?.schema!=='paperclip.agent-files.v1'||snapshots.directorySnapshotSha256(baseline)!==workingCopy.baseHash)fail('NATIVE_ROLE_INSTRUCTION_BASELINE_CHANGED');
+          material=resolveRoleInstructionCopy({role,identity:{companyId:r.companyId,agentId:ctx.agent.id,runId:ctx.runId,ownerId:r.ownerId},
+            workingCopy,baseline,history:r.materialHistory,executionPath:ctx.config.instructionsFilePath});
+        }
         return {binding:{companyId:r.companyId,projectId:issue.projectId,taskId:issue.id,agentId:agent.id,runId:run.id,
-          ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:role.profile,materialRoot:role.materialRoot??ROOT+'/materials',manifest:role.manifest,
+          ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:role.profile,...material,
           rootTaskId:operation.rootTaskId??issue.id,phase:operation.phase,additionalInput:operation.additionalInput,reviewedArtifacts:operation.reviewedArtifacts,teamRoster:role.profile.role==='chief'?r.team?.ids:undefined};
       };
       const readContext=async()=>{
@@ -119,16 +128,15 @@ export async function installNativeRoles() {
           }else write(operationFile,{operationId:ctx.context.roleOperationId,runId:ctx.runId,taskId:r.binding.taskId,agentId:r.binding.agentId});
           const required=r.manifest.files.find(x=>path.join(r.materialRoot,x.path)===file);
           if(!required||sha(fs.readFileSync(file))!==required.sha256)fail('NATIVE_ROLE_MATERIAL_CHANGED');
-          const executionFile=r.materialRoot===ROOT+'/materials'?file:pinRoleInstruction({source:file,sha256:required.sha256,runId:ctx.runId,role:r.profile.role});
           const approvedOperation=registered(ctx.agent.id).registry.operations.find(x=>x.id===ctx.context.roleOperationId);
           write(ROOT+'/permits/'+ctx.runId+'.json',{schemaVersion:1,...r.binding,credentialGrantId:grantId,role:r.profile.role,
             model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:Date.now()+300000,cwd:executionCwd,
-            instructionsFilePath:executionFile,materialSha256:required.sha256,
-            ...(executionFile!==file?{materialSourcePath:file}:{}),
+            instructionsFilePath:file,materialSha256:required.sha256,
+            ...(r.sourceInstructionsFilePath?{materialSourcePath:r.sourceInstructionsFilePath}:{}),
             ...(approvedOperation?.phase==='qa-supplement'?{evidencePacket:{name:'qa-evidence-v2',manifestSha256:approvedOperation.evidenceManifestSha256}}:{})});
           const operation=registered(ctx.agent.id).registry.operations.find(x=>x.kind==='run'&&x.role===r.profile.role&&x.id===ctx.context.roleOperationId&&x.taskId===r.binding.taskId&&x.agentId===r.binding.agentId);
           return withRoleCall({registry:registered(ctx.agent.id).registry,operation,log,
-            perform:async()=>{nativeEntered=true;const result=await original.execute({...checked,config:{...checked.config,instructionsFilePath:executionFile},onLog:async(stream,chunk)=>{
+            perform:async()=>{nativeEntered=true;const result=await original.execute({...checked,onLog:async(stream,chunk)=>{
                 if(stream==='stderr'&&gateStderr.length<8192)gateStderr+=String(chunk).slice(0,8192-gateStderr.length);
                 return checked.onLog(stream,chunk);
               }});

@@ -18,7 +18,7 @@
 
 本轮候选要求已改为 `gpt-6.1-sol` / `low`，预检拒绝旧 xhigh 配置；`acceptance` 仍为 NOT_RUN。此更改不修改运行实例的 Agent 配置或 hello 历史，也不代表业务模型调用已发生。
 
-`role-instruction-paths.mjs`把Managed入口与company、Agent、role绑定，执行前固定本run的材料副本；调用门和宿主传输使用完整路径及内容摘要，不再用同名文件的basename定位。网页后续保存不修改已经固定的run副本。旧UUID许可的原路径合同继续保留。
+`role-instruction-paths.mjs`把Managed入口与company、Agent、role绑定，复用Native已登记的本run材料副本及baseline；按当前或历史manifest匹配当次摘要。调用门和宿主传输使用完整路径及内容摘要，不再用同名文件的basename定位。网页后续保存不修改已经固定的Native副本。旧UUID许可的原路径合同继续保留。
 
 ## Chief 网页续接策略
 

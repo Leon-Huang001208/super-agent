@@ -1,7 +1,7 @@
 /** Resume one metadata migration; Native services own the agent configuration and managed directory. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { ROLE_ROOT, readControl, writeControl, editRoleRegistry } from '../bridge/role-control-store.mjs';
 
@@ -38,6 +38,29 @@ function protectFiles(root, files) {
     let directory = root;
     for (const part of file.split('/').slice(0, -1)) { directory = path.join(directory, part); fs.chmodSync(directory, 0o700); }
     fs.chmodSync(path.join(root, file), 0o600);
+  }
+}
+function restorePendingFiles(item) {
+  if (filesWithin(item.materialRoot).some(file => !Object.hasOwn(item.files, file))) fail('ROLE_MIGRATION_FOREIGN_FILE');
+  const checked = item.original.manifest.files.map(file => {
+    const target = file.path === item.original.manifest.instructionsFilePath ? item.role + '/AGENTS.md' : item.role + '/materials/' + file.path;
+    const source = path.join(item.original.materialRoot, file.path), stat = fs.lstatSync(source);
+    if (fs.realpathSync(source) !== source || !stat.isFile() || stat.nlink !== 1) fail('ROLE_MIGRATION_SOURCE_CHANGED');
+    const bytes = fs.readFileSync(source);
+    if (sha(bytes) !== file.sha256 || bytes.toString('utf8') !== item.files[target] ||
+        item.manifest.files.find(value => value.path === target)?.sha256 !== sha(bytes)) fail('ROLE_MIGRATION_SOURCE_CHANGED');
+    return { target, bytes };
+  });
+  for (const { target, bytes } of checked) {
+    const filename = path.join(item.materialRoot, target), temporary = filename + '.' + randomUUID() + '.tmp';
+    fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
+    try {
+      const fd = fs.openSync(temporary, 'wx', 0o600);
+      try { fs.writeFileSync(fd, bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      fs.renameSync(temporary, filename);
+      const parent = fs.openSync(path.dirname(filename), 'r');
+      try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
+    } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
   }
 }
 
@@ -110,7 +133,14 @@ export async function migrateRoleInstructions({ root = ROLE_ROOT, migrationId = 
           !same(target.manifest, item.original.manifest)) fail('ROLE_MIGRATION_REGISTRATION_CHANGED');
       target.instructionMigration = { id: migrationId, state: 'pending', intentPath }; return latest;
     });
-    verifyFiles(item.materialRoot, item.files, { allowMissing: true });
+    try { verifyFiles(item.materialRoot, item.files, { allowMissing: true }); }
+    catch (error) {
+      if (error.code !== 'ROLE_MIGRATION_FILE_CHANGED' || current.instructionMigration?.id !== migrationId ||
+          current.instructionMigration.state !== 'pending' || current.instructionMigration.intentPath !== intentPath ||
+          !same(agent.adapterConfig, item.original.adapterConfig)) throw error;
+      restorePendingFiles(item);
+      verifyFiles(item.materialRoot, item.files);
+    }
     const materialized = await ports.materializeManagedBundle(agent, item.files, { entryFile: item.manifest.instructionsFilePath, replaceExisting: false });
     if (!same(materialized.adapterConfig, nextConfig)) fail('ROLE_MIGRATION_NATIVE_CONFIG_CHANGED');
     verifyFiles(item.materialRoot, item.files); protectFiles(item.materialRoot, item.files);
