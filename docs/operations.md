@@ -2,6 +2,10 @@
 
 ## 原生Agent切换
 
+实际安装版的本地目录导入不会自动建立currentVersion。同步工具对新导入和已导入但缺版本的包，先核验完整目录，再通过原生`POST /companies/:companyId/skills/:skillId/versions`创建唯一缺失快照，回读逐文件比对后才分配；已有版本不覆盖。`--asset-root`和`--package-root`必须指向公司已登记workspace或受管Skill目录中的任务专用暂存，不能放宽后端目录边界。并存的GitHub自动导入条目保留，优先选本轮已审查的固定版本。
+
+当前飞书监听要求team已启用才能启动。暂停派发维护时先在本次Compose中暂时关闭飞书监听，应用保持可访问；完成配置和验收后恢复原team状态及监听开关，不能把team暂停和原监听启用同时作为应用启动配置。
+
 本轮经本人授权采用[Mac原生执行和公司Skill](plans/native-skills-20261120.md)。切换前暂停新派发，核对Native无running/queued/scheduled_retry、无本次活动调用，保全当前Compose、registry、Agent配置及Managed指令版本。通过验证的源码候选与宿主执行器必须一致，不能只修改UI中的bypass开关。
 
 保持原Paperclip数据库、登录、飞书监听与项目服务。最终模型进程迁到Mac，每run broker与临时文件按原run收尾；项目Docker检查使用已登记镜像和命令，失败不安装替代依赖。原执行策略保留为回退配置；未知结果保留原认领和证据，不先回退再重跑。

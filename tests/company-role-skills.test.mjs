@@ -56,6 +56,17 @@ test('unsafe version paths fail before writing and library assignment chooses pr
  assert.deepEqual(selected.desiredSkills,['pdf2']);
 });
 
+test('reviewed fixed GitHub snapshots win over an independently imported copy and preserve directory aliases',()=>{
+ const reviewed={...skill('reviewed','vercel-react-best-practices'),sourceLocator:'/approved/packages/react-best-practices',metadata:{reviewedSource:{sourceRepo:'vercel-labs/agent-skills',sourceRef:'a'.repeat(40),sourcePath:'skills/react-best-practices',review:{verdict:'PASS_STATIC_WITH_NOTES'}}}};
+ const live={...skill('live','react-best-practices'),sourceLocator:'https://github.com/vercel-labs/agent-skills'};
+ const selected=resolveRoleSkillAssignments({role:'frontend-engineer',companySkills:[live,reviewed],onlyNames:['react-best-practices']});
+ assert.deepEqual(selected.desiredSkills,['reviewed']);
+ const plain=resolveCompanyRoleSkills({agent:agent(['reviewed']),role:'frontend-engineer',companySkills:[reviewed],companySkillVersions:[version('reviewed')]});
+ assert.deepEqual(plain.skills,[]);
+ const react=resolveCompanyRoleSkills({agent:agent(['reviewed']),role:'frontend-engineer',projectContext:{stack:['react']},companySkills:[reviewed],companySkillVersions:[version('reviewed')]});
+ assert.equal(react.skills[0].name,'react-best-practices');
+});
+
 test('eleven role assignments distinguish default, stack and content conditions',()=>{
  const catalog=['paperclip','handoff','verification-before-completion','react-best-practices','shadcn','supabase-postgres-best-practices','content-strategy','seo-audit','copywriting'].map(name=>skill(name,name));
  const plain=resolveRoleSkillAssignments({role:'frontend-engineer',companySkills:catalog});
