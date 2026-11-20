@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import {resolveRwbReleaseMetadata} from './rwb-release.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -48,6 +49,7 @@ export function resolveRoleProjectContext({companyId,ownerId,project,workspace,l
   fail('ROLE_PROJECT_CHECKS_INVALID');
  const delivery=entry.delivery??{maximumAction:hostPath?'pull_request':'artifact'};
  if(!object(delivery)||!['artifact','pull_request','merge','deploy'].includes(delivery.maximumAction))fail('ROLE_PROJECT_DELIVERY_INVALID');
+ const rwbRelease=resolveRwbReleaseMetadata(entry.rwbRelease,{companyId,projectId:project.id,rootTaskId,repository});
  let worktreePath=null;
  if(hostPath){
   if(!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,127}$/.test(rootTaskId??''))fail('ROLE_PROJECT_ROOT_TASK_INVALID');
@@ -57,7 +59,7 @@ export function resolveRoleProjectContext({companyId,ownerId,project,workspace,l
  }
  return {schemaVersion:1,id:project.id,key,name:project.name??project.id,repository,
   workspace:{hostPath:worktreePath,containerPath:'/workspace/project',...(entry.workspace?.prepare?{prepare:entry.workspace.prepare}:{})},rules,checks,delivery,
-  hostMcpServers:entry.hostMcpServers??[],hostActions:entry.hostActions??[],services:entry.services??{},stack:entry.stack??[],domains,
+  hostMcpServers:entry.hostMcpServers??[],hostActions:entry.hostActions??[],services:entry.services??{},stack:entry.stack??[],domains,...(rwbRelease?{rwbRelease}:{}),
   nativeWorkspaceId:workspace?.id??null};
 }
 

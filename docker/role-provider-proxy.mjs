@@ -5,7 +5,8 @@ import net from 'node:net';
 import dns from 'node:dns/promises';
 import {resolveRoleCapabilities} from '../bridge/role-capabilities.mjs';
 import {assertRoleMcpCall,filterMcpTools,transformMcpCatalogBody} from '../bridge/role-mcp-policy.mjs';
-import {requestHostCapability} from '../bridge/role-host-call-queue.mjs';
+import {requestHostCapability,hostCapabilityTimeoutMs} from '../bridge/role-host-call-queue.mjs';
+import {rwbReleaseBrokerLifetimeMs} from '../bridge/rwb-release.mjs';
 const configRoot=process.env.SUPER_AGENT_ROLE_PROXY_ROOT??'/proxy';
 const auditRoot=process.env.SUPER_AGENT_ROLE_PROXY_AUDIT??'/audit';
 const config=JSON.parse(fs.readFileSync(configRoot+'/config.json','utf8'));
@@ -69,7 +70,7 @@ const handler=async(req,res)=>{
       try{
        const result=await requestHostCapability({root:auditRoot+'/host-calls',runId:config.runId,taskId:config.taskId,projectId:config.projectId,
         requestId:message.params.arguments?.idempotencyKey??message.id,tool:message.params.name,args:message.params.arguments??{},
-        timeoutMs:Math.max(1,Math.min(300000,config.expiresAt-Date.now()))});
+        timeoutMs:hostCapabilityTimeoutMs({config,tool:message.params.name,args:message.params.arguments??{}})});
        res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({jsonrpc:'2.0',id:message.id,result:Array.isArray(result?.content)?result:{content:[{type:'text',text:JSON.stringify(result)}]}}));
       }catch(error){const code=/^(?:HOST|ROLE_HOST)_[A-Z_]+$/.test(error.code??'')?error.code:'HOST_CALL_FAILED';audit({code,tool:message.params.name});res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({jsonrpc:'2.0',id:message.id,result:{isError:true,content:[{type:'text',text:JSON.stringify({code,details:error.details})}]}}));}
       return;
@@ -139,4 +140,4 @@ for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{
  if(!remaining)process.exit(0);
  for(const listener of listeners)listener.close(()=>{if(--remaining===0)process.exit(0);});
 });
-setTimeout(()=>process.exit(1),700000).unref();
+setTimeout(()=>process.exit(1),rwbReleaseBrokerLifetimeMs(config)).unref();

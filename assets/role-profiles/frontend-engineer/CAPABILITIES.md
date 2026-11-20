@@ -17,10 +17,11 @@
 公司Skill分配以Agent的paperclipSkillSync.desiredSkills为唯一选择来源；每run固定公司版本与完整文件摘要。未配置公司选择的历史run保留旧包兼容，显式空选择不恢复旧专业包。
 公司默认分配：paperclip、handoff、verification-before-completion、frontend-design、frontend-testing-debugging、webapp-testing、systematic-debugging、test-driven-development。条件技能只在任务stack/services/domains匹配时启用；上方公司分配优先，以下为保留的历史包来源说明。
 
-entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+入口文件摘要entrypointSha256校验SKILL.md实际文件字节；文件集摘要fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
 
-- frontend-testing-debugging：openai-curated-remote/build-web-apps@0.1.2；文件 packages/build-web-apps/0.1.2/skills/frontend-testing-debugging/SKILL.md；入口文件摘要 entrypointSha256=03724620cf7e7de425b607a5492f572d867b1cf5d9c92c74bf50d057d7415e0b；文件集摘要 fileSetSha256=f966bad01044f0cbcfc071bb2f7671f5f84640632198d697d4257834f5b20825。
-- test-driven-development：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/test-driven-development/SKILL.md；入口文件摘要 entrypointSha256=64b03fce4aee5a97a93160cea8111f3ba13a17b7c001db4bd5836d67fd10705d；文件集摘要 fileSetSha256=5aee51fc2435b93047330a1166f1acc23059038abf461d112dc0ad4f3e0be490。
+下面摘要仅显示前12位供人核对；机器能力结果保留完整entrypointSha256与fileSetSha256，完整包索引保留逐文件清单，截短值不用于认证。
+- frontend-testing-debugging：packages/build-web-apps/0.1.2/skills/frontend-testing-debugging/SKILL.md；openai-curated-remote/build-web-apps@0.1.2；entrypointSha256=03724620cf7e…；fileSetSha256=f966bad01044…。
+- test-driven-development：packages/superpowers/7.0.1/skills/test-driven-development/SKILL.md；openai-curated-remote/superpowers@7.0.1；entrypointSha256=64b03fce4aee…；fileSetSha256=5aee51fc2435…。
 - react-best-practices：仅projectContext确认stack/services匹配react / next.js / nextjs时加载。
 - shadcn：仅projectContext确认stack/services匹配shadcn / shadcn/ui时加载。
 
@@ -29,12 +30,27 @@ entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留�
 通用MCP只开放目录中带annotations.readOnlyHint=true的插件发现与GitHub只读工具。GitHub写入及交付走项目已有宿主受管入口，MCP不直接开放merge。
 岗位按真实目录匹配MCP namespace：browser_use、playwright；调用前检查具体方法、输入、连接和范围。
 宿主候选工具：host.project_inspect、host.project_check、host.project_git。这些名称表示岗位候选权限；是否已经接通须看实际目录与传输，具体仓库、动作、路径和服务参数仍由当前任务约束。
+
 projectContext.hostMcpServers登记本岗位可用的服务和方法时，才能提供host.mcp_call；services仅描述项目服务，不能替代具体MCP登记。
 Skill完整只读包在独立资产目录，CODEX_HOME/skills入口指向所需包；包内相对引用、必要references/scripts及每文件摘要保留。未配置的可选技能或工具仍不可调用。
 Skill文件存在只证明资料存在；Mac原生CLI、Python、浏览器、Figma连接、项目受管发布器等运行依赖必须单独核实。缺依赖写明NOT_RUN和缺失项，保留已完成成果。
 需要新增安装、外部写入或高影响动作而现有授权不足时，只提交具体缺口；授权内自主执行，不导入无条件重复审批。
 
+## 能力证据阶段
+
+| 阶段 | 实际证明 |
+| --- | --- |
+| assigned | 本run岗位与任务选择了该能力；只证明分配。 |
+| materialized | 本run实际读取并校验包、文件及依赖物化结果。 |
+| discovered | 当前真实工具目录返回对应工具名。 |
+| connected | 目标连接通过适用身份、权限和可达性检查。 |
+| action-tested | 在授权目标上执行了所需具体动作并取得结果。 |
+| business-accepted | 实际交付满足当前任务验收并通过独立质量核验。 |
+
+各阶段分别记录证据；没有对应回执统一为NOT_RUN，不能从先前阶段或另一项目推导。解析器只确认assigned及目录中的discovered，不把缓存目录、Skill索引或工具自述升级为materialized、connected、action-tested或business-accepted；后续阶段由其真实运行回执另行证明。
+持续迭代时，把实际失败、缺依赖、连接或动作结果交回主责岗位，沿原任务修复并由独立QA复核。方法更新归AGENTS/SOP，工具和依赖事实归CAPABILITIES，派发/预算/恢复缺陷归运行代码，业务缺陷归对应项目；新材料经评审、PR和Native CAS发布后仅对下个run生效。
+
 ## 失败与证据
 
 按实际工具响应区分已完成、失败、NOT_RUN和结果未知。记录候选、来源、命令或调用摘要及可定位的脱敏日志；未知结果先核对原操作，不更换ID盲目重发。
-资产包摘要：58e8e0974314f3566e1b36a17fc4719a59551d6f306dbb9909c8dedfdc183511。
+资产包摘要（前12位）：58e8e0974314…；完整值见机器能力结果skillBundleSha256。

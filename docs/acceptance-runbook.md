@@ -1,5 +1,13 @@
 # 受控真实验收手册
 
+## 真实交付中的持续迭代
+
+RWB每个有效工作项沿原Issue/NativeTask/分支/PR推进，重复或已覆盖项以实际包含/替代证据对账，不盲目全部合并。以当前候选的适用检查、独立QA、PR/CI、按依赖批次部署及业务结果分别验收；其他聊天持有的部署窗口先交接。FinGPT保持已定顺序及其独立provider费用预算，Codex根调用分档不替代该预算。
+
+至少一个实际可修复的QA问题需证明：同Root和原开发/QA子Task、原输入hash不变，原NEEDS_WORK/产物仍在，新增fix与独立reQA操作/run/session，当前reviewedArtifacts排除旧QA，PASS绑定新候选。不得为验收故意破坏现有产品；使用真实发现或离线故障夹具验证故障分支。离线驱动通过不等于真实任务已跑。
+
+默认6次/可信复杂任务12次原累计调用、最多两轮质量返修。额度不足留可恢复阻断，不新建Root绕过；unknown保持原call/host操作证据。角色AGENTS/CAPABILITIES发布、新run实际加载、具体工具动作、业务结果逐项取证。未参与岗位、未测格式和未连工具保持NOT_RUN；ready/idle不当作12岗业务通过。
+
 Native HTTPS 恢复按[专题合同](plans/native-https-recovery.md)先做无模型验证：正确 CA/loopback SAN 成功，错误 CA/主机名失败，Node stdio MCP 继承本 run CA，TLS 监听后才 ready。恢复既有 Chief attempt2 时保全原两槽与旧失败，核明确切 HTTPS-origin 错误、零模型 response、完整进程/环境租约收尾及匹配锁；实际调用后以原剩余额度验证计划，并核计划后暂停和真实通知。不将 mock TLS、CLI session、预算槽或队列状态当作模型成功。
 
 ## 文档岗

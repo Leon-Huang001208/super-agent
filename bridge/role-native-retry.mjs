@@ -3,6 +3,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual as equal} from 'node:util';
 import {taskInputRevision} from './task-input.mjs';
+import {rootCallLimit} from './task-call-policy.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const digest=value=>createHash('sha256').update(value).digest('hex');
@@ -32,7 +33,7 @@ export function validateNativeRoleRetry(f,{settleOnly=false}={}){
  if(!entry||entry.role!==op.role||entry.agentId!==op.agentId||flow.rootTaskId!==root.id||flow.projectId!==task.projectId||flow.summaryRunId||flow.artifacts?.[entry.key]||
   !dispatch||dispatch.taskId!==task.id||dispatch.inputRevision!==op.inputRevision||![op.id,replay?existingOperation.id:null].includes(dispatch.operationId)||
   existingOperation&&!replay)fail('TEAM_NATIVE_RETRY_FLOW_CHANGED');
- if(!Number.isSafeInteger(f.budgetCount)||f.budgetCount<1||f.budgetCount>(settleOnly?6:5)||!budgetRecord||
+ if(!Number.isSafeInteger(f.budgetCount)||f.budgetCount<1||f.budgetCount>rootCallLimit(r,root.id)-(settleOnly?0:1)||!budgetRecord||
   ['id','kind','taskId','rootTaskId','agentId','role','projectId','phase','inputRevision','rootInputRevision'].some(key=>budgetRecord[key]!==op[key])||
   operationBinding?.operationId!==op.id||operationBinding.runId!==parent.id||operationBinding.taskId!==task.id||operationBinding.agentId!==op.agentId)
   fail('TEAM_NATIVE_RETRY_BUDGET_DENIED');

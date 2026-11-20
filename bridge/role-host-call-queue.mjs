@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {redactHostOutput} from './role-host-capabilities.mjs';
+import {rwbReleaseTimeoutPolicy} from './rwb-release.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fail=code=>{throw Object.assign(new Error(code),{code});};
@@ -21,10 +22,21 @@ function safeDetails(details){
 }
 function resultFor(requestHash,request,error,result){return{requestHash,runId:request.runId,taskId:request.taskId,projectId:request.projectId,
  ...(error?{error:{code:/^(?:HOST|ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'HOST_CALL_EXECUTION_FAILED',details:safeDetails(error.details)}}:{result})};}
+function releaseRequestId(tool,args,requestId){
+ if(tool!=='host.rwb_release')return requestId;
+ if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).length!==1||typeof args.operationId!=='string'||
+  !/^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/.test(args.operationId))fail('HOST_CALL_RWB_REQUEST_DENIED');
+ return 'rwb-release:'+args.operationId;
+}
+/** The actual broker call uses the same task-scoped bound as the native executor. */
+export function hostCapabilityTimeoutMs({config,tool,args={},now=Date.now()}){
+ const release=tool==='host.rwb_release'?rwbReleaseTimeoutPolicy(config,{operationId:args.operationId}):null;
+ return Math.max(1,Math.min(release?.rpcMs??300000,config.expiresAt-now));
+}
 
 /** JSON-RPC retries reuse the same existing run operation instead of repeating a host action. */
 export async function requestHostCapability({root,runId,taskId,projectId,requestId,tool,args={},timeoutMs=300000,pollMs=50,signal}){
- const request={runId,taskId,projectId,requestId,tool,args},requestHash=hash(JSON.stringify(request));
+ const request={runId,taskId,projectId,requestId:releaseRequestId(tool,args,requestId),tool,args},requestHash=hash(JSON.stringify(request));
  const directory=path.join(root,requestHash);fs.mkdirSync(directory,{recursive:true,mode:0o700});
  const requestFile=path.join(directory,'request.json');
  if(!fs.existsSync(requestFile)){
@@ -55,6 +67,7 @@ export async function serveHostCapabilityCalls({root,permit,executor,log=()=>{}}
    const request=read(file),requestHash=hash(JSON.stringify(request));
    try{
     if(requestHash!==name||request.runId!==permit.runId||request.taskId!==permit.taskId||request.projectId!==permit.projectId)fail('HOST_CALL_BINDING_DENIED');
+    if(request.tool==='host.rwb_release'&&request.requestId!==releaseRequestId(request.tool,request.args,request.requestId))fail('HOST_CALL_RWB_REQUEST_DENIED');
     if(!permit.effectiveCapabilities?.hostAllowedTools?.includes(request.tool))fail('HOST_CALL_TOOL_DENIED');
     const started=path.join(directory,'started.json');
     if(fs.existsSync(started))fail('HOST_CALL_RESULT_UNKNOWN');

@@ -5,7 +5,7 @@ import {pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 import {TEAM_ROLES,roleInstructions} from '../bridge/team-roles.mjs';
 import {renderRoleCapabilitiesMarkdown} from '../bridge/role-capabilities.mjs';
-import {editRoleRegistry} from '../bridge/role-control-store.mjs';
+import {editRoleRegistry,readControl} from '../bridge/role-control-store.mjs';
 import {createRoleOwnerApi} from './role-owner-api.mjs';
 
 /** Scope metadata is granted only after the complete initial bundle matches public sources. */
@@ -19,13 +19,18 @@ export function verifiedGenericRoleManifest({manifest,role}){
  return{...structuredClone(manifest),scope:'generic'};
 }
 
-export async function publishRoleProfiles({roles,readFile,writeFile,markGeneric,log}){
- let changedFiles=0;
+export async function publishRoleProfiles({roles,readFile,writeFile,markGeneric,baselineFiles={},log}){
+ let changedFiles=0;const preservedRoles=[];
  for(const entry of roles){
   const role=entry.profile.role,agentId=entry.profile.agentId;
   if(!TEAM_ROLES[role]||entry.manifest.instructionsFilePath!==role+'/AGENTS.md')throw Object.assign(Error('ROLE_PROFILE_ENTRY_CHANGED'),{code:'ROLE_PROFILE_ENTRY_CHANGED'});
-  for(const [file,content,isEntry]of [[role+'/CAPABILITIES.md',renderRoleCapabilitiesMarkdown(role),false],[role+'/AGENTS.md',roleInstructions(role),true]]){
-   const current=await readFile(agentId,file);
+  const targets=[[role+'/CAPABILITIES.md',renderRoleCapabilitiesMarkdown(role),false],[role+'/AGENTS.md',roleInstructions(role),true]];
+  const currentFiles=new Map(await Promise.all(targets.map(async([file])=>[file,await readFile(agentId,file)])));
+  if(targets.some(([file,content])=>currentFiles.get(file)?.content!==undefined&&currentFiles.get(file).content!==content&&currentFiles.get(file).content!==baselineFiles[file])){
+   preservedRoles.push(role);log({code:'ROLE_PROFILE_CUSTOM_CONTENT_PRESERVED',role});continue;
+  }
+  for(const [file,content,isEntry]of targets){
+   const current=currentFiles.get(file);
    if(current?.content===content)continue;
    log({code:'ROLE_PROFILE_SAVE_STARTED',role,file});
    await writeFile({agentId,path:file,content,...(isEntry?{baseRevisionId:current?.revision?.id??null}:{baseHash:current?.contentHash??null})});
@@ -33,16 +38,17 @@ export async function publishRoleProfiles({roles,readFile,writeFile,markGeneric,
   }
   if(markGeneric)await markGeneric({agentId,role});
  }
- return {status:'complete',roles:roles.length,changedFiles};
+ return {status:preservedRoles.length?'custom_content_preserved':'complete',roles:roles.length,changedFiles,preservedRoles};
 }
 
 async function main(){
  if(process.platform!=='linux'||process.getuid()!==0)throw Object.assign(Error('ROLE_PROFILE_EXPLICIT_APPLY_REQUIRED'),{code:'ROLE_PROFILE_EXPLICIT_APPLY_REQUIRED'});
- const apply=process.argv.includes('--apply'),R='/paperclip/control/research-pm',r=JSON.parse(fs.readFileSync(R+'/registry.json'));
+ const apply=process.argv.includes('--apply'),baselineIndex=process.argv.indexOf('--baseline-profiles'),
+  baselineFiles=baselineIndex>=0?readControl(process.argv[baselineIndex+1]):{},R='/paperclip/control/research-pm',r=JSON.parse(fs.readFileSync(R+'/registry.json'));
  const api=await createRoleOwnerApi({registry:r,controlRoot:R,requirePaused:apply}),request=api.request;
  try{
   const log=event=>{if(apply)fs.appendFileSync(R+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});};
-  const result=await publishRoleProfiles({roles:r.agents,log,
+  const result=await publishRoleProfiles({roles:r.agents,log,baselineFiles,
    readFile:(agentId,file)=>request('/agents/'+agentId+'/instructions-bundle/file?path='+encodeURIComponent(file)),
    writeFile:async({agentId,...body})=>apply?request('/agents/'+agentId+'/instructions-bundle/file',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)}):undefined,
    ...(apply?{markGeneric:({agentId,role})=>{editRoleRegistry(current=>{const entry=current.agents.find(item=>item.profile.agentId===agentId&&item.profile.role===role);

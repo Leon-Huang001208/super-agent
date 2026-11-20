@@ -17,8 +17,10 @@ else{
    }
    if(message.method==='ping'){send({jsonrpc:'2.0',id:message.id,result:{}});continue;}
    if(!['tools/list','tools/call'].includes(message.method))throw Object.assign(Error(),{code:'ROLE_HOST_MCP_METHOD_DENIED'});
-   const response=await fetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(message)});
-   const body=await response.json();
+   const release=process.env.ROLE_HOST_RWB_RELEASE==='1'&&message.method==='tools/call'&&message.params?.name==='host.rwb_release';
+   // Legacy task containers mount this stdio file by itself. Only native release runs load the scoped helper.
+   const response=release?await (await import('../bridge/rwb-release.mjs')).postRwbReleaseRequest(endpoint,token,message):await fetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(message)});
+   const body=release?response.body:await response.json();
    if(!response.ok)throw Object.assign(Error(),{code:/^(?:HOST|ROLE)_[A-Z_]+$/.test(body?.error?.message??'')?body.error.message:'ROLE_HOST_MCP_REQUEST_FAILED'});
    send({...body,jsonrpc:'2.0',id:message.id});
   }catch(error){

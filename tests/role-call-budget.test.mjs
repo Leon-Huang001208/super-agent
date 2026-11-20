@@ -7,6 +7,17 @@ import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {AdmissionMeter} from '../bridge/admission.mjs';
 import {withRoleCall} from '../bridge/role-call-budget.mjs';
+import {grantComplexTaskBudget} from '../bridge/task-call-policy.mjs';
+test('complex original root spends up to twelve physical calls and cannot refund an earlier six',async t=>{
+ const f=fixture(t),task=f.operation.taskId;
+ f.registry={...f.registry,companyId:'company',ownerId:'owner',tasks:[task],taskRoots:{[task]:task}};
+ f.registry=grantComplexTaskBudget(f.registry,{task:{id:task,companyId:'company',responsibleUserId:'owner',status:'in_review'},approvalSource:'owner-task-tier-policy'});
+ for(let i=0;i<6;i++)fs.writeFileSync(f.root+'/budget/'+task+'/'+randomUUID()+'.json','{}',{mode:0o600});
+ let calls=0;
+ for(let i=0;i<6;i++)await withRoleCall({...f,operation:{...f.operation,id:randomUUID()},log(){},perform:async()=>{calls++;return{ok:true};},completed:x=>x.ok},f);
+ assert.equal(calls,6);assert.equal(fs.readdirSync(f.root+'/budget/'+task).length,12);
+ await assert.rejects(withRoleCall({...f,operation:{...f.operation,id:randomUUID()},log(){},perform:()=>assert.fail('thirteenth'),completed:()=>true},f),/BUDGET_DENIED/);
+});
 function fixture(t){
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'role-budget-'));
  t.after(()=>fs.rmSync(root,{recursive:true}));

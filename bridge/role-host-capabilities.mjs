@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {isMacNative} from './role-execution-policy.mjs';
 import {callHostMcp,runHostCommand} from './role-host-mcp.mjs';
+import {runRwbRelease} from './rwb-release.mjs';
 
 const WORKDISK_UUID='2BC466D2-FD62-4395-86AC-45CFF653BC51';
 const shaPattern=/^[a-f0-9]{40,64}$/;
@@ -20,6 +21,7 @@ export const HOST_TOOL_DEFINITIONS=Object.freeze([
  definition('host.project_check','Run a current Native project registered check by ID in the task code worktree.',schema({checkId:string},['checkId'])),
  definition('host.project_git','Read task Git status/diff/show, commit explicit paths, then prepare the managed integration candidate for independent QA. After prepare write the report only; this run keeps its original code mount. QA is read only.',schema({operation:{type:'string',enum:['status','diff','show','commit','prepare']},revision:string,paths:{type:'array',items:string},message:string},['operation'])),
  definition('host.project_publish','Preview or run a registered project delivery entrypoint, with Native QA candidate binding required to publish.',schema({action:{type:'string',enum:['pull_request','merge','deploy']},preview:boolean})),
+ definition('host.rwb_release','Inspect or consume one task-scoped RWB release operation registered by Native. Only the registered DevOps operation ID is accepted; prior commands and unknown results are never replayed.',schema({operationId:string},['operationId'])),
  definition('host.network_observe','Read current macOS DNS, proxy, Tailscale and proxy application status.',schema()),
  definition('host.network_apply','Run one registered network action authorized by this Native task permit.',schema({actionId:string},['actionId'])),
  definition('host.resources_observe','Read current macOS host disk, memory, CPU, memory pressure and swap observations.',schema()),
@@ -234,6 +236,7 @@ export function createHostCapabilityExecutor(options={}){
  const selectedMcp=(context.hostMcpServers??[]).filter(value=>object(value)&&typeof value.id==='string'&&Array.isArray(value.tools)&&value.tools.length&&(!value.allowedRoles||value.allowedRoles.includes(permit.role)));
  const definitions=HOST_TOOL_DEFINITIONS.filter(value=>{
   if(!allowed.has(value.name))return false;
+  if(value.name==='host.rwb_release'&&(permit.role!=='devops'||!context.rwbRelease||!context.rwbRelease.operations?.some(op=>permit.authorizedHostActions?.includes(op.id))))return false;
   if(['host.project_git','host.project_check','host.project_publish'].includes(value.name)&&!hasWorkspace)return false;
   if(value.name==='host.project_check'&&!context.checks?.length)return false;
   if(value.name==='host.project_publish'&&(permit.role==='qa'||context.delivery?.maximumAction==='artifact'||(!Object.values(context.delivery?.commands??{}).some(command=>Array.isArray(command?.argv)&&command.argv.length)&&context.delivery?.adapter!=='managed-project')))return false;
@@ -276,6 +279,12 @@ export function createHostCapabilityExecutor(options={}){
   await volumeCheck([cwd,options.controlRoot],options,run);return {actionId:action.id,...await run(action.argv,{cwd:cwd??undefined})};
  }
  async function perform(name,args){
+  if(name==='host.rwb_release'){
+   if((options.platform??process.platform)!=='darwin')fail('ROLE_HOST_MACOS_REQUIRED');
+   if(Object.keys(args).length!==1||typeof args.operationId!=='string')fail('ROLE_HOST_ARGUMENTS_INVALID');
+   return runRwbRelease({permit,operationId:args.operationId,controlRoot:options.controlRoot,run,log:audit,
+    verifyVolume:async target=>await (options.verifyVolume??verifyHostVolume)(target,{run})});
+  }
   if(name==='host.network_observe')return network();if(name==='host.resources_observe')return resources();
   if(name==='host.network_apply'||name==='host.resources_apply')return apply(name,args);
   if(name==='host.mcp_call')return callHostMcp({permit,serverId:args.serverId,operation:args.operation,toolName:args.toolName,arguments:args.arguments,loadServer:options.loadMcpServer,spawnProcess:options.spawnMcp,log:audit,configPath:options.mcpConfigPath,runner:options.runner,timeoutMs:options.mcpTimeoutMs,signal:options.signal});

@@ -18,6 +18,11 @@ const fail=code=>{throw Object.assign(new Error(code),{code});};
 const sha=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const clone=value=>structuredClone(value);
+function executionCallLimit(execution){
+ const maximum=execution.budgetMaximum??6;
+ if(![6,12].includes(maximum))fail('CHIEF_CONTEXT_RECONCILIATION_REQUIRED');
+ return maximum;
+}
 function frozen(value){const copy=clone(value);const visit=v=>{if(v&&typeof v==='object'){for(const child of Object.values(v))visit(child);Object.freeze(v);}return v;};return visit(copy);}
 function instant(value){const date=new Date(typeof value==='string'&&/^\d{10,16}$/.test(value)?Number(value):value);if(!Number.isFinite(date.getTime()))fail('CHIEF_CONTEXT_CLOCK_INVALID');return date.toISOString();}
 function recordVersion(value){return Number.isSafeInteger(value)&&value>=0;}
@@ -347,7 +352,7 @@ export function createChiefContextController({binding,catalog,repository,knowled
     if(execution.unknown)fail('CHIEF_CONTEXT_RECONCILIATION_REQUIRED');
     if(execution.active)return {control,value:receipt(intent,{identifier:task.identifier,status:'already_running',replyText:'原任务仍有运行在途，保留原操作核对。'})};
     if(!Number.isSafeInteger(execution.budgetUsed)||execution.budgetUsed<0)fail('CHIEF_CONTEXT_RECONCILIATION_REQUIRED');
-    const remaining=Math.max(0,6-execution.budgetUsed);
+    const remaining=Math.max(0,executionCallLimit(execution)-execution.budgetUsed);
     if(remaining<3)return {control,value:receipt(intent,{identifier:task.identifier,status:'budget_exhausted',remainingCalls:remaining,requiredCalls:3,
       replyText:`原任务剩余 ${remaining} 次调用，本次恢复至少需要 3 次。预算不足，尚未启动模型，也未重发旧成果。`})};
     if(control.plan)await tx.append('plan_snapshot',{taskId:task.id,inputRevision:control.inputRevision,plan:clone(control.plan),
@@ -414,7 +419,7 @@ export function createChiefContextController({binding,catalog,repository,knowled
               }else if(execution.active&&!hasPending){
                 value=receipt(intent,{identifier:task.identifier,status:'already_running',replyText:'原任务仍在运行，未新增模型调用。'});
               }else{
-                if(Number.isSafeInteger(execution.budgetUsed)&&execution.budgetUsed>=6)fail('CHIEF_CONTEXT_BUDGET_EXHAUSTED');
+                if(Number.isSafeInteger(execution.budgetUsed)&&execution.budgetUsed>=executionCallLimit(execution))fail('CHIEF_CONTEXT_BUDGET_EXHAUSTED');
                 const reuse=control.resumeOperationId&&(!hasPending||control.resumeForPendingSequence===control.inputSequence);
                 control={...control,revision:control.revision+1,resumeHistory:[...(control.resumeHistory??[]),...(!reuse&&control.resumeOperationId?[{operationId:control.resumeOperationId,inputRevision:control.resumeInputRevision??control.inputRevision,reason:'new_owner_input'}]:[])],
                   resumeOperationId:reuse?control.resumeOperationId:intent.operationId,resumeSourceKey:reuse?control.resumeSourceKey:intent.sourceKey,
