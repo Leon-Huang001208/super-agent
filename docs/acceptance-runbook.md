@@ -130,6 +130,8 @@ Native全局scheduler保持原受控关闭状态。恢复既有scheduled retry�
 
 父角色run失败后，先只读核对Native已存在的`scheduled_retry`、父run、attempt序号和原子任务。不得另发manual wake或新建root。本人认证的`POST /issues/:id/scheduled-retry/retry-now`只推进原有run；Agent pause会取消scheduled retry，不能把pause/resume当作原attempt的无损暂停。
 
+首Root Chief plan的bootstrap恢复单列：父run明确Gate arguments拒绝、未claim且provider未启动，原根仅保留首次失败及其Native首次retry，没有flow、host claim/transport或未知结果。核对原owner wake、输入版本、operation/permit、Admission nonce和原预算槽；计划后暂停的`reviewBeforeDispatch`允许先产生首计划，但本人pause或待应用补充仍阻止执行。原1/6预算保留，新物理attempt正常成为2/6，不新建目标、wake或session来换额度。全局scheduler关闭时，等待到期不会自行推进；只有修复候选装配完毕后，才通过Native的原Issue retry接口推进已存在的run，并由常驻原消费者执行。保存计划产物、模型/进程组结束、Native终态及飞书结果，再进入本人补充阶段。源码回归不能替代这一实机证据。
+
 后继run进入执行时核对：父run终态及结束时间、host result的run ID和非unknown/非超时/非取消、stdout/stderr实际SHA、原budget/operation映射、root/child输入版本、当前唯一Native执行与父Native租约释放。只对精确匹配的旧call锁归档和清除；失败产物有自己的run/operation/file/SHA只读archive。核对新operation的`acceptedRunId`为原Native后继run、`retryOfOperationId`指向旧操作，flow历史保留旧dispatch，Admission nonce、同child/root/session保持。确认物理调用开始后仅新增一条原根预算记录，六次上限及最多两次修复不变。
 
 另验本人pause/add与已queued retry并存：后继run核实原物理失败后只能settle-only，保存同一原锁的immutable archive及settlement回执，以bootstrap NoProvider终结，不建新operation/advance flow/花预算。核对实际Native终态、环境租约释放与原Admission phase回收后，本人continue仍应用同root补充、旧hash/产物/预算保留。任何未知输出、scope/hash变化或锁漂移仍保留现场；不能凭模型或settlement日志声称Native已经终结。
