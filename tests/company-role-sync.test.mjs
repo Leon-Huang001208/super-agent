@@ -29,10 +29,18 @@ function fixture(){
 }
 test('preview performs no import, configuration, permission or registry writes',async()=>{
  const f=fixture();const result=await syncCompanyRoleSkills(f);
- assert.equal(result.agentCount,11);assert.equal(result.mode,'preview');assert.deepEqual(result.missing,[]);assert.deepEqual(f.calls,[]);
+ assert.equal(result.agentCount,Object.keys(TEAM_ROLES).length);assert.equal(result.mode,'preview');assert.deepEqual(result.missing,[]);assert.deepEqual(f.calls,[]);
+});
+test('the current roster cannot hide a missing document role behind a duplicate role or Agent ID',async()=>{
+ const duplicateRole=fixture();duplicateRole.registry.agents.find(entry=>entry.profile.role==='document-specialist').profile.role='research';
+ await assert.rejects(syncCompanyRoleSkills(duplicateRole),/REGISTRY_INVALID/);
+ assert.deepEqual(duplicateRole.calls,[]);
+ const duplicateId=fixture();duplicateId.registry.agents.find(entry=>entry.profile.role==='document-specialist').profile.agentId='research';
+ await assert.rejects(syncCompanyRoleSkills(duplicateId),/REGISTRY_INVALID/);
+ assert.deepEqual(duplicateId.calls,[]);
 });
 test('apply preserves identities and unrelated config, synchronizes UI and trusted native policy, then is idempotent',async()=>{
- const f=fixture();const first=await syncCompanyRoleSkills({...f,apply:true});assert.equal(first.updatedAgents,11);assert.equal(f.calls[0],'before');
+ const f=fixture();const first=await syncCompanyRoleSkills({...f,apply:true});assert.equal(first.updatedAgents,Object.keys(TEAM_ROLES).length);assert.equal(f.calls[0],'before');
  assert.equal(f.registry.agents[0].manifest.sentinel,'preserved');
  assert.equal(f.registry.agents[0].profile.oldPolicyField,'preserved');assert.deepEqual(f.registry.agents[0].profile.executionPolicy,NATIVE_ROLE_EXECUTION_POLICY);
  assert.equal(f.agents[0].adapterConfig.env.keep,'value');assert.equal(f.agents.find(agent=>agent.id==='chief').permissions.canCreateAgents,true);
@@ -81,7 +89,7 @@ test('successful import HTTP response must still match the complete Native versi
 test('previously imported local sources without a current version recover once before assignments',async()=>{
  const f=fixture();f.versions.delete('bundle-leader');
  const result=await syncCompanyRoleSkills({...f,apply:true});
- assert.equal(result.updatedAgents,11);assert.equal(f.calls.filter(call=>call==='version:bundle-leader').length,1);
+ assert.equal(result.updatedAgents,Object.keys(TEAM_ROLES).length);assert.equal(f.calls.filter(call=>call==='version:bundle-leader').length,1);
  assert.ok(f.calls.indexOf('version:bundle-leader')<f.calls.indexOf('agent'));
  f.calls.length=0;await syncCompanyRoleSkills({...f,apply:true});assert.deepEqual(f.calls,[]);
 });

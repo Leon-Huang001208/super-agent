@@ -1,5 +1,9 @@
 # 运行维护与恢复
 
+## Document Specialist 单岗扩展
+
+遵循[文档岗合同](plans/document-specialist.md)，仅在当前运行Owner协调的排空窗口新增第12岗。source/Native新Agent/registry/catalog/材料及ready需配套，不能先在旧源创建paused占位；不重跑旧11岗configure或bootstrap。当前Research既有error或其他旧岗问题由原窗口核对，单岗工具不得修写其他角色。恢复入口前保留完整名册ready证据；失败不伪造验证或擅自回退丢弃新配置。
+
 ## 原生Agent切换
 
 Native HTTPS 与原首计划恢复按[专题合同](plans/native-https-recovery.md)进行。不能把 `chatgpt_base_url` 指向 HTTP loopback 来适配要求 HTTPS origin 的 CLI，也不能关 TLS 验证或直接绕过 broker。证书、CLI/Node 信任和就绪端口均限本 run；先用无模型握手与恢复合同验证。第二次 Chief retry 仅接原 Native 已有行的明确 HTTPS-origin/零 response 失败，旧锁先按真实证据归档、预算不退款，未知结果不重复 POST。

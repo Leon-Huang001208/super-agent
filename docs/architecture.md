@@ -12,6 +12,8 @@ Mac 原生 provider 通道采用每 run 的 loopback HTTPS、任务 CA 与原 br
 
 ## 通用角色、项目与能力
 
+新增Document Specialist的12岗定义与工具链见[文档岗合同](plans/document-specialist.md)。原11岗不重建；本岗公司技能承载文件格式方法，Native产物仍用md/json清单与独立QA绑定。文档工具仅作用于本岗子进程，既有任务、项目上界、M2知识和根预算保持。
+
 11角色的职责与专业方法属于岗位，仓库、工作树、规则、checks和交付方式属于当前Native项目。合法项目扩展存放于`project_workspaces.metadata.superAgentProject`，通过原Native API登记；固定安装版的`runtimeConfig`是严格运行环境schema，不承载这份扩展。本人明确项目优先，其次当前/父任务项目，歧义才询问。旧M1记录继续保留。
 
 `role-capabilities.mjs`同时生成岗位说明的能力索引和执行组合。原tools类别保留兼容；实际MCP由岗位默认与任务补充解析，并在broker处按真实目录过滤和校验。GitHub访问绑定本次项目仓库，宿主动作绑定Native许可中的动作ID。AGENTS与Skills提供方法，不能通过文字扩大允许调用范围。
