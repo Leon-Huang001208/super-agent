@@ -10,6 +10,7 @@ import { chiefFeishuOperation } from './chief-feishu-native.mjs';
 import { taskInputRevision } from './task-input.mjs';
 import { ROLE_ROOT as ROOT, readControl } from './role-control-store.mjs';
 import {readArchivedChiefTransportFailure} from './chief-transport-retry.mjs';
+import {rootCallLimit} from './task-call-policy.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -44,13 +45,15 @@ function noProvider(run){return run?.resultJson?.executionRecovery?.providerWork
 /** Existing private call evidence; never treats an unknown lock as an empty worker. */
 export function observeContextCallEvidence({task,ids,runs,root=ROOT}){
   let budgetUsed=0,unknown=false;const slots=[],settled=new Set();
+  const registryFile=path.join(root,'registry.json'),registry=fs.existsSync(registryFile)?readControl(registryFile):null;
+  const budgetMaximum=rootCallLimit(registry,task.id);
   const byRun=new Map(runs.map(run=>[run.id,run]));
   const exists=file=>{try{fs.lstatSync(file);return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}};
   const directory=path.join(root,'budget',task.id);
   if(exists(directory)){
     const stat=fs.lstatSync(directory);if(!stat.isDirectory()||stat.isSymbolicLink()||(stat.mode&0o077))fail('CHIEF_CONTEXT_EXECUTION_EVIDENCE_DENIED');
     const files=fs.readdirSync(directory);budgetUsed=files.length;
-    if(files.length>7)unknown=true;
+    if(files.length>Math.max(7,budgetMaximum))unknown=true;
     for(const name of files){
       if(!name.endsWith('.json')||!uuid.test(name.slice(0,-5)))fail('CHIEF_CONTEXT_EXECUTION_EVIDENCE_DENIED');
       const call=readControl(path.join(directory,name));
@@ -95,7 +98,7 @@ export function observeContextCallEvidence({task,ids,runs,root=ROOT}){
     const value=readControl(lock);
     if(ids.includes(value.taskId)&&!runs.some(run=>activeStates.includes(run.status)))unknown=true;
   }
-  return {budgetUsed,unknown,settledFailedRunIds:[...settled]};
+  return {budgetUsed,budgetMaximum,unknown,settledFailedRunIds:[...settled]};
 }
 
 function existingContextOperation({taskId,operationId}){
@@ -237,7 +240,7 @@ export async function createChiefContextPaperclipRepository({database,binding,ca
         const local=await observeLocalExecution({task:actual,ids,runs});
         const settled=new Set(local.settledFailedRunIds??[]);
         return {active:runs.some(run=>activeStates.includes(run.status)),unknown:local.unknown===true||runs.some(run=>!activeStates.includes(run.status)&&run.status!=='succeeded'&&!noProvider(run)&&!settled.has(run.id)),
-          started:runs.length>0,budgetUsed:local.budgetUsed,settledFailedRunIds:[...settled]};
+          started:runs.length>0,budgetUsed:local.budgetUsed,budgetMaximum:local.budgetMaximum??6,settledFailedRunIds:[...settled]};
       },
       async updateTask(taskId,patch){
         writable();

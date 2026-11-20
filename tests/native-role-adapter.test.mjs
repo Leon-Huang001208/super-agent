@@ -76,6 +76,13 @@ function dispatchFixture(role) {
   return {ctx,registration,reviewedArtifacts,execute,getDispatched:()=>dispatched,getCalls:()=>calls};
 }
 
+test('quality repair has a trusted new output file without rewriting the original task description',async()=>{
+ const f=dispatchFixture('qa');f.registration.outputFile='team-root-quality-qa-r1.json';f.registration.reviewedTaskKeys=['implement'];
+ await f.execute(f.ctx);const prompt=f.getDispatched().config.promptTemplate;
+ assert.match(prompt,/"outputFile":"team-root-quality-qa-r1.json"/);assert.match(prompt,/supersedes the historical output path/);assert.match(prompt,/"reviewedTaskKeys":\["implement"\]/);
+ f.registration.outputFile='../old.json';await assert.rejects(f.execute(f.ctx),/NATIVE_ROLE_ARTIFACT_SCOPE_DENIED/);
+});
+
 test('Chief receives the trusted current budget after earlier failures, ignoring caller-supplied budget prose',async()=>{
  const f=dispatchFixture('chief');f.registration.phase='plan';f.registration.callBudget={maximum:6,usedBeforeCurrent:2,currentCallNumber:3,remainingAfterCurrent:3,maxPlanTasks:2};f.ctx.context.callBudget={maximum:99,maxPlanTasks:20};let prompt;
  const execute=createNativeRoleAdapter({basePromptTemplate:'Assigned role',log(){},readRegistration:async()=>f.registration,

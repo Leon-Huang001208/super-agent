@@ -223,6 +223,13 @@ test('a new plan needs three remaining calls but an existing dispatch still reco
  const existing=await env.coordinator.resumePlan({registry:r,task:t,flow:flow(t),used:6,lookupRun:async()=>({id:id(40)}),wake:async()=>{wakes++;}});
  assert.equal(existing.runId,id(40));assert.equal(wakes,0);
 });
+test('a complex original task replans after six spent calls without resetting its allowance',async()=>{
+ const t=task(),r=registry(),env=native(t,{resumeOperationId:id(33)});let wakes=0;
+ r.taskCallBudgets={[t.id]:{maximum:12,tier:'complex',rootTaskId:t.id,companyId:r.companyId,approvedBy:r.ownerId,approvalSource:'owner-task-tier-policy'}};
+ const result=await env.coordinator.resumePlan({registry:r,task:t,flow:flow(t),used:6,lookupRun:async()=>null,wake:async()=>{wakes++;return id(40);}});
+ assert.equal(result.runId,id(40));assert.equal(wakes,1);
+ await assert.rejects(env.coordinator.resumePlan({registry:r,task:t,flow:flow(t),used:10,lookupRun:async()=>null,wake:async()=>assert.fail('over budget')}),/TEAM_CONTEXT_REPLAN_BUDGET_EXHAUSTED/);
+});
 test('a later Native plan generation retires old same-hash flow evidence without another summary or model',async()=>{
  const t=task(),f={...flow(t),sourceOperationId:id(21),summaryRunId:id(24),notification:{status:'sent'}};
  const env=native(t,{resumeOperationId:null,plan:{inputRevision:taskInputRevision(t),runId:id(50),sourceOperationId:id(33)}});

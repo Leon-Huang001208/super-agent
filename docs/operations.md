@@ -1,5 +1,19 @@
 # 运行维护与恢复
 
+## Agent迭代发布
+
+源码经PR、检查与独评后，在同一实例排空的窗口更新原App/宿主传输及启动恢复入口，保留Mac原生策略、12岗ID、公司Skill、原任务/调用历史和飞书入口。运行升级与RWB业务部署是不同写窗口；原任务持有窗口时不并发切换RWB。
+
+角色材料用`publish-role-profiles.mjs`经Native Owner/CAS保存。升级可通过`--baseline-profiles <私有JSON>`提供上一现役源码生成的24份文本（键为`<role>/AGENTS.md`或`<role>/CAPABILITIES.md`）。当前文本既不等于目标也不等于旧生成基线时保留整岗材料并报告`custom_content_preserved`；不把人工定制当作旧模板覆盖。旧内容和在途run固定快照保持。源模板发布不等于对应岗位业务验收。
+
+复杂档登记用`scripts/task-call-budget.mjs --task-id <原root> --approval-source <既有本人授权来源>`预览；只有`--apply`写可信原任务额度记录，要求关闭派发、无活动run/call锁及真实Owner会话。原budget目录全部保留，不因升级至12次或重新规划退款。
+
+本人创建、尚未唤醒且属于已登记项目的Native根任务可在首次Chief调用前登记复杂档；这一步只保存额度，不登记执行、不增加调用或操作历史。已经运行的原根仍沿其登记与累计记录处理。
+
+`host.rwb_release`只接受Native项目metadata中该root的登记操作ID，且执行者必须是DevOps本岗、当前Native操作绑定吻合并持有该action。`inspect`只读取本地受管回执，不刷新远端CI、不调用会合并的status。`merge`复用RWB GitSafety，`deploy/rollback`复用其现有resident CLI；跨Git common的证据transfer仍是RWB原发布窗口的独立前置，接口不改`source_common`。部署source tree须等于审查候选，旧版/当前版与真实accepted一致。回滚传`--rollback-target CURRENT_ACCEPTED_SHA`，由原sealed capsule决定恢复前版。原host-call队列按登记operation ID去重，started未知只核对，不以新RPC或新run重放。
+
+合法发布可能含450秒构建和180秒安装，单独使用固定有界时限：命令30分钟、RPC31、MCP32、Mac进程35、broker准入36/退出36.5、transport37、Native adapter40。只有可信DevOps发布任务启用；普通工具及任务不变，五分钟permit仍只管启动。长响应使用本次CA和有限HTTP请求，无自动重试；取消继续等待自有进程组收口，未知保留原受管操作。
+
 ## Document Specialist 单岗扩展
 
 遵循[文档岗合同](plans/document-specialist.md)，仅在当前运行Owner协调的排空窗口新增第12岗。source/Native新Agent/registry/catalog/材料及ready需配套，不能先在旧源创建paused占位；不重跑旧11岗configure或bootstrap。当前Research既有error或其他旧岗问题由原窗口核对，单岗工具不得修写其他角色。恢复入口前保留完整名册ready证据；失败不伪造验证或擅自回退丢弃新配置。

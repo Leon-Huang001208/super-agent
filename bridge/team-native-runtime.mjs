@@ -8,6 +8,8 @@ import{consumeQueuedNativeRoleRetry}from'./role-native-retry-consumer.mjs';
 import{isInitialChiefPlan,isUnclaimedChiefGateFailure,bindChiefBootstrapRetry,withChiefBootstrapEvidence,chiefBootstrapEvidenceCode}from'./chief-bootstrap-retry.mjs';
 import{isChiefTransportPlanRetry,readChiefTransportFailureEvidence,bindChiefTransportRetry,withChiefTransportEvidence,chiefTransportEvidenceCode}from'./chief-transport-retry.mjs';
 import{renderTeamTaskDescription,teamTaskDescriptionForIntent}from'./team-task-description.mjs';
+import{rootCallLimit}from'./task-call-policy.mjs';
+import{teamChildOperation,qaReviewedArtifacts,qaRepairStep,validateQaRepairReopen,driveQaRepair}from'./team-qa-repair.mjs';
 import{teamContextEnabled,registryForContextRecord,projectForTask,projectForOperation,scopedRegistry,reconcileTeamDispatch,createTeamContextCoordinator,writeTeamArchive,buildTeamContinuationInput,observeTeamFlow,teamArtifactNames}from'./team-context.mjs';
 const P='/opt/paperclip/node_modules',sha=b=>createHash('sha256').update(b).digest('hex');
 const fail=code=>{throw Object.assign(Error(code),{code});};
@@ -36,11 +38,11 @@ async function archiveContextFlow({registry:r,flow,native:p}){
  if(flow.planArtifact){const ref=flow.planArtifact,value=flowArtifact(r,flow,ref);archiveBytes(flow,ref.runId+'-'+ref.file,Buffer.from(value.text));}
  if(flow.summary){const ref=flow.summary,value=flowArtifact(r,flow,ref);archiveBytes(flow,ref.runId+'-'+ref.file,Buffer.from(value.text));}
  const uncollected=[];
- if(p)for(const entry of flow.taskEntries??[]){if(flow.artifacts?.[entry.key])continue;const op=r.operations.filter(x=>x.kind==='run'&&x.taskId===entry.id&&x.rootTaskId===flow.rootTaskId&&x.rootInputRevision===flow.inputRevision).at(-1);if(!op)continue;
+ if(p)for(const entry of flow.taskEntries??[]){if(flow.artifacts?.[entry.key])continue;const op=teamChildOperation({flow,entry,operations:r.operations});if(!op)continue;
   const run=await getRunForOp(p,op),task=await p.issue.getById(entry.id);if(!run)continue;
   if(!['succeeded','failed','cancelled','timed_out'].includes(run.status)||!task||task.parentId!==flow.rootTaskId||task.companyId!==r.companyId||task.projectId!==r.team.projectId||task.responsibleUserId!==r.ownerId||taskInputRevision(task)!==op.inputRevision||run.issueId!==task.id||run.agentId!==op.agentId)fail('TEAM_CONTEXT_ARCHIVE_NATIVE_CHANGED');
-  const record={taskId:task.id,runId:run.id,file:entry.outputFile,runStatus:run.status,acceptance:'not_collected'};
-  try{if(!Number.isFinite(Date.parse(run.startedAt)))fail('TEAM_ARTIFACT_DENIED');const a=snapshotArtifact(r,flow,artifact(r,entry.outputFile,{runId:run.id,notBefore:Date.parse(run.startedAt)}),run.id);uncollected.push({...record,sha256:a.sha256,bytes:a.bytes,archiveFile:a.archiveFile});}
+  const record={taskId:task.id,runId:run.id,file:op.outputFile??entry.outputFile,runStatus:run.status,acceptance:'not_collected'};
+  try{if(!Number.isFinite(Date.parse(run.startedAt)))fail('TEAM_ARTIFACT_DENIED');const a=snapshotArtifact(r,flow,artifact(r,record.file,{runId:run.id,notBefore:Date.parse(run.startedAt)}),run.id);uncollected.push({...record,sha256:a.sha256,bytes:a.bytes,archiveFile:a.archiveFile});}
   catch(error){if(!['ENOENT','TEAM_ARTIFACT_DENIED'].includes(error.code))throw error;uncollected.push({...record,artifactState:'unavailable',code:error.code});log({code:'TEAM_CONTEXT_UNCOLLECTED_ARTIFACT_UNAVAILABLE',taskId:task.id,runId:run.id});}
  }
  if(uncollected.length)archiveBytes(flow,flow.sourceRunId+'-uncollected.json',Buffer.from(JSON.stringify({outputs:uncollected})+'\n'));
@@ -50,8 +52,8 @@ function continuationInput(r,flow,task){
  return buildTeamContinuationInput({task,flow,readArtifact:ref=>flowArtifact(r,flow,ref),additionalArtifacts});
 }
 function budgetUsed(root){const names=fs.readdirSync(R+'/budget/'+root);if(names.some(x=>!/^[-a-f0-9]{36}\.json$/.test(x)))fail('TEAM_BUDGET_RECORD_DENIED');return names.length;}
-function registration(r,taskId,agentId,role,lease,{rootTaskId=taskId,rootInputRevision,phase='work',inputRevision,networkScope,resourceScope,additionalCapabilities=[],authorizedHostActions=[],codeCandidate,codeReview,operationId=randomUUID(),acceptedRunId,additionalInput,reviewedArtifacts,artifactGeneration}={}){
- const op={id:operationId,kind:'run',taskId,projectId:lease.projectId,agentId,role,rootTaskId,rootInputRevision,phase,inputRevision,networkScope,resourceScope,additionalCapabilities,authorizedHostActions,codeCandidate,codeReview,acceptedRunId,additionalInput,reviewedArtifacts,...projectFields(r),
+function registration(r,taskId,agentId,role,lease,{rootTaskId=taskId,rootInputRevision,phase='work',inputRevision,networkScope,resourceScope,additionalCapabilities=[],authorizedHostActions=[],codeCandidate,codeReview,operationId=randomUUID(),acceptedRunId,additionalInput,reviewedArtifacts,reviewedTaskKeys,artifactGeneration,outputFile,qualityRepair}={}){
+ const op={id:operationId,kind:'run',taskId,projectId:lease.projectId,agentId,role,rootTaskId,rootInputRevision,phase,inputRevision,networkScope,resourceScope,additionalCapabilities,authorizedHostActions,codeCandidate,codeReview,acceptedRunId,additionalInput,reviewedArtifacts,reviewedTaskKeys,outputFile,qualityRepair,...projectFields(r),
   ...(artifactGeneration?{artifactGeneration,...teamArtifactNames({taskId:rootTaskId,inputRevision:rootInputRevision??inputRevision,generationId:artifactGeneration})}:{})};
  editRoleRegistry(current=>{current.tasks=[...new Set([...current.tasks,taskId,rootTaskId])];current.taskRoots??={};current.taskRoots[taskId]=rootTaskId;current.taskRoots[rootTaskId]=rootTaskId;current.taskId=taskId;current.lease={taskId,projectId:lease.projectId,nonce:lease.nonce,operationId:op.id};if(!current.operations.some(x=>x.id===op.id))current.operations.push(op);if(!fs.existsSync(R+'/budget/'+rootTaskId))fs.mkdirSync(R+'/budget/'+rootTaskId,{mode:0o700});return current;});return op;
 }
@@ -177,7 +179,7 @@ export async function bindNativeRetryAttempt(ctx,{database}){
   const evidence={registry:r,flow,rootTask,task,operation,run,parentRun,existingOperation:existing,callLock,
    budgetCount:budgetUsed(rootTask.id),budgetRecord:readControl(R+'/budget/'+rootTask.id+'/'+operation.id+'.json'),operationBinding:readControl(R+'/operations/'+operation.id+'.json'),
    transportResult,stdoutSha256:outputHash('stdout'),stderrSha256:outputHash('stderr'),activeRuns,leases};
-  if(evidence.budgetCount>=6)settleReason??='budget_exhausted';
+  if(evidence.budgetCount>=rootCallLimit(r,rootTask.id))settleReason??='budget_exhausted';
   const binding=validateNativeRoleRetry(evidence,{settleOnly:Boolean(settleReason)});
   try{await requireNoPendingOwnerInput({...p,db:tx},r,rootTask.id);await requireNoPendingOwnerInput({...p,db:tx},r,task.id);}
   catch(error){if(error.code!=='TEAM_PENDING_OWNER_INPUT')throw error;settleReason??='owner_input';}
@@ -256,7 +258,7 @@ async function dispatchPlan(p,r,op,run,context){
  const base=saved??{rootTaskId:task.id,projectId:task.projectId,sourceRunId:run.id,sourceOperationId:op.id,inputRevision:op.inputRevision,...projectFields(r),artifacts:{},
   ...(op.artifactGeneration?{artifactGeneration:op.artifactGeneration,planFile:op.planFile,summaryFile:op.summaryFile,outputPrefix:op.outputPrefix}:{})};
  const readStrictPlan=()=>{const value=base.planArtifact?flowArtifact(r,base,base.planArtifact):artifact(r,base.planFile??'chief-dispatch-'+task.id+'-'+op.inputRevision.slice(0,12)+'.json',{notBefore:Date.parse(run.startedAt),runId:run.id});
-  const strict=validateTeamPlan(JSON.parse(value.text),{remainingCalls:6-budgetUsed(task.id)});if(base.artifactGeneration&&!strict.tasks.length)fail('TEAM_CONTEXT_REPLAN_EMPTY');for(const entry of strict.tasks){if(!entry.outputFile.startsWith(base.outputPrefix??'team-'+task.id+'-'))fail('TEAM_PLAN_OUTPUT_SCOPE_DENIED');if(teamContextEnabled(r)&&!r.contextProject.allowedRoles.includes(entry.role))fail('TEAM_CONTEXT_ROLE_DENIED');}return{artifact:value,plan:strict};};
+  const strict=validateTeamPlan(JSON.parse(value.text),{remainingCalls:rootCallLimit(r,task.id)-budgetUsed(task.id)});if(base.artifactGeneration&&!strict.tasks.length)fail('TEAM_CONTEXT_REPLAN_EMPTY');for(const entry of strict.tasks){if(!entry.outputFile.startsWith(base.outputPrefix??'team-'+task.id+'-'))fail('TEAM_PLAN_OUTPUT_SCOPE_DENIED');if(teamContextEnabled(r)&&!r.contextProject.allowedRoles.includes(entry.role))fail('TEAM_CONTEXT_ROLE_DENIED');}return{artifact:value,plan:strict};};
  let read;if(context){read=readStrictPlan();const snapshot=snapshotArtifact(r,base,read.artifact,run.id);base.planArtifact={file:snapshot.file,sha256:snapshot.sha256,bytes:snapshot.bytes,runId:run.id,...(snapshot.archiveFile?{archiveFile:snapshot.archiveFile}:{})};}
  let control;
  if(context){const view=await context.inspect({registry:r,task,flow:base,file});task=view.task;r=view.registry;control=view.control;if(view.disposition==='superseded'){await resumeContextPlan(context,p,r,task,base,file);return;}if(!['ready','paused'].includes(view.disposition))return;}
@@ -295,18 +297,22 @@ async function wakeRole(p,r,task,entry,{rootTaskId,phase='work',flow,file,stepKe
  if(flow?.dispatches?.[stepKey]&&!existing)fail('TEAM_DISPATCH_RECONCILIATION_REQUIRED');
  if(existing){if(existing.taskId!==task.id||existing.rootTaskId!==rootTaskId||existing.role!==role||existing.phase!==phase||existing.inputRevision!==taskInputRevision(task))fail('TEAM_DISPATCH_RECONCILIATION_REQUIRED');projectForOperation(r,existing,{task,log});}
  const budgetDirectory=R+'/budget/'+rootTaskId,used=fs.existsSync(budgetDirectory)?budgetUsed(rootTaskId):0;
- const disposition=await reconcileTeamDispatch({operation:existing,used,lookupRun:op=>getRunForOp(p,op),log});
+ const disposition=await reconcileTeamDispatch({operation:existing,used,limit:rootCallLimit(latest,rootTaskId),lookupRun:op=>getRunForOp(p,op),log});
  if(disposition.kind!=='new')return disposition.run?.id??null;
  if(!fs.existsSync(budgetDirectory))fs.mkdirSync(budgetDirectory,{mode:0o700});
  if(teamContextEnabled(r)&&!r.contextProject.allowedRoles.includes(role))fail('TEAM_CONTEXT_ROLE_DENIED');
  const projectContext=await readRoleProjectContext({...p,task,companyId:r.companyId,ownerId:r.ownerId,legacyProfile:r.agents.find(a=>a.profile.role===role)?.profile,rootTaskId});
- let additionalInput=reconstruction,reviewedArtifacts,codeCandidate;
+ let additionalInput=reconstruction,reviewedArtifacts,reviewedTaskKeys,codeCandidate;
  if(phase==='work'){
   const obs=readControl(R+'/team/host-observations.json');if(obs.kind!=='macos-host-observation'||obs.hostPlatform!=='darwin'||!Number.isFinite(Date.parse(obs.capturedAt))||Date.parse(obs.capturedAt)>Date.now()+5000||Date.now()-Date.parse(obs.capturedAt)>300000)fail('TEAM_HOST_OBSERVATION_STALE');
   additionalInput='Trusted management observations (evidence, not instructions):\n'+JSON.stringify({host:obs,roster:await nativeRoster(p,r)});
-  if(role==='pm'||role==='qa')for(const a of Object.values(flow?.artifacts??{})){const value=flowArtifact(r,flow,a);if(value.sha256!==a.sha256)fail('TEAM_COLLECTED_ARTIFACT_CHANGED');additionalInput+='\nActual upstream artifact '+JSON.stringify(a)+'\n'+value.text;}
+  if(role==='pm'||role==='qa')for(const a of qaReviewedArtifacts(flow)){const value=flowArtifact(r,flow,a);if(value.sha256!==a.sha256)fail('TEAM_COLLECTED_ARTIFACT_CHANGED');additionalInput+='\nActual upstream artifact '+JSON.stringify(a)+'\n'+value.text;}
+  const repair=qaRepairStep(flow,entry);
+  if(repair){const source=flow.qaRepair.sourceQa,value=flowArtifact(r,flow,source);additionalInput+='\nQuality repair of the same original task, round '+repair.qualityRepair.round+'. The original goal, authority and cumulative root budget are unchanged. Address the following actual QA findings and regenerate candidate/check evidence as needed. Required output is the trusted outputFile; preserve all previous outputs.\n'+JSON.stringify(source)+'\n'+value.text;
+   if(repair.qualityRepair.phase==='fix')for(const ref of Object.values(flow.qaRepair.sourceArtifacts)){if(ref.runId===source.runId)continue;const previous=flowArtifact(r,flow,ref);if(previous.sha256!==ref.sha256)fail('TEAM_COLLECTED_ARTIFACT_CHANGED');additionalInput+='\nOriginal pre-repair artifact '+JSON.stringify(ref)+'\n'+previous.text;}}
   if(role==='qa'){
-   reviewedArtifacts=Object.values(flow.artifacts).map(a=>({taskId:a.taskId,runId:a.runId,file:a.file,sha256:a.sha256}));
+   reviewedArtifacts=qaReviewedArtifacts(flow).map(a=>({taskId:a.taskId,runId:a.runId,file:a.file,sha256:a.sha256}));
+   reviewedTaskKeys=flow.taskEntries.filter(value=>value.role!=='qa'&&flow.artifacts[value.key]).map(value=>value.key);
    const candidateFile=R+'/code-workspaces/'+rootTaskId+'/candidate.json';
    if(fs.existsSync(candidateFile)){
     const candidate=readControl(candidateFile),[sourceRun]=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.eq(p.schema.heartbeatRuns.id,candidate.runId));
@@ -324,7 +330,8 @@ async function wakeRole(p,r,task,entry,{rootTaskId,phase='work',flow,file,stepKe
  if(!lease.allowed)fail('TEAM_CHILD_ADMISSION_UNKNOWN');
  const operationId=requestedOperationId??randomUUID(),inputRevision=taskInputRevision(task);
  if(flow){flow.dispatches??={};flow.dispatches[stepKey]={operationId,taskId:task.id,role,phase,inputRevision,...projectFields(r),additionalInputSha256:sha(additionalInput),leaseNonce:lease.nonce,at:new Date().toISOString()};writeControl(file,flow);}
- const op=registration(r,task.id,agentId,role,{...lease,projectId:task.projectId},{rootTaskId,rootInputRevision:flow?.inputRevision,phase,inputRevision,operationId,networkScope:entry.networkScope,resourceScope:entry.resourceScope,additionalInput,reviewedArtifacts,artifactGeneration,additionalCapabilities:entry.capabilities??[],authorizedHostActions:entry.hostActions??[],codeCandidate,codeReview:codeReviewForTeamStep(flow,entry,phase)});
+ const repair=flow&&qaRepairStep(flow,entry);
+ const op=registration(r,task.id,agentId,role,{...lease,projectId:task.projectId},{rootTaskId,rootInputRevision:flow?.inputRevision,phase,inputRevision,operationId,networkScope:entry.networkScope,resourceScope:entry.resourceScope,additionalInput,reviewedArtifacts,reviewedTaskKeys,artifactGeneration,outputFile:phase==='work'?entry.outputFile:undefined,qualityRepair:repair?.qualityRepair,additionalCapabilities:entry.capabilities??[],authorizedHostActions:entry.hostActions??[],codeCandidate,codeReview:codeReviewForTeamStep(flow,entry,phase)});
  const assign=async(tx)=>{const[current]=await tx.select().from(p.schema.issues).where(p.orm.eq(p.schema.issues.id,task.id)).for('update');if(!current||current.companyId!==r.companyId||current.projectId!==r.team.projectId||current.responsibleUserId!==r.ownerId||taskInputRevision(current)!==inputRevision||['done','cancelled','blocked'].includes(current.status))fail('TEAM_CHILD_AUTHORITY_CHANGED');if(context&&!flow)await context.assertCurrent({registry:r,task:current,flow:{rootTaskId,inputRevision,...projectFields(r),phase:'plan'},transaction:{db:tx}});await(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx).update(task.id,{assigneeAgentId:agentId,assigneeUserId:null,status:'todo'});};
  if(flow)await rootAuthority(p,r,flow,assign,context);else await p.db.transaction(assign);
  await p.heartbeat.resetRuntimeSession(agentId,{taskKey:task.id});
@@ -334,10 +341,11 @@ async function wakeRole(p,r,task,entry,{rootTaskId,phase='work',flow,file,stepKe
 
 async function collectChild(p,r,flow,entry,task,context){
  r=scopeTask(r,task);projectForOperation(r,flow,{task,log});
- const op=r.operations.filter(x=>x.kind==='run'&&x.taskId===task.id).at(-1);if(!op)return false;const run=await getRunForOp(p,op);if(!run||run.status!=='succeeded')return false;
+ const op=teamChildOperation({flow,entry,operations:r.operations});if(!op)return false;const run=await getRunForOp(p,op);if(!run||run.status!=='succeeded')return false;
+ if(run.issueId!==task.id||run.companyId!==r.companyId||run.agentId!==entry.agentId||!Number.isFinite(Date.parse(run.startedAt)))fail('TEAM_CHILD_RUN_CHANGED');
  if(taskInputRevision(task)!==op.inputRevision||task.companyId!==r.companyId||task.projectId!==r.team.projectId||task.responsibleUserId!==r.ownerId)fail('TEAM_CHILD_INPUT_CHANGED');
- const a=snapshotArtifact(r,flow,artifact(r,entry.outputFile,{notBefore:Date.parse(run.startedAt),runId:run.id}),run.id),marker='<!-- role-artifact:'+run.id+':'+a.sha256+' -->',body=marker+'\n'+a.text;
- let verdict;if(entry.role==='qa'){const review=validateTeamQaResult(JSON.parse(a.text),{reviewedArtifacts:op.reviewedArtifacts,codeCandidate:op.codeCandidate});verdict=review.verdict;}
+ const a=snapshotArtifact(r,flow,artifact(r,op.outputFile??entry.outputFile,{notBefore:Date.parse(run.startedAt),runId:run.id}),run.id),marker='<!-- role-artifact:'+run.id+':'+a.sha256+' -->',body=marker+'\n'+a.text;
+ let verdict,repairTaskKey;if(entry.role==='qa'){const review=validateTeamQaResult(JSON.parse(a.text),{reviewedArtifacts:op.reviewedArtifacts,codeCandidate:op.codeCandidate});verdict=review.verdict;repairTaskKey=review.repairTaskKey;}
  await rootAuthority(p,r,flow,async tx=>{
   const[current]=await tx.select().from(p.schema.issues).where(p.orm.eq(p.schema.issues.id,task.id)).for('update');if(taskInputRevision(current)!==op.inputRevision)fail('TEAM_CHILD_INPUT_CHANGED');
   const[receipt]=await tx.select({id:p.schema.issueComments.id}).from(p.schema.issueComments).where(p.orm.and(p.orm.eq(p.schema.issueComments.issueId,task.id),p.orm.eq(p.schema.issueComments.body,body),p.orm.eq(p.schema.issueComments.authorAgentId,entry.agentId),p.orm.eq(p.schema.issueComments.createdByRunId,run.id))).limit(1);
@@ -345,7 +353,7 @@ async function collectChild(p,r,flow,entry,task,context){
   if(current.status!=='in_review'||current.assigneeUserId!==r.ownerId)fail('TEAM_CHILD_AUTHORITY_CHANGED');
   const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx);if(!receipt)await svc.addComment(task.id,body,{agentId:entry.agentId,runId:run.id});await svc.update(task.id,{status:'done'});
  },context);
- flow.artifacts[entry.key]={taskId:task.id,runId:run.id,sessionId:run.sessionIdAfter,file:a.file,sha256:a.sha256,bytes:a.bytes,verdict,...(a.archiveFile?{archiveFile:a.archiveFile}:{})};
+ flow.artifacts[entry.key]={taskId:task.id,runId:run.id,sessionId:run.sessionIdAfter,file:a.file,sha256:a.sha256,bytes:a.bytes,verdict,...(repairTaskKey!==undefined?{repairTaskKey}:{}),...(a.archiveFile?{archiveFile:a.archiveFile}:{})};
 
  if(entry.role==='qa'&&op.codeCandidate&&verdict==='PASS'){
   const permit=readControl(R+'/permits/'+run.id+'.json');
@@ -382,18 +390,66 @@ async function resumeContextPlan(context,p,r,task,flow,file){
   lookupRun:op=>getRunForOp(p,op),wake:view=>wakeRole(p,view.registry,view.task,{role:'chief'},
    {rootTaskId:view.task.id,phase:'plan',operationId:view.operationId,artifactGeneration:view.artifactGeneration,reconstruction:continuationInput(r,flow,view.task),context})});
 }
+
+async function reopenQaRepair(p,r,flow,file,context){
+ await rootAuthority(p,r,flow,async tx=>{
+  const entries=[flow.qaRepair.targetKey,flow.qaRepair.qaKey].map(key=>flow.taskEntries.find(entry=>entry.key===key));
+  if(entries.some(entry=>!entry))fail('TEAM_QA_REPAIR_REOPEN_CHANGED');
+  const tasks=[];for(const entry of entries){const[task]=await tx.select().from(p.schema.issues).where(p.orm.eq(p.schema.issues.id,entry.id)).for('update');tasks.push(task);await requireNoPendingOwnerInput({...p,db:tx},r,entry.id);}
+  const runs=await tx.select().from(p.schema.heartbeatRuns).where(p.orm.inArray(p.schema.heartbeatRuns.issueId,entries.map(entry=>entry.id)));
+  const leases=await tx.select().from(p.schema.environmentLeases).where(p.orm.inArray(p.schema.environmentLeases.heartbeatRunId,runs.map(run=>run.id)));
+  validateQaRepairReopen({registry:r,flow,tasks,operations:r.operations,runs,leases});
+  for(const entry of entries){const op=r.operations.find(value=>value.id===flow.qaRepair.sourceDispatches[entry.key].operationId);const run=await getRunForOp({...p,db:tx},op);if(run?.id!==flow.qaRepair.sourceArtifacts[entry.key].runId)fail('TEAM_QA_REPAIR_REOPEN_CHANGED');}
+  const service=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx);
+  for(const task of tasks)if(task.status==='done')await service.update(task.id,{status:'todo',assigneeAgentId:null,assigneeUserId:r.ownerId});
+ },context);
+ log({code:'TEAM_QA_REPAIR_REOPENED',taskId:flow.rootTaskId,round:flow.qaRepair.round,targetKey:flow.qaRepair.targetKey,qaKey:flow.qaRepair.qaKey});
+}
+
+/** A spent task must retain a resumable result without inventing another model invocation. */
+async function finalizeQaBlocked(p,r,flow,file,context){
+ const block=flow.qaBlocked,source=block.sourceQa;
+ if(!source?.runId)fail('TEAM_QA_REPAIR_EVIDENCE_CHANGED');
+ const text='Quality review requires work.\nReason: '+block.code+'\nRoot task: '+flow.rootTaskId+'\nQA run: '+source.runId+'\nQA artifact SHA256: '+source.sha256+'\nThe original task, spent calls and artifacts are preserved. No repair, publication or deployment was started for this blocked decision.\n';
+ const summary={file:'team-'+flow.rootTaskId+'-quality-block.md',text,sha256:sha(text)},body='<!-- team-quality-block:'+source.runId+':'+summary.sha256+' -->\n'+text;
+ const archiveFile=archiveBytes(flow,source.runId+'-'+summary.file,Buffer.from(text));
+ const root=await p.db.transaction(async tx=>{
+  const[current]=await tx.select().from(p.schema.issues).where(p.orm.eq(p.schema.issues.id,flow.rootTaskId)).for('update');
+  if(!current||current.companyId!==r.companyId||current.projectId!==projectIdFor(r,flow)||current.responsibleUserId!==r.ownerId||taskInputRevision(current)!==flow.inputRevision)fail('TEAM_ROOT_AUTHORITY_CHANGED');
+  const[receipt]=await tx.select({id:p.schema.issueComments.id}).from(p.schema.issueComments).where(p.orm.and(p.orm.eq(p.schema.issueComments.issueId,current.id),p.orm.eq(p.schema.issueComments.body,body),p.orm.eq(p.schema.issueComments.authorAgentId,r.team.ids.chief))).limit(1);
+  if(current.status==='blocked'){if(!receipt)fail('TEAM_ROOT_DONE_WITHOUT_RECEIPT');return current;}
+  if(current.status!=='in_review'||current.assigneeUserId!==r.ownerId||current.assigneeAgentId||current.executionRunId||current.checkoutRunId)fail('TEAM_ROOT_AUTHORITY_CHANGED');
+  if(context)await context.assertCurrent({registry:r,task:current,flow,transaction:{db:tx}});
+  await requireNoPendingOwnerInput({...p,db:tx},r,current.id);
+  const service=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx);
+  if(!receipt)await service.addComment(current.id,body,{agentId:r.team.ids.chief});
+  return service.update(current.id,{status:'blocked'});
+ });
+ flow.summary={kind:'controller-quality-block',runId:source.runId,file:summary.file,sha256:summary.sha256,archiveFile,qualityAccepted:false,noModelCall:true,sourceQaRunId:source.runId};writeControl(file,flow);
+ const{sendTeamResult}=await import('./team-result-notification.mjs');flow.notification=await sendTeamResult({task:root,summary,registry:r,sourceRunId:source.runId});writeControl(file,flow);
+ log({code:block.code,taskId:root.id,sourceQaRunId:source.runId,modelCalls:0});
+}
+
 async function driveFlow(p,r,file,context){
- const flow=readControl(file);r=registryForContextRecord(r,flow);if(!teamContextEnabled(r)){context=null;const task=await p.issue.getById(flow.rootTaskId);r=scopeFlow(r,flow,task);}
+ let flow=readControl(file);r=registryForContextRecord(r,flow);if(!teamContextEnabled(r)){context=null;const task=await p.issue.getById(flow.rootTaskId);r=scopeFlow(r,flow,task);}
  const view=await observeTeamFlow({registry:r,flow,file,readTask:id=>p.issue.getById(id),context,log});let root=view.task;r=view.registry;
  if(view.delivered||root.status==='cancelled')return;
- if(context){if(view.disposition==='retired')return;if(view.disposition==='superseded'||view.resumeRequired){await resumeContextPlan(context,p,r,root,flow,file);return;}if(view.disposition==='paused')return;if(view.disposition==='terminal'&&!flow.summaryRunId)return;}
+ if(context){if(view.disposition==='retired')return;const blockedResume=flow.qaBlocked&&flow.notification?.status==='sent'&&view.disposition==='ready'&&view.control.managed&&view.control.resumeOperationId&&view.control.resumeOperationId!==flow.sourceOperationId;
+  if(view.disposition==='superseded'||view.resumeRequired||blockedResume){await resumeContextPlan(context,p,r,root,flow,file);return;}if(view.disposition==='paused')return;if(view.disposition==='terminal'&&!flow.summaryRunId&&!flow.qaBlocked)return;}
+ if(flow.qaBlocked){await finalizeQaBlocked(p,r,flow,file,context);return;}
  if(flow.dispatched===false){const op=r.operations.find(x=>x.kind==='run'&&x.acceptedRunId===flow.sourceRunId||x.kind==='run'&&x.id===flow.sourceOperationId);let source=op;if(!source)for(const candidate of r.operations.filter(x=>x.kind==='run'&&x.role==='chief'&&x.taskId===flow.rootTaskId&&x.phase==='plan')){if((await getRunForOp(p,candidate))?.id===flow.sourceRunId){source=candidate;break;}}if(!source)fail('TEAM_DISPATCH_RECONCILIATION_REQUIRED');const prior=await getRunForOp(p,source);if(prior?.status==='succeeded')await dispatchPlan(p,r,source,prior,context);return;}
  // Recover the exact Native wake receipt if the caller lost its return value.
  if(!flow.summaryRunId&&flow.dispatches?.['final-summary']){const op=r.operations.find(x=>x.id===flow.dispatches['final-summary'].operationId);const run=op?await getRunForOp(p,op):null;if(run){flow.summaryRunId=run.id;writeControl(file,flow);}}
  if(flow.summaryRunId){await finalizeSummary(p,r,flow,file,context);return;}
  await rootAuthority(p,r,flow,async()=>{},context);
+ const repairDrive=await driveQaRepair({flow,operations:r.operations,used:budgetUsed(root.id),maximum:rootCallLimit(r,root.id),maxFixRounds:r.policy?.maxFixRounds??2,
+  archiveArtifact:ref=>{const value=flowArtifact(r,flow,ref);return {...ref,archiveFile:archiveBytes(flow,ref.runId+'-'+ref.file,Buffer.from(value.text))};},
+  ports:{save:next=>writeControl(file,next),reopen:next=>reopenQaRepair(p,r,next,file,context),block:next=>finalizeQaBlocked(p,r,next,file,context),
+   collect:async(next,entry)=>{const task=await p.issue.getById(entry.id);if(!task)fail('TEAM_NATIVE_CHILD_MISSING');return collectChild(p,r,next,entry,task,context);},
+   dispatch:async(next,entry,step)=>{const task=await p.issue.getById(entry.id);if(!task)fail('TEAM_NATIVE_CHILD_MISSING');if(task.status==='todo'&&entry.dependsOn.every(key=>next.artifacts[key]))await wakeRole(p,r,task,entry,{rootTaskId:root.id,flow:next,file,stepKey:entry.key,context,operationId:step.operationId});}}});
+ flow=repairDrive.flow;if(repairDrive.handled)return;
  for(const entry of flow.taskEntries){const task=await p.issue.getById(entry.id);if(!task)fail('TEAM_NATIVE_CHILD_MISSING');
-  if(flow.artifacts[entry.key]){const op=r.operations.filter(x=>x.kind==='run'&&x.taskId===task.id).at(-1);if(task.status!=='done'||!op||taskInputRevision(task)!==op.inputRevision)fail('TEAM_CHILD_STATUS_CHANGED');continue;}
+  if(flow.artifacts[entry.key]){const op=teamChildOperation({flow,entry,operations:r.operations}),run=op&&await getRunForOp(p,op);if(task.status!=='done'||!op||taskInputRevision(task)!==op.inputRevision||run?.id!==flow.artifacts[entry.key].runId||run.status!=='succeeded'||flow.artifacts[entry.key].file!==(op.outputFile??entry.outputFile))fail('TEAM_CHILD_STATUS_CHANGED');continue;}
   if(await collectChild(p,r,flow,entry,task,context)){writeControl(file,flow);return;}
   if(task.status==='todo'&&entry.dependsOn.every(k=>flow.artifacts[k])){await wakeRole(p,r,task,entry,{rootTaskId:root.id,flow,file,stepKey:entry.key,context});return;}
  }

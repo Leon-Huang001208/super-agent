@@ -12,12 +12,19 @@ test('role publication uses Managed compare-and-save, adds capability notes and 
  const files=new Map([['backend-engineer/AGENTS.md',{content:'old role',revision:{id:'old-revision'}}]]),writes=[];
  const role={profile:{role:'backend-engineer',agentId:'agent'},manifest:{instructionsFilePath:'backend-engineer/AGENTS.md'}};
  const ports={readFile:async(_id,path)=>files.get(path)??null,writeFile:async input=>{writes.push(input);files.set(input.path,{content:input.content,revision:{id:'new-'+writes.length},contentHash:'hash-'+writes.length});}};
- const result=await publishRoleProfiles({roles:[role],...ports,log(){}});
+ const result=await publishRoleProfiles({roles:[role],...ports,baselineFiles:{'backend-engineer/AGENTS.md':'old role'},log(){}});
  assert.equal(result.roles,1);assert.equal(result.changedFiles,2);
  assert.equal(writes[0].path,'backend-engineer/CAPABILITIES.md');assert.equal(writes[0].baseHash,null);
  assert.equal(writes[1].baseRevisionId,'old-revision');
  assert.match(writes[1].content,/Backend Engineer/);assert.ok(!writes[1].content.includes('不合并或部署RWB'));
  assert.equal((await publishRoleProfiles({roles:[role],...ports,log(){}})).changedFiles,0);
+});
+test('owner edits are preserved before either role file is changed and are not marked generic',async()=>{
+ const role={profile:{role:'qa',agentId:'agent'},manifest:{instructionsFilePath:'qa/AGENTS.md'}};const calls=[];
+ const result=await publishRoleProfiles({roles:[role],baselineFiles:{'qa/AGENTS.md':'previous generated role'},
+  readFile:async(_id,file)=>file.endsWith('/AGENTS.md')?{content:'Owner customized QA instructions',revision:{id:'current'}}:null,
+  writeFile:async value=>calls.push(value),markGeneric:async()=>calls.push('generic'),log(){}});
+ assert.equal(result.status,'custom_content_preserved');assert.deepEqual(result.preservedRoles,['qa']);assert.equal(result.changedFiles,0);assert.deepEqual(calls,[]);
 });
 test('a real save conflict stops publication without claiming remaining roles were updated',async()=>{
  const role={profile:{role:'qa',agentId:'agent'},manifest:{instructionsFilePath:'qa/AGENTS.md'}};

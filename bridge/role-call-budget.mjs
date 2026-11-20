@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { AdmissionMeter } from './admission.mjs';
+import {rootCallLimit} from './task-call-policy.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const uuid=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
@@ -44,8 +45,9 @@ export async function withRoleCall({registry,operation,log,perform,completed}, {
       const stat=fs.lstatSync(directory);
       if(!stat.isDirectory()||stat.isSymbolicLink()||stat.uid!==0||(stat.mode&0o777)!==0o700)fail('ROLE_CALL_BUDGET_DENIED');
       const names=fs.readdirSync(directory);
+      const maximum=rootCallLimit(registry,budgetTaskId);
       if(names.some(n=>!uuid.test(n.slice(0,-5))||!n.endsWith('.json'))||
-        names.length>=6&&!(names.length===6&&seventhQaAllowed(registry,operation,budgetTaskId)))fail('ROLE_CALL_BUDGET_DENIED');
+        names.length>=maximum&&!(maximum===6&&names.length===6&&seventhQaAllowed(registry,operation,budgetTaskId)))fail('ROLE_CALL_BUDGET_DENIED');
       write(directory+'/'+operation.id+'.json',{schemaVersion:1,...operation,at:new Date().toISOString()});
       safe=false;
       const result=await perform();

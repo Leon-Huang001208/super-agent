@@ -125,3 +125,32 @@ test('operations documentation skill has its actual read-docs tool route',()=>{
  const result=resolveRoleCapabilities({role:'devops',toolCatalog:[{name:'firecrawl.firecrawl_search',annotations:{readOnlyHint:true}}]});
  assert.ok(result.mcpAllowedTools.includes('firecrawl.firecrawl_search'));
 });
+
+test('catalog discovery cannot certify connection, action or business acceptance',()=>{
+ const result=resolveRoleCapabilities({role:'research',toolCatalog:[
+  {name:'firecrawl.firecrawl_search',connected:true,actionTested:true,businessAccepted:true},
+  {name:'host.project_inspect',connected:true},
+ ]});
+ const stages=['assigned','materialized','discovered','connected','action-tested','business-accepted'];
+ assert.deepEqual(result.evidence.stages,stages);
+ for(const tool of result.evidence.tools){
+  assert.deepEqual(Object.keys(tool.stages),stages);
+  assert.equal(tool.stages.assigned,'PASS');
+  assert.equal(tool.stages.materialized,'NOT_RUN');
+  assert.equal(tool.stages.discovered,['firecrawl.firecrawl_search','host.project_inspect'].includes(tool.name)?'PASS':'NOT_RUN');
+  for(const stage of ['connected','action-tested','business-accepted'])assert.equal(tool.stages[stage],'NOT_RUN');
+ }
+ assert.ok(result.evidence.skills.every(skill=>skill.stages.assigned==='PASS'&&stages.slice(1).every(stage=>skill.stages[stage]==='NOT_RUN')));
+ assert.ok(result.evidence.tools.some(tool=>tool.name==='firecrawl.firecrawl_search'));
+ assert.ok(!result.evidence.tools.some(tool=>tool.name==='github.merge_pull_request'));
+});
+
+test('RWB release is a DevOps candidate and is never inherited through role composition',()=>{
+ assert.ok(resolveRoleCapabilities({role:'devops'}).hostAllowedTools.includes('host.rwb_release'));
+ for(const role of ROLE_KEYS.filter(role=>role!=='devops')){
+  const result=resolveRoleCapabilities({role,additionalCapabilities:['devops'],toolCatalog:[{name:'host.rwb_release'}]});
+  assert.ok(!result.hostAllowedTools.includes('host.rwb_release'),role);
+  assert.ok(!result.evidence.tools.some(tool=>tool.name==='host.rwb_release'),role);
+ }
+ assert.equal(resolveRoleCapabilities({role:'devops'}).evidence.tools.find(tool=>tool.name==='host.rwb_release').stages.discovered,'NOT_RUN');
+});
