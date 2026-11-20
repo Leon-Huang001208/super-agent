@@ -4,6 +4,7 @@ import{AdmissionMeter}from'./admission.mjs';import{ROLE_ROOT as R,readControl,wr
 import{authorizeChiefOwnerInput,validateTeamPlan,validateTeamCodeCandidate,validateTeamQaResult,validateTeamCheckEvidence,codeReviewForTeamStep}from'./team-plan.mjs';import{TEAM_ROLES,validateTeamRoster}from'./team-roles.mjs';
 import{readRoleProjectContext}from'./role-project-context.mjs';
 import{validateNativeRoleRetry,advanceNativeRetryFlow,archiveNativeRetryFailure,clearArchivedRetryLock,rebindNativeRetryContext,NATIVE_RETRY_CONTEXT}from'./role-native-retry.mjs';
+import{consumeQueuedNativeRoleRetry}from'./role-native-retry-consumer.mjs';
 const P='/opt/paperclip/node_modules',sha=b=>createHash('sha256').update(b).digest('hex');
 const fail=code=>{throw Object.assign(Error(code),{code});};
 const log=e=>fs.appendFileSync(R+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...e})+'\n',{mode:0o600});
@@ -243,6 +244,12 @@ async function driveFlow(p,r,file){
 async function resumeWaiting(p,r){for(const name of fs.readdirSync(R+'/team/waiting').filter(x=>x.endsWith('.json'))){const file=R+'/team/waiting/'+name,w=readControl(file),task=await p.issue.getById(w.taskId);if(!task||['done','cancelled'].includes(task.status)||taskInputRevision(task)!==w.inputRevision)continue;const[wakeup]=await p.db.select().from(p.schema.agentWakeupRequests).where(p.orm.eq(p.schema.agentWakeupRequests.id,w.wakeupId));if(wakeup?.requestedByActorId!==r.ownerId||wakeup.requestedByActorType!=='user')fail('TEAM_WAIT_OWNER_CHANGED');if(task.status!=='todo'||task.assigneeUserId!==r.ownerId||task.assigneeAgentId||task.projectId!==projectIdFor(r,w)||task.responsibleUserId!==r.ownerId)continue;const runId=await wakeRole(p,r,task,{role:'chief'},{rootTaskId:task.id,phase:'plan'});if(!runId)return false;fs.renameSync(file,file+'.resumed');return true;}return false;}
 export function startTeamCoordinator({database}){
  dirs();let busy=false,lastError='';const tick=async()=>{if(busy)return;busy=true;try{let r=readControl(R+'/registry.json');if(r.team?.enabled!==true)return;const p=await ports(database);
+  const queued=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.inArray(p.schema.heartbeatRuns.status,['queued','running','scheduled_retry']));
+  if(queued.length===1&&queued[0].status==='queued'){
+   const op=r.operations.find(value=>value.id===r.lease?.operationId),tasks=[];let parentRun=null;
+   if(op){parentRun=await getRunForOp(p,op);for(const id of [op.taskId,op.rootTaskId])tasks.push(await p.issue.getById(id));}
+   if(await consumeQueuedNativeRoleRetry({registry:r,activeRuns:queued,parentRun,tasks,resume:(companyId,agentId)=>p.heartbeat.resumeQueuedRunsForAgent(companyId,agentId),log}))return;
+  }
   if(!await releaseKnownIdle(p,r))return;
   const active=await p.db.select({id:p.schema.heartbeatRuns.id}).from(p.schema.heartbeatRuns).where(p.orm.inArray(p.schema.heartbeatRuns.status,['queued','running','scheduled_retry']));if(active.length)return;
   for(const op of r.operations.filter(x=>x.kind==='run'&&x.role==='chief'&&x.phase==='plan')){const run=await getRunForOp(p,op);if(run?.status==='succeeded')await dispatchPlan(p,r,op,run);}

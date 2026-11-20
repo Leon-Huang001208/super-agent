@@ -10,6 +10,8 @@
 
 Skill方法包单独只读挂载，保留包内相对引用与摘要；CODEX_HOME/skills只建立选定入口。运行中实际tools/list、调用结果和缺依赖原因是可用性证据。参见[实施与接口](plans/role-capabilities.md)及[岗位说明](team.md)。
 
+受控模式关闭Native全局heartbeat scheduler时，官方retry-now只将原重试提升为queued。现有team tick在旧锁/active早退前，仅将全局唯一、当前lease登记work-step的queued重试交给Native `resumeQueuedRunsForAgent`；不提升scheduled、不创建任务/run或另一队列。Native claim和后续执行仍走原消费者与retry binder的完整校验。事前选择与Native claim非原子，返回非目标ID时记录unknown并停止，不生成补偿run；Native完成阶段原有后续pump保持其生命周期。
+
 角色指令使用Paperclip原生Managed bundle，每个角色只登记自己的`<role>/AGENTS.md`。原生文件服务的进程内装配保留认证与内容冲突检查，保存前保全旧内容，保存后同步本项目材料manifest和摘要。同步尚未完成时拒绝新执行，恢复仍核对同一次修改；旧角色配置、UUID材料和运行记录保留。参见[角色指令迁移](plans/role-instructions.md)。
 
 ## 组件与数据流
