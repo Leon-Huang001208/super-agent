@@ -8,6 +8,8 @@
 
 宿主Git/check与选定MCP要有真实入口结果；网络/资源事实来自宿主。QA在干净的精确候选上独立执行，发布消费Native QA与实际检查记录；旧SHA或自签结果必须拒绝。取消包装进程时核对其后代退出；命令失败应把脱敏的退出码和定位信息返回模型。网页保存及历史保留沿前节回归。
 
+Native全局scheduler保持原受控关闭状态。恢复既有scheduled retry时用官方retry-now，记录同一run变为queued；现有team tick仅在当前登记work-step和全局唯一queued匹配时调用Native消费者。scheduled、其他任务、其他active行与陈旧输入不得触发消费；claim返回仅证明Native已认领并安排执行，不能当provider/业务成功。执行前仍须通过retry binder，不重置锁、预算或会话，不另起wake/run。
+
 ## 角色指令网页保存
 
 迁移11角色前记录每个角色的Agent ID、原adapterConfig/runtimeConfig、manifest、旧材料摘要及既有运行数量。排空后用精确文件集合建立独立Managed bundle，每个列表只含自身角色的可读路径，旧UUID文件及历史不删除。迁移后逐角色核对入口、内容摘要和非指令配置保持一致。
