@@ -107,3 +107,13 @@ RWB 是当前运行覆盖层的内置项目，保留现有 `/rwb` 兼容入口�
 在统一集成状态根的私有 `feishu-project-rwb/policy.json` 设置有效窗口和至多两组精确路径。每组写入预先用目标仓库验证规划器核实的检查 ID。原运行配置保持 `dispatchMode=off` 和 `githubMode=off`，仅专项已绑定任务进入受控派发。结束时排空原操作、关闭专项策略并保留记录。回退恢复原容器定义和镜像，先核对在途操作与远端 PR。
 
 已完成的旧调用若因运行包的历史索引过期而挡住新任务，先核对对应私有 claim、scope、原授权、启动记录、产物回执和 Native 终态。用 `scripts/prepare-closed-claim-history.mjs` 从固定审计源码和本机选定的历史 claim 生成只读覆盖文件。索引只用于定位旧调用，运行时仍完整验证原有证据。保留原调用及账本。待续接任务使用原操作的未派发恢复入口，先核对窗口已关闭及模型调用为零。
+
+## Paperclip Tailscale 独立入口
+
+本轮获准的最小入口为 `https://mac-mini-1.tail947973.ts.net:8443/LEO/dashboard`，通过已有 Tailscale Serve 转发到 `http://127.0.0.1:8097`。登录入口为同源 `/auth`。仅新增 8443，不覆盖现有 443 的根路径和 `/collections`，不启用 Funnel；运行前仍须回读实际 Serve、tailnet 有效访问策略及网关容器来源。
+
+网关候选的 Host/转发头和一次性诊断探针合同见[开发地图](development-map.md#paperclip-私有-https-网关候选)。探针由运行配置负责人在无活动任务的窗口内临时启用，从实际 HTTPS8443 发起精确 nonce 请求，保存三项入站头证据后关闭。不能以 curl 发出的 Host 代替网关实际收到的 Host。若入站与白名单不符，先停止该候选上线，禁止通过信任任意客户端 forwarded 头解决。
+
+Public URL、认证显式 base URL、managed runtime URL 与精确 trusted origins 必须由同一配置负责人根据固定 Paperclip 版本的认证契约统一调整。保留原配置与镜像身份，先排空并核实无未知 Native run，再操作必要的专用容器。检查旧本机 HTTP 会话、HTTPS 登录及 Secure Cookie、错误 Origin 拒绝、实时连接、443 与 collections 回归，最后从另一授权 tailnet 设备验证。页面200仅表示静态入口，不能记为登录或全链验收通过。
+
+网络侧回退仅运行 `tailscale serve --https=8443 off`，回读确认 443 两条转发不变；重新启用使用 `tailscale serve --bg --https=8443 http://127.0.0.1:8097`。不要使用 `serve reset` 或把过期完整快照覆盖共享配置。应用/网关回退仍由原配置负责人按记录恢复；Serve 配置、应用上线、本机验收和跨设备验收分别记录。

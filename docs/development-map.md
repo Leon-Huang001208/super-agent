@@ -81,3 +81,11 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 `team-result-notification.mjs`复用已有飞书SDK和本人绑定，持久化结果outbox；发送成功不重复调用，未知结果停止等待核对。`scripts/role-transport-resident.mjs`是既有宿主Node的Docker管理传输与只读宿主快照，模型及产品协调逻辑仍在Docker。只读Snapshot不授予系统修改权，使用WorkDisk/原数据卷前核对固定UUID。新宿主开机服务不在本轮配置。
 
 `team-configure.mjs`明确新角色paused纯登记，保护原ID/配置/材料；`team-bootstrap.mjs`串行复用原Native lifecycle，保留真实探针与无新探针的区别。296项当前离线回归已通过；Native11配置及8新探针通过，新的Chief联合闭环尚未作为通过记录。
+
+## Paperclip 私有 HTTPS 网关候选
+
+`docker/gateway.mjs` 的 HTTP 和 WebSocket Upgrade 共用 Host 白名单与转发头重建。精确 `mac-mini-1.tail947973.ts.net:8443` 映射 HTTPS；`localhost`、`127.0.0.1`、`[::1]` 及有效端口映射 HTTP。未知、重复、歧义 Host 返回 421，不访问固定后端；客户端 `Forwarded`、`X-Forwarded-*`、`X-Real-IP` 与代理认证头不被信任。回归 `tests/gateway.test.mjs` 通过真实 HTTP/Upgrade 后端核对协议、认证头保留、拒绝和净化行为。
+
+`SUPER_AGENT_GATEWAY_HEADER_PROBE_NONCE` 默认不设置。配置必须为 32 位小写十六进制随机值；仅精确 `GET /__sa_header_probe_<nonce>` 消费一次，每个网关进程最多记录一条 JSON，且仅含收到的 `host`、`x-forwarded-host`、`x-forwarded-proto`（去控制字符、每项最多 256 字符）。探针不转发后端、不返回头值，非 GET 为 405，已消费为 410，Upgrade 为 400。重启会重置内存次数，取证后必须删除该环境变量；候选不能把探针日志当成已上线证据。
+
+Host 策略依赖 Docker 将网关继续只发布到宿主 loopback。它不授予用户身份，也不绕过 Paperclip 的 authenticated/private、登录及 Origin 校验。Public URL、认证 base URL、精确 trusted origins、转发实测、旧本机会话与 HTTPS Secure Cookie、错误 Origin 和真实实时连接由运行配置负责人在排空后统一验证；离线测试通过不代表这些已完成。
