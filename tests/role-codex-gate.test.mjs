@@ -36,7 +36,7 @@ test('role gate accepts an exact managed role entry and pins its run copy', () =
   const permit={schemaVersion:1,credentialGrantId:id,projectId:id,role:'research',runId:id,taskId:id,agentId:id,companyId:id,
     model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:200000,
     cwd:'/paperclip/control/research-pm/workspaces/research',materialSha256:'a'.repeat(64),
-    instructionsFilePath:'/paperclip/control/research-pm/instruction-runs/'+id+'/research/AGENTS.md',
+    instructionsFilePath:'/paperclip/instances/default/companies/'+id+'/agents/'+id+'/file-sync/runs/'+id+'/live/research/AGENTS.md',
     materialSourcePath:source};
   const args=['--search','exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"',...NATIVE_ROLE_MANAGED_ARGS,'-'];
   const env={PAPERCLIP_RUN_ID:id,PAPERCLIP_AGENT_ID:id,PAPERCLIP_COMPANY_ID:id,PAPERCLIP_TASK_ID:id,

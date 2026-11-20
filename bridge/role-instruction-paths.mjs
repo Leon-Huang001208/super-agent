@@ -1,34 +1,30 @@
-import fs from 'node:fs';
 import path from 'node:path';
-import {createHash} from 'node:crypto';
-import {ROLE_KEYS} from './role-labels.mjs';
 
-const ROOT='/paperclip/control/research-pm';
-const uuid=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
-const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 
 export function isRoleInstructionPermitPath(permit) {
   if (!permit.materialSourcePath) return /^\/paperclip\/control\/research-pm\/materials\/[a-f0-9-]{36}\.md$/.test(permit.instructionsFilePath??'');
   const source='/paperclip/instances/default/companies/'+permit.companyId+'/agents/'+permit.agentId+'/instructions/'+permit.role+'/AGENTS.md';
-  return permit.materialSourcePath===source && permit.instructionsFilePath===ROOT+'/instruction-runs/'+permit.runId+'/'+permit.role+'/AGENTS.md';
+  const copy='/paperclip/instances/default/companies/'+permit.companyId+'/agents/'+permit.agentId+'/file-sync/runs/'+permit.runId+'/live/'+permit.role+'/AGENTS.md';
+  return permit.materialSourcePath===source && permit.instructionsFilePath===copy;
 }
 
-/** A run reads its admitted bytes even if the owner saves the next version. */
-export function pinRoleInstruction({source,sha256,runId,role,root=ROOT+'/instruction-runs'}) {
-  if(!uuid.test(runId??'')||!ROLE_KEYS.includes(role))fail('ROLE_MATERIAL_PATH_DENIED');
-  const bytes=fs.readFileSync(source);
-  if(sha(bytes)!==sha256)fail('ROLE_MATERIAL_CHANGED');
-  const directory=path.join(root,runId,role),target=path.join(directory,'AGENTS.md');
-  fs.mkdirSync(directory,{recursive:true,mode:0o700});
-  if(fs.existsSync(target)) {
-    const stat=fs.lstatSync(target);
-    if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||sha(fs.readFileSync(target))!==sha256)fail('ROLE_MATERIAL_CHANGED');
-  } else {
-    const fd=fs.openSync(target,'wx',0o600);
-    try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
-  }
-  return target;
+/** Native owns the per-run copy. Match its admitted baseline to known material history. */
+export function resolveRoleInstructionCopy({role,identity,workingCopy,baseline,history=[],executionPath}) {
+  const root='/paperclip/instances/default/companies/'+identity.companyId+'/agents/'+identity.agentId+'/instructions';
+  const entry=role.profile.role+'/AGENTS.md',localRoot=path.join(path.dirname(root),'file-sync','runs',identity.runId,'live');
+  if(role.materialRoot!==root||role.manifest.instructionsFilePath!==entry||
+      !workingCopy||workingCopy.companyId!==identity.companyId||workingCopy.agentId!==identity.agentId||workingCopy.runId!==identity.runId||
+      workingCopy.responsibleUserId!==identity.ownerId||workingCopy.entryFile!==entry||workingCopy.state!=='prepared'||workingCopy.location!=='local'||
+      workingCopy.localRoot!==localRoot||workingCopy.executionRoot!==localRoot||executionPath!==path.join(localRoot,entry))fail('NATIVE_ROLE_INSTRUCTION_COPY_DENIED');
+  const files=baseline?.entries;
+  if(!(files instanceof Map))fail('NATIVE_ROLE_INSTRUCTION_BASELINE_CHANGED');
+  const count=[...files.values()].filter(file=>file.kind==='file').length;
+  const known=[role.manifest,...history.filter(item=>item.agentId===identity.agentId&&item.materialRoot===root).map(item=>item.manifest)];
+  const manifest=known.find(item=>item.instructionsFilePath===entry&&item.files.length===count&&item.files.every(file=>
+    files.get(file.path)?.kind==='file'&&files.get(file.path).hash===file.sha256));
+  if(!manifest)fail('NATIVE_ROLE_INSTRUCTION_BASELINE_CHANGED');
+  return {materialRoot:localRoot,manifest:structuredClone(manifest),sourceInstructionsFilePath:path.join(root,entry)};
 }
 
 /** Call only after validating the permit's complete container path. */
