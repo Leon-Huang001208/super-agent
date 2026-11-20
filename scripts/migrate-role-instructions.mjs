@@ -142,6 +142,7 @@ async function main() {
   const schema = await import(P + '/@paperclipai/db/dist/index.js'), orm = await import(P + '/drizzle-orm/index.js');
   const password = fs.readFileSync('/paperclip/secrets/postgres-password', 'utf8').trim();
   const url = 'postgres://paperclip:' + encodeURIComponent(password) + '@db:5432/paperclip';
+  process.env.DATABASE_URL = url;
   const db = schema.createDb(url, { maxConnections: 2, applicationName: 'role-instruction-migration' });
   try {
     const native = await import(P + '/@paperclipai/server/dist/services/agent-instructions.js');
@@ -156,7 +157,9 @@ async function main() {
       getAgent: async id => (await db.select().from(schema.agents).where(orm.eq(schema.agents.id, id)))[0],
       resolveManagedRoot: native.resolveManagedInstructionsRoot,
       materializeManagedBundle: (...args) => instructions.materializeManagedBundle(...args),
-      updateAgentConfiguration: (id, patch) => db.transaction(tx => configuration.updateAgentConfigurationInTransaction(tx, id, patch, { allowPendingApprovalConfigUpdate: true })),
+      updateAgentConfiguration: (id, patch) => db.transaction(tx => configuration.updateAgentConfigurationInTransaction(tx, id, patch, {
+        allowPendingApprovalConfigUpdate: true, recordRevision: { createdByUserId: readControl(ROLE_ROOT + '/registry.json').ownerId, source: 'role_instructions_managed_migration' },
+      })),
     } });
     console.log(JSON.stringify(result));
   } finally { await schema.closeRegisteredClients(url); }
