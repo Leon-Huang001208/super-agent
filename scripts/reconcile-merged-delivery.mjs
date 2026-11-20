@@ -36,7 +36,9 @@ export function planAdoption(f){
   requireThat(local.head===f.feature&&local.branch===r.featureBranch&&local.commonMatches===true&&local.registered===true&&local.dirty===false&&Array.isArray(local.ignored)&&local.ignored.length===0&&local.aliasExists===false&&local.aliasPathExists===false,'LOCAL_STATE');
   requireThat(local.remoteAliasCommit===null&&(local.remoteFeatureCommit===null||local.remoteFeatureCommit===f.feature),'REMOTE_RESOURCE_UNKNOWN');
   requireThat(Array.isArray(local.openPids)&&local.openPids.every(x=>Number.isSafeInteger(x)&&x>0)&&Array.isArray(local.containerRefs??[]),'OCCUPANCY_UNKNOWN');
-  return {status:local.openPids.length||(local.containerRefs??[]).length?'waiting':'ready',nextStatus:'ci_passed',taskId:f.taskId,parentTaskId:f.parentTaskId,featureCommit:f.feature,integrationCommit:f.head,remoteCommit:f.merge,liveTip:f.tip,pullRequest:{url,number:f.prNumber},integrationBranch:`codex/integrate-${f.taskId}-adopted`,integrationWorktree:path.join(f.worktreeRoot,f.taskId+'-integration-adopted'),openPids:local.openPids,containerRefs:local.containerRefs??[]};
+  const cachePids=f.allowReadOnlyVmCache===true?(local.readOnlyVmCachePids??[]):[];
+  const activePids=local.openPids.filter(pid=>!cachePids.includes(pid));
+  return {status:activePids.length||(local.containerRefs??[]).length?'waiting':'ready',nextStatus:'ci_passed',taskId:f.taskId,parentTaskId:f.parentTaskId,featureCommit:f.feature,integrationCommit:f.head,remoteCommit:f.merge,liveTip:f.tip,pullRequest:{url,number:f.prNumber},integrationBranch:`codex/integrate-${f.taskId}-adopted`,integrationWorktree:path.join(f.worktreeRoot,f.taskId+'-integration-adopted'),openPids:local.openPids,readOnlyVmCachePids:cachePids,activePids,containerRefs:local.containerRefs??[]};
 }
 function invoke(command,args,{allowFailure=false,cwd}={}){
   const r=spawnSync(command,args,{cwd,encoding:'utf8',timeout:30000,maxBuffer:16*1024*1024});
@@ -109,9 +111,11 @@ function inspect(options,run=invoke){
   requireThat(!fs.lstatSync(receipt.featureWorktree).isSymbolicLink(),'WORKTREE_SYMLINK');
   const list=output(git(['worktree','list','--porcelain']));
   const alias=`codex/integrate-${options.taskId}-adopted`,aliasPath=path.join(options.worktreeRoot,options.taskId+'-integration-adopted');
-  const lsof=run('lsof',['-nP','-Fpc','+D',receipt.featureWorktree],{allowFailure:true});
+  const lsof=run('lsof',['-nP','-Fpcfa','+D',receipt.featureWorktree],{allowFailure:true});
   requireThat(!lsof.error&&((lsof.status===0)||(lsof.status===1&&!lsof.stdout&&!lsof.stderr)),'OCCUPANCY_UNKNOWN');
   const pids=[...new Set(lsof.stdout.split('\n').filter(x=>/^p\d+$/.test(x)).map(x=>Number(x.slice(1))))];
+  const commands=options.allowReadOnlyVmCache?Object.fromEntries(pids.map(pid=>[pid,output(run('ps',['-p',String(pid),'-o','comm='],{allowFailure:true}))])):{};
+  const cachePids=options.allowReadOnlyVmCache?readOnlyVmCachePids(lsof.stdout,commands):[];
   const ids=output(run('docker',['--context','desktop-linux','ps','-aq']));
   const containers=ids?run('docker',['--context','desktop-linux','inspect','--format','{{json .Mounts}}',...ids.split(/\s+/)]).stdout.trim().split('\n').map((line,i)=>({Id:ids.split(/\s+/)[i],Mounts:JSON.parse(line)})):[];
   const names=[...new Set(containers.flatMap(c=>{requireThat(Array.isArray(c.Mounts),'MOUNT_UNKNOWN');return c.Mounts.filter(m=>m?.Type==='volume').map(m=>{requireThat(typeof m.Name==='string'&&m.Name.length>0,'MOUNT_UNKNOWN');return m.Name;});}))];
@@ -119,7 +123,7 @@ function inspect(options,run=invoke){
   const refs=referencedContainers(containers,receipt.featureWorktree,volumes);
   const remoteRefs=output(git(['ls-remote','origin','refs/heads/'+receipt.featureBranch,'refs/heads/'+alias])).split('\n').filter(Boolean).map(line=>line.split(/\s+/));
   const refCommit=branch=>remoteRefs.find(([,name])=>name==='refs/heads/'+branch)?.[0]??null;
-  const facts={...options,repositoryRoot:root,remoteUrl,defaultBranch:branch,tip,receipt,parent,pr,protection,ci,ancestors,local:{head:output(git(['rev-parse','HEAD'],false,receipt.featureWorktree)),branch:output(git(['branch','--show-current'],false,receipt.featureWorktree)),commonMatches:fs.realpathSync(path.resolve(receipt.featureWorktree,output(git(['rev-parse','--git-common-dir'],false,receipt.featureWorktree))))===common,registered:list.split('\n\n').some(block=>block.includes('worktree '+receipt.featureWorktree+'\n')&&block.includes('branch refs/heads/'+receipt.featureBranch)),dirty:!!output(git(['status','--porcelain','--untracked-files=all'],false,receipt.featureWorktree)),ignored:output(git(['ls-files','--others','--ignored','--exclude-standard'],false,receipt.featureWorktree)).split('\n').filter(Boolean),aliasExists:git(['show-ref','--verify','refs/heads/'+alias],true).status===0,aliasPathExists:fs.existsSync(aliasPath),openPids:pids,containerRefs:refs}};
+  const facts={...options,repositoryRoot:root,remoteUrl,defaultBranch:branch,tip,receipt,parent,pr,protection,ci,ancestors,local:{head:output(git(['rev-parse','HEAD'],false,receipt.featureWorktree)),branch:output(git(['branch','--show-current'],false,receipt.featureWorktree)),commonMatches:fs.realpathSync(path.resolve(receipt.featureWorktree,output(git(['rev-parse','--git-common-dir'],false,receipt.featureWorktree))))===common,registered:list.split('\n\n').some(block=>block.includes('worktree '+receipt.featureWorktree+'\n')&&block.includes('branch refs/heads/'+receipt.featureBranch)),dirty:!!output(git(['status','--porcelain','--untracked-files=all'],false,receipt.featureWorktree)),ignored:output(git(['ls-files','--others','--ignored','--exclude-standard'],false,receipt.featureWorktree)).split('\n').filter(Boolean),aliasExists:git(['show-ref','--verify','refs/heads/'+alias],true).status===0,aliasPathExists:fs.existsSync(aliasPath),openPids:pids,readOnlyVmCachePids:cachePids,containerRefs:refs}};
   facts.local.remoteFeatureCommit=refCommit(receipt.featureBranch);facts.local.remoteAliasCommit=refCommit(alias);
   return {facts,plan:planAdoption(facts),state,common,receiptFile,parentFile,receiptBytes,parentBytes,receiptSha256:sha(receiptBytes),parentSha256:sha(parentBytes)};
 }
@@ -156,7 +160,7 @@ export function recordVerifiedAdoption(checked,options,git){
   git(['branch','--set-upstream-to=origin/'+checked.facts.defaultBranch,p.integrationBranch]);
   requireThat(git(['rev-parse',p.integrationBranch]).stdout.trim()===p.integrationCommit,'ALIAS_IDENTITY');
   requireThat(sha(regularFile(checked.receiptFile))===checked.receiptSha256&&sha(regularFile(checked.parentFile))===checked.parentSha256,'RECEIPT_DRIFT');
-  const r={...checked.facts.receipt,featureCommit:options.feature,integrationBranch:p.integrationBranch,integrationWorktree:p.integrationWorktree,integrationCommit:p.integrationCommit,mergeSourceCommit:options.feature,mode:'pr',pullRequest:p.pullRequest,remoteCommit:p.remoteCommit,status:'ci_passed',verification:{...checked.facts.parent.verification,source:'parent-delivery',parentTaskId:options.parentTaskId},ci:{...checked.facts.ci,checkedAt:now},adoption:{kind:'merged-parent-pr',operationId,parentTaskId:options.parentTaskId,evidenceFile:intent,evidenceSha256:sha(regularFile(intent)),originalReceiptSha256:checked.receiptSha256},updatedAt:now};
+  const r={...checked.facts.receipt,featureCommit:options.feature,integrationBranch:p.integrationBranch,integrationWorktree:p.integrationWorktree,integrationCommit:p.integrationCommit,mergeSourceCommit:options.feature,mode:'pr',pullRequest:p.pullRequest,remoteCommit:p.remoteCommit,status:'ci_passed',verification:{...checked.facts.parent.verification,source:'parent-delivery',parentTaskId:options.parentTaskId},ci:{...checked.facts.ci,checkedAt:now},adoption:{kind:'merged-parent-pr',operationId,parentTaskId:options.parentTaskId,evidenceFile:intent,evidenceSha256:sha(regularFile(intent)),originalReceiptSha256:checked.receiptSha256,sourceOccupancy:{openPids:p.openPids,readOnlyVmCachePids:p.readOnlyVmCachePids,activePids:p.activePids,containerRefs:p.containerRefs,allowReadOnlyVmCache:options.allowReadOnlyVmCache===true}},updatedAt:now};
   atomic(checked.receiptFile,r);
   fs.appendFileSync(path.join(checked.state,'logs','iteration-delivery.jsonl'),JSON.stringify({timestamp:now,taskId:options.taskId,event:'reconciled_merged_parent_pr',operationId,integrationCommit:p.integrationCommit,featureCommit:options.feature,parentTaskId:options.parentTaskId})+'\n',{mode:0o600});
   return {...p,dryRun:false,status:'ci_passed',operationId,cleanup:'NOT_RUN',enforce:'NOT_RUN'};
@@ -177,11 +181,22 @@ export function reconcileMergedDelivery(options){
   });
 }
 function parse(args){
-  const out={apply:false};const keys={'--project':'project','--task-id':'taskId','--parent-task':'parentTaskId','--feature-commit':'feature','--pr-head':'head','--merge-commit':'merge','--pr-number':'prNumber','--worktree-root':'worktreeRoot','--expect-receipt-sha256':'expectedReceiptSha256'};
-  for(let i=0;i<args.length;i++){if(args[i]==='--apply'){requireThat(!out.apply,'CLI_INVALID');out.apply=true;continue;}const key=keys[args[i]];requireThat(key&&!Object.hasOwn(out,key)&&args[i+1]&&!args[i+1].startsWith('--'),'CLI_INVALID');out[key]=args[++i];}
+  const out={apply:false,allowReadOnlyVmCache:false};const keys={'--project':'project','--task-id':'taskId','--parent-task':'parentTaskId','--feature-commit':'feature','--pr-head':'head','--merge-commit':'merge','--pr-number':'prNumber','--worktree-root':'worktreeRoot','--expect-receipt-sha256':'expectedReceiptSha256'};
+  for(let i=0;i<args.length;i++){if(args[i]==='--allow-readonly-vm-cache'){requireThat(!out.allowReadOnlyVmCache,'CLI_INVALID');out.allowReadOnlyVmCache=true;continue;}if(args[i]==='--apply'){requireThat(!out.apply,'CLI_INVALID');out.apply=true;continue;}const key=keys[args[i]];requireThat(key&&!Object.hasOwn(out,key)&&args[i+1]&&!args[i+1].startsWith('--'),'CLI_INVALID');out[key]=args[++i];}
   requireThat(typeof out.project==='string'&&typeof out.worktreeRoot==='string','CLI_INVALID');out.prNumber=Number(out.prNumber);return out;
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   try{console.log(JSON.stringify(reconcileMergedDelivery(parse(process.argv.slice(2))),null,2));}
   catch(error){console.error(/^RECONCILE_[A-Z_]+$/.test(error.message)?error.message:'RECONCILE_FAILED');process.exitCode=1;}
+}
+
+export function readOnlyVmCachePids(output,commands){
+  const vm='/System/Library/Frameworks/Virtualization.framework/Versions/A/XPCServices/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine';
+  const access=new Map();let pid;
+  for(const line of output.split('\n')){
+    if(/^p[0-9]+$/.test(line)){pid=Number(line.slice(1));access.set(pid,[]);}
+    else if(line.startsWith('f')&&access.has(pid))access.get(pid).push(null);
+    else if(line.startsWith('a')&&access.get(pid)?.length){const modes=access.get(pid);modes[modes.length-1]=line.slice(1);}
+  }
+  return [...access].filter(([p,modes])=>commands[p]===vm&&modes.length>0&&modes.every(mode=>mode==='r')).map(([p])=>p);
 }

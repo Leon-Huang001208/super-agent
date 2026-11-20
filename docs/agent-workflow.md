@@ -56,3 +56,5 @@ RWB 代办使用 RWB 自身入口及规则，最高交付 PR；不得调用可�
 应用前保留精确源码评审、真实 PR/CI/保护及源归属证据，并确认本任务授权。dry-run 的 receiptSha256 必须通过 --expect-receipt-sha256 原样绑定，--apply 是显式写入门；没有该开关不写状态或创建路径。占用尚未自然释放时仅等待，不使用 TTL 猜空闲，不重启 Docker 或强删。真实对账只创建子任务自己的 integration alias、不可覆盖的 intent 证据、ci_passed 回执和审计事件；父回执保持不变。父验证通过记录作为来源引用，不谎称重新执行了其测试。
 
 发生部分 Git 写入、回执漂移或未知结果时保留 intent、原回执和已创建资源，禁止自动重试、另起名字或消除锁。先对照同一 operation 的真实 Git/回执现场；未核清不能再次 apply。完成对账后仍由固定 project-runtime.mjs delivery --status/--cleanup 及 enforce --require-delivery 执行真实门禁。回收前重查源和 integration alias 的进程、容器引用及未知文件；对账本身不删除工作树、分支或远端资源。
+
+在已获本人明确授权区分只读VM缓存的任务中，可以加 --allow-readonly-vm-cache。该选项只排除已核实的系统Virtualization进程、每个源FD均为只读、且无容器源引用的缓存；不得据进程名称、等待时长或容器停止推定安全。dry-run与真实adoption记录保留实际PID及分类。后续仍执行普通Git/controller cleanup，不使用force或重启Docker。未获此授权时继续原自然释放条件。
