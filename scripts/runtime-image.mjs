@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 export const INPUT_FILES = [
   ...[
   'Dockerfile.runtime', 'entrypoint.sh', 'bootstrap.mjs', 'serve.mjs',
-  'server-entry.mjs', 'chief-web-app-hook.mjs', 'complete-lock.mjs', 'verify-install.mjs',
+  'server-entry.mjs', 'chief-web-app-hook.mjs', 'role-ai-binding-hook.mjs', 'complete-lock.mjs', 'verify-install.mjs',
   'codex-hello-gate.mjs', 'codex-chief-web-gate.mjs', 'package.install.json', 'package-lock.install.json',
   ].map(name => 'docker/' + name),
   'bridge/chief-web-call-admission.mjs',

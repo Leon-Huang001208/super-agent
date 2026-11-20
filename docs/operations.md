@@ -2,6 +2,8 @@
 
 ## 原生Agent切换
 
+保持原AI连接时，配置更新不应触发无许可generic hello。固定源的进程内AI equality修复只纠正键顺序误判，不能关闭真实连接变更验证；源SHA漂移应停止装配。首次分配官方paperclip操作包也须有Native版本快照，包含其全部references/scripts，不能仅把SKILL.md登记为完整能力。
+
 安装版公司Skill列表是轻量视图，不携带完整metadata。同步只为本次审查清单命中的sourceLocator读取已认证详情，核对id/company/sourceLocator后补充reviewedSource；不把列表缺字段当成审查记录丢失，也不批量拉取无关技能的正文。
 
 实际安装版的本地目录导入不会自动建立currentVersion。同步工具对新导入和已导入但缺版本的包，先核验完整目录，再通过原生`POST /companies/:companyId/skills/:skillId/versions`创建唯一缺失快照，回读逐文件比对后才分配；已有版本不覆盖。`--asset-root`和`--package-root`必须指向公司已登记workspace或受管Skill目录中的任务专用暂存，不能放宽后端目录边界。并存的GitHub自动导入条目保留，优先选本轮已审查的固定版本。

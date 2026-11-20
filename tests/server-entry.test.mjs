@@ -1,2 +1,30 @@
 import test from'node:test';import assert from'node:assert/strict';import fs from'node:fs';import path from'node:path';import os from'node:os';
 test('server loader supports the published import-only package export',async t=>{const d=fs.mkdtempSync(path.join(os.tmpdir(),'sa-esm-'));t.after(()=>fs.rmSync(d,{recursive:true}));const dir=path.join(d,'node_modules','@paperclipai','server');fs.mkdirSync(path.join(dir,'dist'),{recursive:true});fs.writeFileSync(path.join(dir,'package.json'),JSON.stringify({type:'module',exports:{'.':{import:'./dist/index.js'}}}));fs.writeFileSync(path.join(dir,'dist','index.js'),'export function startServer(){return {listening:true};}');const{loadServer}=await import('../docker/server-entry.mjs');const m=await loadServer(d);assert.deepEqual(m.startServer(),{listening:true});});
+
+test('ChiefWeb and role AI hooks are installed together before shared route dependencies load',async t=>{
+ const {registerHooks}=await import('node:module'),{pathToFileURL}=await import('node:url'),{createHash}=await import('node:crypto');
+ const {patchRoleAiBindingSource}=await import('../docker/role-ai-binding-hook.mjs');
+ const prior=process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED;process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED='true';t.after(()=>{if(prior===undefined)delete process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED;else process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED=prior;});
+ const d=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'sa-hook-order-'));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));
+ const root=path.join(d,'node_modules/@paperclipai/server'),dist=root+'/dist';fs.mkdirSync(dist+'/services/heartbeat',{recursive:true});fs.mkdirSync(dist+'/routes');
+ fs.writeFileSync(root+'/package.json',JSON.stringify({type:'module',exports:{'.':{import:'./dist/index.js'}}}));
+ fs.writeFileSync(dist+'/app.js','export const app=true;');fs.writeFileSync(dist+'/services/agent-conversations.js','export const conversation=true;');fs.writeFileSync(dist+'/services/heartbeat/queue.js','export const queue=true;');
+ fs.writeFileSync(dist+'/services/index.js','export {chiefPatched as conversationPatched} from "./agent-conversations.js";export {chiefPatched as queuePatched} from "./heartbeat/queue.js";');
+ const original='import {conversationPatched,queuePatched} from "../services/index.js";export const dependencyHooksApplied=conversationPatched&&queuePatched;export function changed(nextAiBinding,existing){return JSON.stringify(nextAiBinding) !== JSON.stringify(existing.runtimeConfig.aiConnection);}';fs.writeFileSync(dist+'/routes/agents.js',original);
+ fs.writeFileSync(dist+'/index.js','import "./app.js";export * from "./routes/agents.js";');
+ const events=[],urls=names=>names.map(name=>pathToFileURL(dist+'/'+name).href);
+ const chiefHookFactory=()=>{events.push('chief.install');const expected=new Set(urls(['app.js','services/agent-conversations.js','services/heartbeat/queue.js'])),applied=new Set();const hook=registerHooks({load(url,context,next){const result=next(url,context);if(!expected.has(url))return result;events.push('chief.load');applied.add(url);return {...result,source:Buffer.from(result.source).toString()+'\nexport const chiefPatched=true;'};}});return {verify(){events.push('chief.verify');assert.equal(applied.size,3);},close(){events.push('chief.close');hook.deregister();}};};
+ const aiHookFactory=()=>{events.push('ai.install');let applied=false;const hook=registerHooks({load(url,context,next){const result=next(url,context);if(url!==urls(['routes/agents.js'])[0])return result;events.push('ai.load');applied=true;return {...result,source:patchRoleAiBindingSource(Buffer.from(result.source).toString(),{expectedSha256:createHash('sha256').update(original).digest('hex')})};}});return {verify(){events.push('ai.verify');assert.equal(applied,true);},close(){events.push('ai.close');hook.deregister();}};};
+ const {loadServer}=await import('../docker/server-entry.mjs');const server=await loadServer(d,{mountChiefWebPilot(){},settleChiefWebPilot(){},recoverChiefWebSkippedWake(){},chiefHookFactory,aiHookFactory});
+ assert.equal(server.dependencyHooksApplied,true);assert.equal(server.changed({mode:'responsible_user',provider:'openai',method:'subscription'},{runtimeConfig:{aiConnection:{mode:'responsible_user',method:'subscription',provider:'openai'}}}),false);
+ assert.deepEqual(events.slice(0,2),['chief.install','ai.install']);assert.deepEqual(events.slice(-4),['chief.verify','ai.verify','ai.close','chief.close']);assert.equal(fs.readFileSync(dist+'/routes/agents.js','utf8'),original);
+});
+
+test('shared loader closes already installed hooks when later setup or import fails',async t=>{
+ const prior=process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED;process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED='true';t.after(()=>{if(prior===undefined)delete process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED;else process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED=prior;});
+ const d=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'sa-hook-failure-'));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));const root=path.join(d,'node_modules/@paperclipai/server');fs.mkdirSync(root+'/dist',{recursive:true});fs.writeFileSync(root+'/package.json',JSON.stringify({type:'module',exports:{'.':{import:'./dist/index.js'}}}));fs.writeFileSync(root+'/dist/index.js','throw Error("fixture import failed");');fs.writeFileSync(root+'/dist/app.js','export const app=true;');
+ const {loadServer}=await import('../docker/server-entry.mjs');let events=[];
+ const chiefHookFactory=()=>({verify(){events.push('chief.verify');},close(){events.push('chief.close');}});
+ await assert.rejects(loadServer(d,{mountChiefWebPilot(){},chiefHookFactory,aiHookFactory(){throw Error('fixture setup failed');}}),/fixture setup failed/);assert.deepEqual(events,['chief.close']);
+ events=[];await assert.rejects(loadServer(d,{mountChiefWebPilot(){},chiefHookFactory,aiHookFactory:()=>({verify(){events.push('ai.verify');},close(){events.push('ai.close');}})}),/fixture import failed/);assert.deepEqual(events,['ai.close','chief.close']);
+});

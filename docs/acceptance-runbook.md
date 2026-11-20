@@ -2,6 +2,8 @@
 
 ## Mac原生和公司Skill验收
 
+未变个人订阅在JSONB键顺序重排后仍须被判定为未变；provider、method、connectionId或mode真实变化仍走原Native验证。进程内hook需精确源字节及启动装配合同，不能通过绕过权限或替换认证来完成配置验收。官方paperclip包的12个文件亦核对实际快照与读取。
+
 公司Skill list/detail的字段投影单独验证；审查metadata需以选定来源的详情为准，不能用手造完整列表夹具代替安装版响应。
 
 本地导入真实集成需证明currentVersion已创建、逐文件摘要一致、重复同步不增版本或Agent配置修订。GitHub源与已审查本地快照并存以及上游frontmatter名称不同的场景，都须验证实际被选版本与条件加载。
