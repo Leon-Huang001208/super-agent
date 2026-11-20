@@ -78,6 +78,10 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 
 `bridge/team-native-runtime.mjs`将本人Native输入、结构化Chief计划、角色派发、收回、独立质检及通知接到现有Native服务。`team-plan.mjs`校验根预算、DAG和质量依赖；`role-control-store.mjs`仅保存控制映射/意图/回执。`task-input.mjs`统一title及description输入版本。父子调用共用`role-call-budget.mjs`根预算。
 
+`native-role-adapter.mjs`在实际QA派发的可信提示中明确JSON契约：verdict仅为`PASS`或`NEEDS_WORK`，`findings`/`notRun`始终是数组，`reviewedArtifacts`逐项匹配可信执行绑定。范围和限制保留在独立字段；未执行验收继续记入`notRun`，必需证据缺失不能转成PASS。上游报告仍作为证据数据传递，不提升为指令。`tests/native-role-adapter.test.mjs`捕获真实`nativeExecute`最终prompt，验证QA协议、精确产物绑定及非QA不受影响；严格collector、材料、权限、预算和调度均未修改。源码回归不代表旧运行报告已修复或真实业务通过。
+
+`team-plan.mjs`的可信Chief协议明确最终飞书发信由run结束后的控制器受管outbox负责；模型仅写summary，并将发信阶段标为等待控制器回执。模型不能自行宣称已发送，也不为这一步发现飞书插件、索取凭据或另发消息；尚无回执不能推断连接缺失或发送失败。其他已授权Apps/Plugins照常用于其指定任务。上述回归同样捕获实际Chief summary派发提示；发送器、通知回执及运行配置不在本次提示修复范围。
+
 `team-result-notification.mjs`复用已有飞书SDK和本人绑定，持久化结果outbox；发送成功不重复调用，未知结果停止等待核对。`scripts/role-transport-resident.mjs`是既有宿主Node的Docker管理传输与只读宿主快照，模型及产品协调逻辑仍在Docker。只读Snapshot不授予系统修改权，使用WorkDisk/原数据卷前核对固定UUID。新宿主开机服务不在本轮配置。
 
 `team-configure.mjs`明确新角色paused纯登记，保护原ID/配置/材料；`team-bootstrap.mjs`串行复用原Native lifecycle，保留真实探针与无新探针的区别。296项当前离线回归已通过；Native11配置及8新探针通过，新的Chief联合闭环尚未作为通过记录。
