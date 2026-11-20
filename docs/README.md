@@ -37,5 +37,6 @@
 
 - [Team roles](team.md)：12岗英文全称、汇报关系及职责边界。
 - [Agent持续迭代](agent-iteration.md)：真实任务反馈、原任务返修、六阶段能力证据及材料发布。
+- [GitHub只读连接](github-read.md)：独立HOME、宿主认证只读工具和仓库身份登记。
 
 - [LEO-23 QA supplement](qa-supplement-20261120.md)：仅此根第七次补核、原证据保留及真实验收范围。

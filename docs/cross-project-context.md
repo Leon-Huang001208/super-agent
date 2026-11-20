@@ -1,5 +1,7 @@
 # 跨项目、续接与记忆 M2
 
+`host.github_read`只读Native登记的repository.fullName，可在hostPath为空时使用；read_only项目保留该只读工具，代码路径、发布和服务动作继续收窄。原任务质量预算阻断后的显式owner续接见[运维入口](operations.md#github只读通道与原质量任务续接)，不改变输入版本、项目边界或原累计调用。
+
 原任务调用分档沿`task-call-policy.mjs`统一计算：默认6次，已授权且可信控制面登记的复杂原任务12次。补充、继续、重规划、QA返修和Native失败重试均保留原预算文件；提示或输入正文不能改变上限。`scripts/task-call-budget.mjs --task-id <原root> --approval-source <已有授权来源>`默认只预览，`--apply`要求现有Owner会话、关闭派发且无在途run/call锁；不新建目标、不运行模型、不退款。原有第七次QA专项仍独立绑定其历史证据，不转为普遍额度。
 
 Mac原生与公司Skill的当次运行快照见[当前合同](plans/native-skills-20261120.md)。项目stack/services及domains用于按需选择已分配技能；它们只描述技术或业务领域，不能授予额外操作权限。旧项目catalog的动作上界和历史任务保持原约束。

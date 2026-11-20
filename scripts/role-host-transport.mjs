@@ -17,6 +17,7 @@ import {prepareDocumentRuntimeEnvironment} from '../bridge/document-runtime.mjs'
 import {roleHostMcpConfigArgs} from './role-host-mcp-config.mjs';
 import {createNativeRoleTls} from './role-proxy-tls.mjs';
 import {rwbReleaseTimeoutPolicy} from '../bridge/rwb-release.mjs';
+import {hostProxyEnvironment as proxyEnvironment} from '../bridge/host-proxy-environment.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0';
 const ROOT=DATA+'/state/control/research-pm';
 const fail=code=>{throw Object.assign(Error(code),{code});};
@@ -144,15 +145,6 @@ export async function runNativeRoleProcess({command,args,directory,cwd,env,timeo
   process.off('SIGTERM',stop);process.off('SIGINT',stop);
   fs.fsyncSync(out);fs.fsyncSync(err);fs.closeSync(input);fs.closeSync(out);fs.closeSync(err);
  }
-}
-function proxyEnvironment(){
- const selected={};for(const key of ['HTTP_PROXY','HTTPS_PROXY','ALL_PROXY'])if(process.env[key])selected[key]=process.env[key];
- if(!selected.HTTPS_PROXY&&process.platform==='darwin'){
-  const probe=spawnSync('/usr/sbin/scutil',['--proxy'],{encoding:'utf8',timeout:3000});
-  const host=probe.stdout?.match(/HTTPSProxy\s*:\s*([^\s]+)/)?.[1],port=probe.stdout?.match(/HTTPSPort\s*:\s*(\d+)/)?.[1];
-  if(/HTTPSEnable\s*:\s*1/.test(probe.stdout??'')&&host==='127.0.0.1'&&port)selected.HTTPS_PROXY=selected.HTTP_PROXY='http://127.0.0.1:'+port;
- }
- return {...selected,NO_PROXY:[...new Set(['127.0.0.1','localhost','mac-mini-1.tail947973.ts.net',...(process.env.NO_PROXY??'').split(',').filter(Boolean)])].join(','),NODE_USE_ENV_PROXY:'1'};
 }
 async function waitBroker(readyFile,child,runId){
  for(let i=0;i<100;i++){

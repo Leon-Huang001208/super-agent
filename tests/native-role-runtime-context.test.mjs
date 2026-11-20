@@ -94,6 +94,13 @@ test('M2 retains the latest Native prepared generic primary and keeps the projec
  delete nativeRole.manifest.scope;
  assert.throws(()=>api('resolveNativeRoleExecutionMaterials')({role:nativeRole,contextRole:{...f.role,profile:{...f.role.profile,projectId:f.b}},contextVersion:1,identity,workingCopy,baseline,executionPath:live+'/pm/AGENTS.md'}),/NATIVE_ROLE_GENERIC/);
 });
+test('read-only Native projects retain only the registered GitHub reader without a code path or publication authority',t=>{
+ const f=fixture(t),context={id:f.b,key:'beta',repository:{hostPath:'/source',fullName:'owner/repo',url:'https://github.com/owner/repo'},workspace:{hostPath:'/worktree'},delivery:{maximumAction:'pull_request'},rules:[],checks:[]};
+ const result=api('restrictNativeRoleAuthority')({registry:f.registry,task:f.task,projectContext:context,
+  effectiveCapabilities:{hostAllowedTools:['host.github_read','host.project_git','host.project_publish'],mcpAllowedTools:[]},log});
+ assert.equal(result.projectContext.repository.fullName,'owner/repo');assert.equal(result.projectContext.repository.hostPath,null);
+ assert.equal(result.projectContext.delivery.maximumAction,'artifact');assert.deepEqual(result.effectiveCapabilities.hostAllowedTools,['host.github_read']);
+});
 test('runtime knowledge reads only the Native-authorized partitions and marks legacy as historical',async t=>{
  const f=fixture(t);fs.mkdirSync(f.root+'/context',{mode:0o700});
  const scope={companyId:f.companyId,ownerId:f.ownerId,projectId:f.b,projectKey:'beta'};

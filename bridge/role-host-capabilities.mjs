@@ -6,6 +6,8 @@ import {fileURLToPath} from 'node:url';
 import {isMacNative} from './role-execution-policy.mjs';
 import {callHostMcp,runHostCommand} from './role-host-mcp.mjs';
 import {runRwbRelease} from './rwb-release.mjs';
+import {hasHostGithubRepository,readHostGithub} from './host-github-read.mjs';
+import {hostProxyEnvironment} from './host-proxy-environment.mjs';
 
 const WORKDISK_UUID='2BC466D2-FD62-4395-86AC-45CFF653BC51';
 const shaPattern=/^[a-f0-9]{40,64}$/;
@@ -21,6 +23,7 @@ export const HOST_TOOL_DEFINITIONS=Object.freeze([
  definition('host.project_check','Run a current Native project registered check by ID in the task code worktree.',schema({checkId:string},['checkId'])),
  definition('host.project_git','Read task Git status/diff/show, commit explicit paths, then prepare the managed integration candidate for independent QA. After prepare write the report only; this run keeps its original code mount. QA is read only.',schema({operation:{type:'string',enum:['status','diff','show','commit','prepare']},revision:string,paths:{type:'array',items:string},message:string},['operation'])),
  definition('host.project_publish','Preview or run a registered project delivery entrypoint, with Native QA candidate binding required to publish.',schema({action:{type:'string',enum:['pull_request','merge','deploy']},preview:boolean})),
+ definition('host.github_read','Read current PR/Issue/branch metadata only from the Native registered GitHub repository using the existing host gh session. Lists are open objects, at most 100; a full page remains truncated. No code, CI verdict, write operation, raw URL or credential is exposed.',schema({operation:{type:'string',enum:['pull_requests','issues','pull_request','issue','branch']},number:{type:'integer',minimum:1},ref:string},['operation'])),
  definition('host.rwb_release','Inspect or consume one task-scoped RWB release operation registered by Native. Only the registered DevOps operation ID is accepted; prior commands and unknown results are never replayed.',schema({operationId:string},['operationId'])),
  definition('host.network_observe','Read current macOS DNS, proxy, Tailscale and proxy application status.',schema()),
  definition('host.network_apply','Run one registered network action authorized by this Native task permit.',schema({actionId:string},['actionId'])),
@@ -42,11 +45,11 @@ function commandEnv(){
  return env;
 }
 
-function commandPort({runner=runHostCommand,timeoutMs=120000,signal}={}){
- return async(argv,{cwd,allowedStatuses=[0],timeout=timeoutMs,input}={})=>{
+function commandPort({runner=runHostCommand,timeoutMs=120000,signal,proxyEnvironment=hostProxyEnvironment}={}){
+ return async(argv,{cwd,allowedStatuses=[0],timeout=timeoutMs,input,useHostProxy=false}={})=>{
   if(!Array.isArray(argv)||!argv.length||argv.some(x=>typeof x!=='string'||x.includes('\0')))fail('ROLE_HOST_COMMAND_INVALID');
   if(signal?.aborted)fail('ROLE_HOST_CANCELLED');
-  let result;try{result=await runner(argv[0],argv.slice(1),{cwd,encoding:'utf8',env:commandEnv(),shell:false,timeout,maxBuffer:512*1024,signal,input});}
+  let result;try{result=await runner(argv[0],argv.slice(1),{cwd,encoding:'utf8',env:{...commandEnv(),...(useHostProxy?proxyEnvironment():{})},shell:false,timeout,maxBuffer:512*1024,signal,input});}
   catch{fail(signal?.aborted?'ROLE_HOST_CANCELLED':'ROLE_HOST_COMMAND_UNAVAILABLE');}
   if(signal?.aborted)fail('ROLE_HOST_CANCELLED');
   const details={exitCode:Number.isInteger(result?.status)?result.status:null,signal:result?.signal??null,output:redactHostOutput(result?.stdout),stderr:redactHostOutput(result?.stderr)};
@@ -236,6 +239,7 @@ export function createHostCapabilityExecutor(options={}){
  const selectedMcp=(context.hostMcpServers??[]).filter(value=>object(value)&&typeof value.id==='string'&&Array.isArray(value.tools)&&value.tools.length&&(!value.allowedRoles||value.allowedRoles.includes(permit.role)));
  const definitions=HOST_TOOL_DEFINITIONS.filter(value=>{
   if(!allowed.has(value.name))return false;
+  if(value.name==='host.github_read'&&!hasHostGithubRepository(context))return false;
   if(value.name==='host.rwb_release'&&(permit.role!=='devops'||!context.rwbRelease||!context.rwbRelease.operations?.some(op=>permit.authorizedHostActions?.includes(op.id))))return false;
   if(['host.project_git','host.project_check','host.project_publish'].includes(value.name)&&!hasWorkspace)return false;
   if(value.name==='host.project_check'&&!context.checks?.length)return false;
@@ -279,6 +283,7 @@ export function createHostCapabilityExecutor(options={}){
   await volumeCheck([cwd,options.controlRoot],options,run);return {actionId:action.id,...await run(action.argv,{cwd:cwd??undefined})};
  }
  async function perform(name,args){
+  if(name==='host.github_read')return readHostGithub({permit,args,run,exists:options.exists??fs.existsSync,log:audit});
   if(name==='host.rwb_release'){
    if((options.platform??process.platform)!=='darwin')fail('ROLE_HOST_MACOS_REQUIRED');
    if(Object.keys(args).length!==1||typeof args.operationId!=='string')fail('ROLE_HOST_ARGUMENTS_INVALID');
