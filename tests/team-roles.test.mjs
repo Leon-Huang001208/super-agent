@@ -14,6 +14,7 @@ test('every role has a complete portable profession description and task-bound e
   const text=roleInstructions(role);
   for(const section of ['目标','输入','负责事项','协作边界','工作步骤','默认专业能力','工具触发和使用','交付物','完成与失败处理'])assert.ok(text.includes(`## ${section}`),`${role}: ${section}`);
   assert.match(text,/projectContext/);assert.match(text,/授权内自主执行/);assert.match(text,/gpt-6\.1-sol\/low/);
+  assert.match(text,/未提供AGENTS\.md.*不阻断只读验证/);assert.match(text,/项目明示必需的规则仍须遵循/);
   assert.doesNotMatch(text,/不合并或部署RWB|两个外盘|\/Volumes\/WorkDisk|2BC466D2|只能提出具体可审查变更/);
  }
  assert.match(roleInstructions('network-engineer'),/host\.network_apply/);

@@ -14,8 +14,10 @@
 
 可访问界面、状态、API接入、前端性能和浏览器验证。
 
-- frontend-testing-debugging：openai-curated-remote/build-web-apps@0.1.2；文件 packages/build-web-apps/0.1.2/skills/frontend-testing-debugging/SKILL.md；源摘要 f966bad01044f0cbcfc071bb2f7671f5f84640632198d697d4257834f5b20825。
-- test-driven-development：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/test-driven-development/SKILL.md；源摘要 5aee51fc2435b93047330a1166f1acc23059038abf461d112dc0ad4f3e0be490。
+entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+
+- frontend-testing-debugging：openai-curated-remote/build-web-apps@0.1.2；文件 packages/build-web-apps/0.1.2/skills/frontend-testing-debugging/SKILL.md；入口文件摘要 entrypointSha256=03724620cf7e7de425b607a5492f572d867b1cf5d9c92c74bf50d057d7415e0b；文件集摘要 fileSetSha256=f966bad01044f0cbcfc071bb2f7671f5f84640632198d697d4257834f5b20825。
+- test-driven-development：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/test-driven-development/SKILL.md；入口文件摘要 entrypointSha256=64b03fce4aee5a97a93160cea8111f3ba13a17b7c001db4bd5836d67fd10705d；文件集摘要 fileSetSha256=5aee51fc2435b93047330a1166f1acc23059038abf461d112dc0ad4f3e0be490。
 - react-best-practices：仅projectContext确认stack/services匹配react / next.js / nextjs时加载。
 - shadcn：仅projectContext确认stack/services匹配shadcn / shadcn/ui时加载。
 

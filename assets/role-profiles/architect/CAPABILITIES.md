@@ -14,8 +14,10 @@
 
 领域、模块边界、接口契约、数据模型和可实施方案。
 
-- improve-codebase-architecture：host-agent-skills/improve-codebase-architecture@local；文件 improve-codebase-architecture/SKILL.md；源摘要 7c6ee05289ef2e18a8a37ec7f37b72a835e4fedc976f19837ca08b1c304d1353。
-- writing-plans：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/writing-plans/SKILL.md；源摘要 7d835a8d2a4b4f1132311a10c2070dac3f5c6c5f5499deb60cd2be4ca788792b。
+entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+
+- improve-codebase-architecture：host-agent-skills/improve-codebase-architecture@local；文件 improve-codebase-architecture/SKILL.md；入口文件摘要 entrypointSha256=9031331fa2493af7141186dc30bee5f43de605239f6ba642d17fb021c3425cfa；文件集摘要 fileSetSha256=7c6ee05289ef2e18a8a37ec7f37b72a835e4fedc976f19837ca08b1c304d1353。
+- writing-plans：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/writing-plans/SKILL.md；入口文件摘要 entrypointSha256=a6c67c1900064347c2a329990dd3c555657c51c3ec53b259a08aa01a2c26139a；文件集摘要 fileSetSha256=7d835a8d2a4b4f1132311a10c2070dac3f5c6c5f5499deb60cd2be4ca788792b。
 
 ## 工具触发与依赖
 

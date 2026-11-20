@@ -1,7 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import path from 'node:path';
 import {ROLE_KEYS} from '../bridge/role-labels.mjs';
 import {CAPABILITY_CATALOG, ROLE_CAPABILITY_DEFAULTS, resolveRoleCapabilities, renderRoleCapabilitiesMarkdown} from '../bridge/role-capabilities.mjs';
+import {DEFAULT_ROLE_SKILL_ASSET_ROOT,resolveRoleSkillBundles} from '../bridge/role-skill-bundles.mjs';
+
+test('skill entrypoint bytes and file-set manifests have separately labelled hashes',()=>{
+ const skill=resolveRoleCapabilities({role:'backend-engineer'}).skills.find(value=>value.name==='systematic-debugging');
+ const [bundle]=resolveRoleSkillBundles([skill.name]),sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+ assert.equal(skill.entrypointSha256,sha(readFileSync(path.join(DEFAULT_ROLE_SKILL_ASSET_ROOT,skill.path))));
+ assert.equal(skill.fileSetSha256,sha(JSON.stringify(bundle.files)));
+ assert.equal(skill.source.sha256,skill.fileSetSha256);
+ assert.notEqual(skill.entrypointSha256,skill.fileSetSha256);
+ const text=renderRoleCapabilitiesMarkdown('backend-engineer');
+ assert.match(text,/入口文件摘要.*entrypointSha256/);assert.match(text,/文件集摘要.*fileSetSha256/);
+ assert.doesNotMatch(text,/；源摘要 /);
+});
 
 const toolCatalog = [
   {name:'mcp__codex_apps__plugin_management__list_plugins',annotations:{readOnlyHint:true}},
