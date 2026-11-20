@@ -104,3 +104,22 @@ test('actual Chief summary dispatch leaves final delivery to the controller outb
   assert.deepEqual(output.config.extraArgs,NATIVE_ROLE_MANAGED_ARGS);
   assert.equal(f.getCalls(),1);
 });
+
+test('actual dispatch carries the current project authority and effective role capabilities',async()=>{
+ const f=dispatchFixture('pm');
+ f.registration.projectContext={schemaVersion:1,id:'project',key:'research-workbench',name:'ResearchWorkbench',repository:{hostPath:'/source/repo'},workspace:{hostPath:'/task/worktree',containerPath:'/workspace/project'},rules:[],checks:[],delivery:{maximumAction:'pr'}};
+ f.registration.effectiveCapabilities={schemaVersion:1,role:'pm',capabilityIds:['pm','designer'],skills:[{name:'design',source:{path:'/materials/skills/design/SKILL.md'}}],mcpAllowedTools:['figma.get_design_context'],hostAllowedTools:['host.project.verify']};
+ await f.execute(f.ctx);
+ const prompt=f.getDispatched().config.promptTemplate;
+ assert.ok(prompt.includes('Current Native project and authorized capabilities'));
+ assert.ok(prompt.includes('/workspace/project'));assert.ok(prompt.includes('ResearchWorkbench'));assert.ok(prompt.includes('figma.get_design_context'));assert.ok(prompt.includes('/materials/skills/design/SKILL.md'));
+ assert.ok(prompt.includes('artifact'));assert.equal(f.getDispatched().context.projectId,'project');
+});
+
+test('trusted binding exposes the selected host actions and controller-verified publication candidate',async()=>{
+ const f=dispatchFixture('chief');f.registration.phase='summary';
+ f.registration.authorizedHostActions=['switch-proxy'];f.registration.codeReview={verdict:'PASS',candidateSha:'a'.repeat(40),runId:'quality-run'};
+ await f.execute(f.ctx);
+ const data=JSON.parse(f.getDispatched().config.promptTemplate.split('Trusted execution binding data.\n')[1].split('\n')[0]);
+ assert.deepEqual(data.authorizedHostActions,['switch-proxy']);assert.equal(data.codeReview.candidateSha,'a'.repeat(40));
+});

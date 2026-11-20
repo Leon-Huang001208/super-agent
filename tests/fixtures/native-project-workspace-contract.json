@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "packageVersion": "2026.1023.0",
+  "sources": {
+    "@paperclipai/shared/dist/validators/project.js": "980f2fb5f74fbba251ac5d47a53afd3f46562b0a107c72901c32be3e42826811",
+    "@paperclipai/server/dist/services/projects.js": "c75b952631b362cc474a68886535b7d111735e1640084467c0bccd1a473ea0be",
+    "@paperclipai/server/dist/services/project-workspace-runtime-config.js": "8c457eba7111fb96bda8974a52f99752b28e0c1aca8c5aee5e7073bd335b6679",
+    "@paperclipai/db/dist/schema/project_workspaces.js": "8f5cd353665058349a2d8b0ff492f3f3c156daaffc2bf8e201a28329b1db47f6"
+  },
+  "project": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "companyId": "11111111-1111-4111-8111-111111111111",
+    "name": "ResearchWorkbench"
+  },
+  "createPayload": {
+    "name": "Source",
+    "sourceType": "git_repo",
+    "repoUrl": "https://github.com/leon/ResearchWorkbench",
+    "isPrimary": true,
+    "metadata": {
+      "superAgentProject": {
+        "key": "research-workbench",
+        "ownerId": "owner",
+        "repository": {
+          "hostPath": "/Volumes/WorkDisk/Projects/ResearchWorkbench/main",
+          "fullName": "leon/ResearchWorkbench"
+        },
+        "workspace": {
+          "worktreeRoot": "/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees"
+        },
+        "checks": [],
+        "delivery": {
+          "maximumAction": "pull_request"
+        }
+      }
+    },
+    "runtimeConfig": {
+      "desiredState": "manual"
+    }
+  },
+  "patchPayload": {
+    "metadata": {
+      "superAgentProject": {
+        "key": "research-workbench",
+        "ownerId": "owner",
+        "repository": {
+          "hostPath": "/Volumes/WorkDisk/Projects/ResearchWorkbench/main",
+          "fullName": "leon/ResearchWorkbench"
+        },
+        "workspace": {
+          "worktreeRoot": "/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees"
+        },
+        "checks": [],
+        "delivery": {
+          "maximumAction": "pull_request"
+        },
+        "stack": [
+          "typescript"
+        ]
+      },
+      "runtimeConfig": {
+        "workspaceRuntime": null,
+        "desiredState": "manual",
+        "serviceStates": null
+      }
+    },
+    "runtimeConfig": {
+      "desiredState": "stopped"
+    }
+  },
+  "rawWorkspace": {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "companyId": "11111111-1111-4111-8111-111111111111",
+    "projectId": "22222222-2222-4222-8222-222222222222",
+    "name": "Source",
+    "sourceType": "git_repo",
+    "cwd": null,
+    "repoUrl": "https://github.com/leon/ResearchWorkbench",
+    "repoRef": null,
+    "defaultRef": null,
+    "visibility": "default",
+    "setupCommand": null,
+    "cleanupCommand": null,
+    "remoteProvider": null,
+    "remoteWorkspaceRef": null,
+    "sharedWorkspaceKey": null,
+    "metadata": {
+      "superAgentProject": {
+        "key": "research-workbench",
+        "ownerId": "owner",
+        "repository": {
+          "hostPath": "/Volumes/WorkDisk/Projects/ResearchWorkbench/main",
+          "fullName": "leon/ResearchWorkbench"
+        },
+        "workspace": {
+          "worktreeRoot": "/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees"
+        },
+        "checks": [],
+        "delivery": {
+          "maximumAction": "pull_request"
+        },
+        "stack": [
+          "typescript"
+        ]
+      },
+      "runtimeConfig": {
+        "workspaceRuntime": null,
+        "desiredState": "stopped",
+        "serviceStates": null
+      }
+    },
+    "isPrimary": true,
+    "updatedAt": "2026-11-20T05:48:32.512Z"
+  },
+  "apiWorkspace": {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "companyId": "11111111-1111-4111-8111-111111111111",
+    "projectId": "22222222-2222-4222-8222-222222222222",
+    "name": "Source",
+    "sourceType": "git_repo",
+    "cwd": null,
+    "repoUrl": "https://github.com/leon/ResearchWorkbench",
+    "repoRef": null,
+    "defaultRef": null,
+    "visibility": "default",
+    "setupCommand": null,
+    "cleanupCommand": null,
+    "remoteProvider": null,
+    "remoteWorkspaceRef": null,
+    "sharedWorkspaceKey": null,
+    "metadata": {
+      "superAgentProject": {
+        "key": "research-workbench",
+        "ownerId": "owner",
+        "repository": {
+          "hostPath": "/Volumes/WorkDisk/Projects/ResearchWorkbench/main",
+          "fullName": "leon/ResearchWorkbench"
+        },
+        "workspace": {
+          "worktreeRoot": "/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees"
+        },
+        "checks": [],
+        "delivery": {
+          "maximumAction": "pull_request"
+        },
+        "stack": [
+          "typescript"
+        ]
+      },
+      "runtimeConfig": {
+        "workspaceRuntime": null,
+        "desiredState": "stopped",
+        "serviceStates": null
+      }
+    },
+    "runtimeConfig": {
+      "workspaceRuntime": null,
+      "desiredState": "stopped",
+      "serviceStates": null
+    },
+    "isPrimary": true,
+    "runtimeServices": [],
+    "updatedAt": "2026-11-20T05:48:32.512Z"
+  },
+  "oldRuntimeConfigRejected": true
+}

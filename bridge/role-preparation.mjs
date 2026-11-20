@@ -31,7 +31,7 @@ export function createRolePreparation({ readContext, readKnowledge, log }) {
         }
       };
       validate(initial);
-      const materials = loadRoleMaterials({ root: materialRoot, project: profile.projectKey, role: profile.role, manifest, log });
+      const materials = loadRoleMaterials({ root: materialRoot, project: manifest?.project, role: profile.role, manifest, log });
       const knowledge = selectRoleKnowledge({ project: profile.projectKey, role: profile.role,
         records: await readKnowledge({ project: profile.projectKey, role: profile.role }) });
       const final = await readContext(binding.taskId);
