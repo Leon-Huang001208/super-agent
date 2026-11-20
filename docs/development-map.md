@@ -99,3 +99,9 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 `SUPER_AGENT_GATEWAY_HEADER_PROBE_NONCE` 默认不设置。配置必须为 32 位小写十六进制随机值；仅精确 `GET /__sa_header_probe_<nonce>` 消费一次，每个网关进程最多记录一条 JSON，且仅含收到的 `host`、`x-forwarded-host`、`x-forwarded-proto`（去控制字符、每项最多 256 字符）。探针不转发后端、不返回头值，非 GET 为 405，已消费为 410，Upgrade 为 400。重启会重置内存次数，取证后必须删除该环境变量；候选不能把探针日志当成已上线证据。
 
 Host 策略依赖 Docker 将网关继续只发布到宿主 loopback。它不授予用户身份，也不绕过 Paperclip 的 authenticated/private、登录及 Origin 校验。Public URL、认证 base URL、精确 trusted origins、转发实测、旧本机会话与 HTTPS Secure Cookie、错误 Origin 和真实实时连接由运行配置负责人在排空后统一验证；离线测试通过不代表这些已完成。
+
+## 已合组合 PR 的交付回执对账
+
+项目管理入口 scripts/reconcile-merged-delivery.mjs 默认只读 dry-run。它用于未发布、无历史集成或回收状态的 started 子任务，其原提交已完整保留于同仓父任务的已合 PR。它核对父/子回执归属、原基线→子提交→PR head→merge→实时默认分支的祖先链、精确 PR 身份、实时三个必需状态和服务端分支保护，不创建替代 PR、不推送或改写 vendor/runtime。Docker 夹具在 tests/reconcile-merged-delivery.test.mjs。
+
+源 dirty、未知 ignored、未知锁/结果、任意进程或运行/停止容器对源及其祖先/子路径的引用都拒绝 apply。仅当真实检查完备且无占用，显式 --apply --expect-receipt-sha256 绑定dry-run摘要，才在原 integration/task 锁内重新核对；验证 WorkDisk UUID、APFS 与规范路径，无 symlink 中间目录。创建的 integration alias 只属于子任务，不认领父任务工作树；对账最多记录 ci_passed 及完整 adoption 证据，绝不记录 cleaned 或免除原 cleanup/enforce。见[工作流](agent-workflow.md#组合交付对账与收尾)。
