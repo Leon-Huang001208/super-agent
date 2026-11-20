@@ -87,4 +87,17 @@ test('trusted native permit accepts exact bypass and rejects sandbox downgrade',
  const args=['--search','exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"','--dangerously-bypass-approvals-and-sandbox','-'];
  assert.equal(validateRoleCall({permit,args,env,cwd:permit.cwd,now:100000}),permit);
  assert.throws(()=>validateRoleCall({permit,args:args.filter(value=>value!=='--dangerously-bypass-approvals-and-sandbox'),env,cwd:permit.cwd,now:100000}),/ARGUMENTS_DENIED/);
+ // The installed Native adapter emits its own bypass before the model, rather
+ // than through extraArgs at the end of the managed argument list.
+ const nativeArgs=['--search','exec','--json','--dangerously-bypass-approvals-and-sandbox','--model',permit.model,'-c','model_reasoning_effort="low"','-'];
+ const prefix=['-c','features.shell_snapshot=false','-c','shell_environment_policy.inherit="all"','-c',
+   'shell_environment_policy.ignore_default_excludes=true','-c','shell_environment_policy.include_only=["PATH","HOME"]'];
+ for(const args of [nativeArgs,[...nativeArgs.slice(0,3),'--skip-git-repo-check',...nativeArgs.slice(3)]]){
+  for(const argv of [args,[...prefix,...args]])assert.equal(validateRoleCall({permit,args:argv,env,cwd:permit.cwd,now:100000}),permit);
+  const legacy={...permit};delete legacy.executionPolicy;
+  assert.throws(()=>validateRoleCall({permit:legacy,args,env,cwd:legacy.cwd,now:100000}),/ARGUMENTS_DENIED/);
+ }
+ for(const extra of ['--dangerously-bypass-approvals-and-sandbox','--sandbox','resume','--config']){
+  assert.throws(()=>validateRoleCall({permit,args:[...nativeArgs.slice(0,-1),extra,'-'],env,cwd:permit.cwd,now:100000}),/ARGUMENTS_DENIED/);
+ }
 });

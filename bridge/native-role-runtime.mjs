@@ -21,6 +21,7 @@ import {readControl} from './role-control-store.mjs';
 import {validateTeamCodeCandidate} from './team-plan.mjs';
 import {roleInstructions} from './team-roles.mjs';
 import {renderRoleCapabilitiesMarkdown} from './role-capabilities.mjs';
+import {prepareTeamRoleExecution,teamRoleAdmissionFailure} from './chief-bootstrap-retry.mjs';
 
 const ROOT='/paperclip/control/research-pm',PKG='/opt/paperclip/node_modules';
 const sha=x=>createHash('sha256').update(x).digest('hex');
@@ -225,13 +226,9 @@ export async function installNativeRoles() {
   registry.registerServerAdapter({...original,
     async execute(ctx) {
       if(ctx.config?.env?.SUPER_AGENT_ROLE_ENABLED!=='true')return original.execute(ctx);
-      if(!ctx.context?.roleOperationId&&process.env.SUPER_AGENT_TEAM_COORDINATOR_ENABLED==='true'){
-        try{ctx=await(await import('./team-native-runtime.mjs')).admitChiefInput(ctx,{database});}
-        catch(error){return {exitCode:1,signal:null,timedOut:false,errorCode:/^(?:TEAM|NATIVE_ROLE)_[A-Z_]+$/.test(error.code??error.message)?(error.code??error.message):'NATIVE_ROLE_PREFLIGHT_FAILED',errorMessage:'The controlled Chief intake did not admit this execution.',resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};}
-      }
-      if(ctx.context?.roleOperationId&&process.env.SUPER_AGENT_TEAM_COORDINATOR_ENABLED==='true'){
-        try{ctx=await(await import('./team-native-runtime.mjs')).bindNativeRetryAttempt(ctx,{database});}
-        catch(error){return {exitCode:1,signal:null,timedOut:false,errorCode:error.code??'TEAM_NATIVE_RETRY_PREFLIGHT_FAILED',errorMessage:'The existing Native retry did not pass controlled attempt admission.',resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};}
+      if(process.env.SUPER_AGENT_TEAM_COORDINATOR_ENABLED==='true'){
+        try{ctx=await prepareTeamRoleExecution(ctx,{database,...await import('./team-native-runtime.mjs')});}
+        catch(error){return teamRoleAdmissionFailure(error);}
       }
       const readRegistration=async()=>{
         const originalRegistration=registered(ctx.agent.id);
