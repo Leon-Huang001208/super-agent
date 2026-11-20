@@ -43,7 +43,7 @@ try{
   const prior=JSON.parse(read(dir+'/host.claim.json'));
   if(prior.runId!==runId||prior.image!==IMAGE||prior.name!==name||fs.existsSync(dir+'/stdout')||
      exec(['ps','-a','--filter','name=^/sa-role-provider-'+runId+'$','--format','{{.ID}}']).trim())fail('ROLE_CONTAINER_SETUP_RESUME_DENIED');
-  durable(dir+'/setup-resume.json',{runId,code:'PROVIDER_CONTAINER_NOT_CREATED',at:new Date().toISOString()});
+  durable(dir+'/setup-resume-'+randomBytes(8).toString('hex')+'.json',{runId,code:'PROVIDER_CONTAINER_NOT_CREATED',at:new Date().toISOString()});
  }else durable(dir+'/host.claim.json',{runId,name,image:IMAGE,at:new Date().toISOString(),network:'isolated-with-scoped-provider'});
  const client=dir+'/client',proxy=dir+'/proxy',audit=dir+'/proxy-audit';
  for(const p of [client,proxy,audit])if(!fs.existsSync(p))fs.mkdirSync(p,{mode:0o700});
@@ -95,7 +95,8 @@ try{
   provider.push('--env',e);
  }
  provider.push('--entrypoint','node',IMAGE,'/proxy.mjs');exec(provider);exec(['network','connect','--alias','provider',network,broker]);
- fs.writeFileSync(client+'/instructions.md',materialBytes,{mode:0o600,flag:'wx'});
+ if(fs.existsSync(client+'/instructions.md')){if(!resumeSetup||sha(read(client+'/instructions.md'))!==permit.materialSha256)fail('ROLE_CONTAINER_MATERIAL_CHANGED');}
+ else fs.writeFileSync(client+'/instructions.md',materialBytes,{mode:0o600,flag:'wx'});
  exec(['exec','super-agent-paperclip-eval-paperclip-1','chown','-R','1000:1000',
   '/paperclip/control/research-pm/transport/'+runId+'/client',request.cwd]);
  const seccomp=app.HostConfig.SecurityOpt.find(x=>x.startsWith('seccomp='));
@@ -104,11 +105,13 @@ try{
   const source=ROOT+'/team/qa-evidence-v2',manifestBytes=read(source+'/manifest.json');
   if(sha(manifestBytes)!==permit.evidencePacket.manifestSha256)fail('ROLE_CONTAINER_EVIDENCE_CHANGED');
   const manifest=JSON.parse(manifestBytes);if(manifest.rootTaskId!=='7956bcfe-85cd-424a-ac8f-c57752f36dfc'||!Array.isArray(manifest.files)||manifest.files.length>64)fail('ROLE_CONTAINER_EVIDENCE_DENIED');
-  evidence=dir+'/evidence';fs.mkdirSync(evidence,{mode:0o700});let total=0;
+  evidence=dir+'/evidence';if(!fs.existsSync(evidence))fs.mkdirSync(evidence,{mode:0o700});else if(!resumeSetup)fail('ROLE_CONTAINER_EVIDENCE_EXISTS');let total=0;
   for(const entry of [...manifest.files,{path:'manifest.json',sha256:sha(manifestBytes)}]){
    if(!/^(?:materials\/[a-z-]+\.md|audit\.json|manifest\.json)$/.test(entry.path))fail('ROLE_CONTAINER_EVIDENCE_DENIED');
    const bytes=read(source+'/'+entry.path);total+=bytes.length;if(total>2097152||sha(bytes)!==entry.sha256)fail('ROLE_CONTAINER_EVIDENCE_CHANGED');
-   const target=path.join(evidence,entry.path);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,bytes,{mode:0o400,flag:'wx'});
+   const target=path.join(evidence,entry.path);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});
+   if(fs.existsSync(target)){if(!resumeSetup||sha(read(target))!==entry.sha256)fail('ROLE_CONTAINER_EVIDENCE_CHANGED');fs.chmodSync(target,0o600);}
+   else fs.writeFileSync(target,bytes,{mode:0o600,flag:'wx'});
   }
   exec(['exec','super-agent-paperclip-eval-paperclip-1','chown','-R','1000:1000','/paperclip/control/research-pm/transport/'+runId+'/evidence']);
  }
