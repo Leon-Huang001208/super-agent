@@ -29,3 +29,24 @@ test('role gate rejects expanded tools, old sessions, API fallback and mismatche
   assert.throws(()=>validateRoleCall({...input,env:{...env,PAPERCLIP_RUN_ID:'other'}}),/SCOPE_DENIED/);
   assert.throws(()=>validateRoleCall({...input,now:200001}),/SCOPE_DENIED/);
 });
+
+test('role gate accepts an exact managed role entry and pins its run copy', () => {
+  const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const source='/paperclip/instances/default/companies/'+id+'/agents/'+id+'/instructions/research/AGENTS.md';
+  const permit={schemaVersion:1,credentialGrantId:id,projectId:id,role:'research',runId:id,taskId:id,agentId:id,companyId:id,
+    model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:200000,
+    cwd:'/paperclip/control/research-pm/workspaces/research',materialSha256:'a'.repeat(64),
+    instructionsFilePath:'/paperclip/instances/default/companies/'+id+'/agents/'+id+'/file-sync/runs/'+id+'/live/research/AGENTS.md',
+    materialSourcePath:source};
+  const args=['--search','exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"',...NATIVE_ROLE_MANAGED_ARGS,'-'];
+  const env={PAPERCLIP_RUN_ID:id,PAPERCLIP_AGENT_ID:id,PAPERCLIP_COMPANY_ID:id,PAPERCLIP_TASK_ID:id,
+    CODEX_HOME:'/tmp/paperclip-ai-'+id+'-'+id+'-abcdef/provider'};
+  const input={permit,args,env,cwd:permit.cwd,now:100000};
+  assert.equal(validateRoleCall(input),permit);
+  for(const change of [
+    {role:'pm'},
+    {materialSourcePath:source.replace('/research/','/pm/')},
+    {materialSourcePath:source.replace('/agents/'+id,'/agents/11111111-2222-4333-8444-555555555555')},
+    {instructionsFilePath:permit.instructionsFilePath.replace('/research/','/research/../research/')},
+  ]) assert.throws(()=>validateRoleCall({...input,permit:{...permit,...change}}),/SCOPE_DENIED/);
+});

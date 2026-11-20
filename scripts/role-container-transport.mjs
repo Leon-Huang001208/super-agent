@@ -6,6 +6,7 @@ import {spawn,spawnSync} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
 import {NATIVE_ROLE_EXTRA_ARGS} from '../bridge/native-role-adapter.mjs';
 import {validateRoleCall,normalizeNativeRoleArgs} from '../docker/role-codex-gate.mjs';
+import {hostRoleInstructionPath} from '../bridge/role-instruction-paths.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0',ROOT=DATA+'/state/control/research-pm';
 const IMAGE='sha256:ce66c5354e5efdd7279953134cba2a43c16b54e618a9e15ca6eb83e6bcae0c6c';
 const runId=process.argv[2],resumeSetup=process.argv[3]==='--resume-setup',sha=x=>createHash('sha256').update(x).digest('hex'),docker='/usr/local/bin/docker';
@@ -26,11 +27,11 @@ let stream,err,input,network,broker,terminal=false;
 try{
  if(process.platform!=='darwin'||!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(runId??''))fail('ROLE_CONTAINER_ARGUMENT_DENIED');
  const dir=ROOT+'/transport/'+runId,request=JSON.parse(read(dir+'/request.json')),permitBytes=read(ROOT+'/permits/'+runId+'.json'),permit=JSON.parse(permitBytes);
- const gate=JSON.parse(read(ROOT+'/claims/'+runId+'.json')),material=ROOT+'/materials/'+path.basename(permit.instructionsFilePath),materialBytes=read(material);
- if(request.runId!==runId||request.taskId!==permit.taskId||gate.runId!==runId||gate.permitSha256!==sha(permitBytes)||
-    request.inputSha256!==sha(read(dir+'/stdin'))||sha(materialBytes)!==permit.materialSha256)fail('ROLE_CONTAINER_BINDING_DENIED');
  validateRoleCall({permit,args:request.args,env:{PAPERCLIP_RUN_ID:permit.runId,PAPERCLIP_AGENT_ID:permit.agentId,
   PAPERCLIP_COMPANY_ID:permit.companyId,PAPERCLIP_TASK_ID:permit.taskId,CODEX_HOME:request.home},cwd:request.cwd,now:Date.now()});
+ const gate=JSON.parse(read(ROOT+'/claims/'+runId+'.json')),material=hostRoleInstructionPath(permit.instructionsFilePath,DATA),materialBytes=read(material);
+ if(request.runId!==runId||request.taskId!==permit.taskId||gate.runId!==runId||gate.permitSha256!==sha(permitBytes)||
+    request.inputSha256!==sha(read(dir+'/stdin'))||sha(materialBytes)!==permit.materialSha256)fail('ROLE_CONTAINER_BINDING_DENIED');
  const cwd=DATA+'/state/'+request.cwd.slice('/paperclip/'.length),name='sa-role-'+runId;
  const managed=DATA+'/state/instances/default/projects/'+permit.companyId+'/'+permit.projectId+'/_default';
  if(!(cwd.startsWith(ROOT+'/workspaces/')||cwd===managed)||fs.realpathSync(cwd)!==cwd||!fs.lstatSync(cwd).isDirectory())fail('ROLE_CONTAINER_WORKSPACE_DENIED');

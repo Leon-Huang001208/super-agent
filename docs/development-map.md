@@ -2,6 +2,7 @@
 
 | 子系统 | 本仓库入口 | 维护与验证 |
 |---|---|---|
+| 可编辑角色指令 | `bridge/role-instruction-store.mjs`、`docker/role-instruction-hook.mjs`、`scripts/migrate-role-instructions.mjs` | 原生Managed目录、保存与登记同步、旧内容保留、失败恢复；`role-instruction-*.test.mjs`覆盖迁移、保存和实际安装源码装配。运行前仍需本人窗口内的实际迁移与认证网页读回。 |
 | 原生角色调用门 | `docker/role-codex-gate.mjs`、`docker/bin/codex` | 精确Native运行许可、单次claim、原订阅与Docker隔离全工具执行。旧hello/Chief入口继续独立；工具逐项结果见本轮设计。 |
 | 角色阶段收尾 | `bridge/role-native-settlement.mjs` | Native事务绑定原输入与run，保存最终回复后交回本人待接手，防止缺失disposition的自动修复；真实合同待验收。 |
 | Research / PM 必需材料 | `bridge/role-materials.mjs`、`bridge/role-preparation.mjs`、`bridge/native-role-adapter.mjs` | 部署清单、摘要、引用和目录链预检；项目及角色私有知识按版本读取。已接原生执行器；Research真实来源报告已产生，PM和工具全项仍待验收。见[本轮设计与现场核查](plans/research-pm-m1.md)。 |
@@ -16,6 +17,8 @@
 | 项目工程运行时 | `scripts/project-runtime.mjs`、`scripts/vendor/leon-engineering/` | 固定 0.19.4 模块与来源校验，显式 Harness 和交付入口，旧回执续接；`tests/project-runtime.test.mjs` 和 `tests/management/project-runtime-git.mjs` |
 
 本轮候选要求已改为 `gpt-6.1-sol` / `low`，预检拒绝旧 xhigh 配置；`acceptance` 仍为 NOT_RUN。此更改不修改运行实例的 Agent 配置或 hello 历史，也不代表业务模型调用已发生。
+
+`role-instruction-paths.mjs`把Managed入口与company、Agent、role绑定，复用Native已登记的本run材料副本及baseline；按当前或历史manifest匹配当次摘要。调用门和宿主传输使用完整路径及内容摘要，不再用同名文件的basename定位。网页后续保存不修改已经固定的Native副本。旧UUID许可的原路径合同继续保留。
 
 ## Chief 网页续接策略
 
