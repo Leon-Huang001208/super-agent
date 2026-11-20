@@ -14,10 +14,12 @@
 
 宿主网络、路由、DNS/TLS、网关和代理的诊断与授权变更。
 
-- diagnosing-bugs：host-skills/diagnose@local；文件 diagnosing-bugs/SKILL.md；源摘要 d6e11788572001044ab7bd5c6b50ae69d06937e0d850175c04af8d282bae22d9。
-- systematic-debugging：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/systematic-debugging/SKILL.md；源摘要 5da558cf3d2c9d21a19329ea8dab1163c77b40ce581673d5deb2647ff99e11c7。
-- test-driven-development：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/test-driven-development/SKILL.md；源摘要 5aee51fc2435b93047330a1166f1acc23059038abf461d112dc0ad4f3e0be490。
-- verification-before-completion：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/verification-before-completion/SKILL.md；源摘要 70ca9f737356f7d0bb83751411a379e1100d97dfa825cede43765b0420c5eef2。
+entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+
+- diagnosing-bugs：host-skills/diagnose@local；文件 diagnosing-bugs/SKILL.md；入口文件摘要 entrypointSha256=849198df88cdb65fd0d97236604c1fca7ff2f22d2f705f9724a800d0266b118d；文件集摘要 fileSetSha256=d6e11788572001044ab7bd5c6b50ae69d06937e0d850175c04af8d282bae22d9。
+- systematic-debugging：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/systematic-debugging/SKILL.md；入口文件摘要 entrypointSha256=51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202；文件集摘要 fileSetSha256=5da558cf3d2c9d21a19329ea8dab1163c77b40ce581673d5deb2647ff99e11c7。
+- test-driven-development：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/test-driven-development/SKILL.md；入口文件摘要 entrypointSha256=64b03fce4aee5a97a93160cea8111f3ba13a17b7c001db4bd5836d67fd10705d；文件集摘要 fileSetSha256=5aee51fc2435b93047330a1166f1acc23059038abf461d112dc0ad4f3e0be490。
+- verification-before-completion：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/verification-before-completion/SKILL.md；入口文件摘要 entrypointSha256=2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3；文件集摘要 fileSetSha256=70ca9f737356f7d0bb83751411a379e1100d97dfa825cede43765b0420c5eef2。
 
 ## 工具触发与依赖
 

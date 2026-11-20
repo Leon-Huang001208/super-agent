@@ -114,6 +114,9 @@ test('actual dispatch carries the current project authority and effective role c
  assert.ok(prompt.includes('Current Native project and authorized capabilities'));
  assert.ok(prompt.includes('/workspace/project'));assert.ok(prompt.includes('ResearchWorkbench'));assert.ok(prompt.includes('figma.get_design_context'));assert.ok(prompt.includes('/materials/skills/design/SKILL.md'));
  assert.ok(prompt.includes('artifact'));assert.equal(f.getDispatched().context.projectId,'project');
+ assert.ok(prompt.includes('AGENTS.md when provided'));assert.ok(prompt.includes('missing filename alone does not block readonly validation'));
+ assert.ok(prompt.includes('Project-declared required rules remain required'));
+ assert.ok(prompt.includes('entrypointSha256 hashes the SKILL.md file bytes'));assert.ok(prompt.includes('files-manifest aggregate'));
 });
 
 test('trusted binding exposes the selected host actions and controller-verified publication candidate',async()=>{

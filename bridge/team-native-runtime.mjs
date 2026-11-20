@@ -5,6 +5,7 @@ import{authorizeChiefOwnerInput,validateTeamPlan,validateTeamCodeCandidate,valid
 import{readRoleProjectContext}from'./role-project-context.mjs';
 import{validateNativeRoleRetry,advanceNativeRetryFlow,archiveNativeRetryFailure,clearArchivedRetryLock,rebindNativeRetryContext,NATIVE_RETRY_CONTEXT}from'./role-native-retry.mjs';
 import{consumeQueuedNativeRoleRetry}from'./role-native-retry-consumer.mjs';
+import{renderTeamTaskDescription,teamTaskDescriptionForIntent}from'./team-task-description.mjs';
 const P='/opt/paperclip/node_modules',sha=b=>createHash('sha256').update(b).digest('hex');
 const fail=code=>{throw Object.assign(Error(code),{code});};
 const log=e=>fs.appendFileSync(R+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...e})+'\n',{mode:0o600});
@@ -132,14 +133,13 @@ async function dispatchPlan(p,r,op,run){
  await nativeRoster(p,r);const a=artifact(r,'chief-dispatch-'+task.id+'-'+op.inputRevision.slice(0,12)+'.json',{notBefore:Date.parse(run.startedAt),runId:run.id});
  const plan=validateTeamPlan(JSON.parse(a.text),{remainingCalls:6-budgetUsed(task.id)});for(const t of plan.tasks)if(!t.outputFile.startsWith('team-'+task.id+'-'))fail('TEAM_PLAN_OUTPUT_SCOPE_DENIED');
  const required=r.goalRequirements?.[task.id];if(required?.roles?.some(role=>!plan.tasks.some(t=>t.role===role)))fail('TEAM_PLAN_REQUIRED_ROLE_MISSING');
- const description=(t,legacy=false)=>t.goal+'\n\nRequired deliverable: '+t.outputFile+(legacy?'\nRead your instructions_file and record material SHA. Keep existing artifacts; no RWB merge/deploy, installation or host configuration change.':'\nRead your instructions_file and current project AGENTS.md. Record material SHA and actual verification. Keep existing artifacts. Follow the current Native project delivery policy and owner authorization.');
  const intentFile=file+'.intent';let intent,created;
  if(fs.existsSync(intentFile)){
   intent=readControl(intentFile);if(intent.rootTaskId!==task.id||intent.sourceRunId!==run.id||intent.inputRevision!==op.inputRevision||intent.planSha256!==a.sha256||projectIdFor(r,intent)!==task.projectId)fail('TEAM_DISPATCH_INTENT_CHANGED');
-  created=[];for(const entry of intent.taskEntries){const child=await p.issue.getById(entry.id);if(!child||child.companyId!==r.companyId||child.projectId!==task.projectId||child.parentId!==task.id||child.createdByAgentId!==r.team.ids.chief||child.responsibleUserId!==r.ownerId||child.title!==entry.title||child.description!==description(entry,!intent.projectId))fail('TEAM_DISPATCH_RECONCILIATION_REQUIRED');created.push(child);}
+  created=[];for(const entry of intent.taskEntries){const child=await p.issue.getById(entry.id);if(!child||child.companyId!==r.companyId||child.projectId!==task.projectId||child.parentId!==task.id||child.createdByAgentId!==r.team.ids.chief||child.responsibleUserId!==r.ownerId||child.title!==entry.title||child.description!==teamTaskDescriptionForIntent(entry,intent))fail('TEAM_DISPATCH_RECONCILIATION_REQUIRED');created.push(child);}
  }else{
-  intent={schemaVersion:1,rootTaskId:task.id,projectId:task.projectId,sourceRunId:run.id,inputRevision:op.inputRevision,planSha256:a.sha256,taskEntries:plan.tasks.map(t=>({...t,id:randomUUID(),agentId:r.team.ids[t.role]})),at:new Date().toISOString()};writeControl(intentFile,intent);
-  created=await rootAuthority(p,r,intent,async tx=>{const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx),out=[];for(const entry of intent.taskEntries)out.push(await svc.create(r.companyId,{id:entry.id,projectId:task.projectId,parentId:task.id,title:entry.title,description:description(entry),status:'todo',assigneeAgentId:entry.agentId,responsibleUserId:r.ownerId,createdByAgentId:r.team.ids.chief,actorResponsibleUserId:r.ownerId,trustExplicitResponsibleUserId:true,idempotencyKey:'chief-dispatch:'+run.id+':'+entry.key,allowDuplicate:false}));return out;});
+  intent={schemaVersion:1,rootTaskId:task.id,projectId:task.projectId,sourceRunId:run.id,inputRevision:op.inputRevision,planSha256:a.sha256,taskEntries:plan.tasks.map(t=>({...t,id:randomUUID(),agentId:r.team.ids[t.role],renderedDescription:renderTeamTaskDescription(t)})),at:new Date().toISOString()};writeControl(intentFile,intent);
+  created=await rootAuthority(p,r,intent,async tx=>{const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx),out=[];for(const entry of intent.taskEntries)out.push(await svc.create(r.companyId,{id:entry.id,projectId:task.projectId,parentId:task.id,title:entry.title,description:teamTaskDescriptionForIntent(entry,intent),status:'todo',assigneeAgentId:entry.agentId,responsibleUserId:r.ownerId,createdByAgentId:r.team.ids.chief,actorResponsibleUserId:r.ownerId,trustExplicitResponsibleUserId:true,idempotencyKey:'chief-dispatch:'+run.id+':'+entry.key,allowDuplicate:false}));return out;});
  }
  writeControl(file,{...intent,children:created.map(x=>({id:x.id,key:intent.taskEntries.find(t=>t.id===x.id).key})),artifacts:{}});
 

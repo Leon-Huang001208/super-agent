@@ -14,8 +14,10 @@
 
 独立代码/权限评审、API与浏览器验证和精确候选证据。
 
-- verification-before-completion：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/verification-before-completion/SKILL.md；源摘要 70ca9f737356f7d0bb83751411a379e1100d97dfa825cede43765b0420c5eef2。
-- frontend-testing-debugging：openai-curated-remote/build-web-apps@0.1.2；文件 packages/build-web-apps/0.1.2/skills/frontend-testing-debugging/SKILL.md；源摘要 f966bad01044f0cbcfc071bb2f7671f5f84640632198d697d4257834f5b20825。
+entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+
+- verification-before-completion：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/verification-before-completion/SKILL.md；入口文件摘要 entrypointSha256=2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3；文件集摘要 fileSetSha256=70ca9f737356f7d0bb83751411a379e1100d97dfa825cede43765b0420c5eef2。
+- frontend-testing-debugging：openai-curated-remote/build-web-apps@0.1.2；文件 packages/build-web-apps/0.1.2/skills/frontend-testing-debugging/SKILL.md；入口文件摘要 entrypointSha256=03724620cf7e7de425b607a5492f572d867b1cf5d9c92c74bf50d057d7415e0b；文件集摘要 fileSetSha256=f966bad01044f0cbcfc071bb2f7671f5f84640632198d697d4257834f5b20825。
 
 ## 工具触发与依赖
 

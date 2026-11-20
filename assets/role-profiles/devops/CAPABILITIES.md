@@ -14,11 +14,13 @@
 
 Docker、CI/CD、服务可观测性、备份恢复和已授权发布。
 
-- engineering-delivery：host-skills/engineering-delivery@local；文件 engineering-delivery/SKILL.md；源摘要 f7886094fbcf9e0861037c0920c0b103aa528df5bb1aaa8db4d51ad8d8e2ea8e。
-- systematic-debugging：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/systematic-debugging/SKILL.md；源摘要 5da558cf3d2c9d21a19329ea8dab1163c77b40ce581673d5deb2647ff99e11c7。
-- test-driven-development：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/test-driven-development/SKILL.md；源摘要 5aee51fc2435b93047330a1166f1acc23059038abf461d112dc0ad4f3e0be490。
-- verification-before-completion：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/verification-before-completion/SKILL.md；源摘要 70ca9f737356f7d0bb83751411a379e1100d97dfa825cede43765b0420c5eef2。
-- read-docs：openai-curated-remote/app-6a314a73f8ac819195b0d55e36b9c609@2.11.0；文件 packages/app-6a314a73f8ac819195b0d55e36b9c609/2.11.0/skills/read-docs/SKILL.md；源摘要 9a0fe5e84f67561a8a17e6251bbaa80dffd858dd4263707e570e87110ee5f24f。
+entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+
+- engineering-delivery：host-skills/engineering-delivery@local；文件 engineering-delivery/SKILL.md；入口文件摘要 entrypointSha256=54c08001be1d7a276e447afa2f820c33866acb8fafa8c5ea6e11af1033081d20；文件集摘要 fileSetSha256=f7886094fbcf9e0861037c0920c0b103aa528df5bb1aaa8db4d51ad8d8e2ea8e。
+- systematic-debugging：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/systematic-debugging/SKILL.md；入口文件摘要 entrypointSha256=51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202；文件集摘要 fileSetSha256=5da558cf3d2c9d21a19329ea8dab1163c77b40ce581673d5deb2647ff99e11c7。
+- test-driven-development：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/test-driven-development/SKILL.md；入口文件摘要 entrypointSha256=64b03fce4aee5a97a93160cea8111f3ba13a17b7c001db4bd5836d67fd10705d；文件集摘要 fileSetSha256=5aee51fc2435b93047330a1166f1acc23059038abf461d112dc0ad4f3e0be490。
+- verification-before-completion：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/verification-before-completion/SKILL.md；入口文件摘要 entrypointSha256=2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3；文件集摘要 fileSetSha256=70ca9f737356f7d0bb83751411a379e1100d97dfa825cede43765b0420c5eef2。
+- read-docs：openai-curated-remote/app-6a314a73f8ac819195b0d55e36b9c609@2.11.0；文件 packages/app-6a314a73f8ac819195b0d55e36b9c609/2.11.0/skills/read-docs/SKILL.md；入口文件摘要 entrypointSha256=a20df03ffeb704a15688b760e5e79660e2b852b4c9c0ea83a6c5407414c644ec；文件集摘要 fileSetSha256=9a0fe5e84f67561a8a17e6251bbaa80dffd858dd4263707e570e87110ee5f24f。
 
 ## 工具触发与依赖
 

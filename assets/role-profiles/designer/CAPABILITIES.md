@@ -14,15 +14,17 @@
 
 用户流程、视觉设计、设计审查和Figma交付。
 
-- frontend-design：host-skills/frontend-design@local；文件 frontend-design/SKILL.md；源摘要 46f1d8baf51bad0908bd60784c6a2a1ad8a844f7e161988dfcff6be5090979c7。
-- audit：openai-curated-remote/product-design@0.1.56；文件 packages/product-design/0.1.56/skills/audit/SKILL.md；源摘要 5259daf2db93667763adabf06d8d04adfebdbea91084501626e6e3a731fc4dec。
-- product-design-index：openai-curated-remote/product-design@0.1.56；文件 packages/product-design/0.1.56/skills/index/SKILL.md；源摘要 6b1fbf42669f34a9bf9b80c9a820d585f13045e5cbd4edb5d760d063ff5117c6。
-- user-context：openai-curated-remote/product-design@0.1.56；文件 packages/product-design/0.1.56/skills/user-context/SKILL.md；源摘要 7b48422c65ed303fd187079668a427ef3086055b437162476a05b24717a8785f。
-- figma-generate-design：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-generate-design/SKILL.md；源摘要 2966b1653810b7e951e1e6df19a9e54bc77f39700196992c161e09029b24900c。
-- figma-use：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-use/SKILL.md；源摘要 c77ab5c3ba577648909f35edd5e009bcaef3a474cbdd1dcf88f46a5e48cb2030。
-- figma-generate-library：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-generate-library/SKILL.md；源摘要 635f76e1279b939156f66f096bf057292987a767e42fb9939b3b2499bf8a37e5。
-- figma-create-new-file：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-create-new-file/SKILL.md；源摘要 3d891426df580724e5bc42e04ce1b6daa2338508a5245d7acedb6d040a2dfdd6。
-- figma-design-to-code：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-design-to-code/SKILL.md；源摘要 8684bdbead462c0100601b59aa17a6e564ebf9dd445a43963e9b0d11fbb648c7。
+entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+
+- frontend-design：host-skills/frontend-design@local；文件 frontend-design/SKILL.md；入口文件摘要 entrypointSha256=d91970639e9f5c37682ac7ab60094d35f1c7c1f38d731bd56396563aee10c1d3；文件集摘要 fileSetSha256=46f1d8baf51bad0908bd60784c6a2a1ad8a844f7e161988dfcff6be5090979c7。
+- audit：openai-curated-remote/product-design@0.1.56；文件 packages/product-design/0.1.56/skills/audit/SKILL.md；入口文件摘要 entrypointSha256=087f798c3fe02e91b4cca18cc0f42c358a4dc2c02ccf37a348b476fb19b64aa3；文件集摘要 fileSetSha256=5259daf2db93667763adabf06d8d04adfebdbea91084501626e6e3a731fc4dec。
+- product-design-index：openai-curated-remote/product-design@0.1.56；文件 packages/product-design/0.1.56/skills/index/SKILL.md；入口文件摘要 entrypointSha256=8e9916d9e5dc3b6a394bedcaa38cd9c8833a1f3b0c4538b75647cf9f62f779fc；文件集摘要 fileSetSha256=6b1fbf42669f34a9bf9b80c9a820d585f13045e5cbd4edb5d760d063ff5117c6。
+- user-context：openai-curated-remote/product-design@0.1.56；文件 packages/product-design/0.1.56/skills/user-context/SKILL.md；入口文件摘要 entrypointSha256=5690a7f99cf896970493f5d0bd7f35f62ab9cbe21744352acf84dc0ceea4194c；文件集摘要 fileSetSha256=7b48422c65ed303fd187079668a427ef3086055b437162476a05b24717a8785f。
+- figma-generate-design：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-generate-design/SKILL.md；入口文件摘要 entrypointSha256=b3247e893ece4cd8437e06aa8b498b584b95c9785aa902dd6bd9e51b41eaa022；文件集摘要 fileSetSha256=2966b1653810b7e951e1e6df19a9e54bc77f39700196992c161e09029b24900c。
+- figma-use：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-use/SKILL.md；入口文件摘要 entrypointSha256=38206a581f30f7a919e230f8cb342067ea8f8bb788247528844c901d01b66eb7；文件集摘要 fileSetSha256=c77ab5c3ba577648909f35edd5e009bcaef3a474cbdd1dcf88f46a5e48cb2030。
+- figma-generate-library：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-generate-library/SKILL.md；入口文件摘要 entrypointSha256=e9662f643049f897fe7295453d53783617235e7dcd23c270bbcd85b49f30bb95；文件集摘要 fileSetSha256=635f76e1279b939156f66f096bf057292987a767e42fb9939b3b2499bf8a37e5。
+- figma-create-new-file：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-create-new-file/SKILL.md；入口文件摘要 entrypointSha256=bb7bc48c487f0ad7e738c23d0685bad5ec0bbbca8f5b5bb6295dc0666cc9ddf1；文件集摘要 fileSetSha256=3d891426df580724e5bc42e04ce1b6daa2338508a5245d7acedb6d040a2dfdd6。
+- figma-design-to-code：openai-curated-remote/figma@20.0.0；文件 packages/figma/20.0.0/skills/figma-design-to-code/SKILL.md；入口文件摘要 entrypointSha256=a6e852421e4db72260b2ca641929b1f84684e5b067aead081e35111f5b5feee4；文件集摘要 fileSetSha256=8684bdbead462c0100601b59aa17a6e564ebf9dd445a43963e9b0d11fbb648c7。
 
 ## 工具触发与依赖
 

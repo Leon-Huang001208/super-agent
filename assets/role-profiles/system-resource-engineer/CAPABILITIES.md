@@ -14,10 +14,12 @@
 
 宿主卷身份、容量、RAM/Swap、CPU/I/O及授权资源治理。
 
-- storage-analyzer：host-skills/storage-analyzer@local；文件 storage-analyzer/SKILL.md；源摘要 6e0d23d4070b3e54af9a16a6906c6588e7f34a5d337965d60ece1bd82005b712。
-- systematic-debugging：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/systematic-debugging/SKILL.md；源摘要 5da558cf3d2c9d21a19329ea8dab1163c77b40ce581673d5deb2647ff99e11c7。
-- test-driven-development：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/test-driven-development/SKILL.md；源摘要 5aee51fc2435b93047330a1166f1acc23059038abf461d112dc0ad4f3e0be490。
-- verification-before-completion：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/verification-before-completion/SKILL.md；源摘要 70ca9f737356f7d0bb83751411a379e1100d97dfa825cede43765b0420c5eef2。
+entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
+
+- storage-analyzer：host-skills/storage-analyzer@local；文件 storage-analyzer/SKILL.md；入口文件摘要 entrypointSha256=06334a2f500cda48373aa6ddbd12b1bc9944f0f85c26738cda4316918667c5a9；文件集摘要 fileSetSha256=6e0d23d4070b3e54af9a16a6906c6588e7f34a5d337965d60ece1bd82005b712。
+- systematic-debugging：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/systematic-debugging/SKILL.md；入口文件摘要 entrypointSha256=51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202；文件集摘要 fileSetSha256=5da558cf3d2c9d21a19329ea8dab1163c77b40ce581673d5deb2647ff99e11c7。
+- test-driven-development：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/test-driven-development/SKILL.md；入口文件摘要 entrypointSha256=64b03fce4aee5a97a93160cea8111f3ba13a17b7c001db4bd5836d67fd10705d；文件集摘要 fileSetSha256=5aee51fc2435b93047330a1166f1acc23059038abf461d112dc0ad4f3e0be490。
+- verification-before-completion：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/verification-before-completion/SKILL.md；入口文件摘要 entrypointSha256=2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3；文件集摘要 fileSetSha256=70ca9f737356f7d0bb83751411a379e1100d97dfa825cede43765b0420c5eef2。
 
 ## 工具触发与依赖
 
