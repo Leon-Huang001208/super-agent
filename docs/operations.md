@@ -1,5 +1,11 @@
 # 运行维护与恢复
 
+## 角色指令迁移与保存
+
+本人已授权的角色指令修复使用`migrate-role-instructions.mjs`，先排空当前Native执行，再把每角色登记的精确材料复制为该Agent原生Managed bundle内的`<role>/AGENTS.md`。不得对共享旧materials目录直接一键迁移，也不得重跑一次性team-configure。迁移仅合并指令路径相关配置，保留角色身份、模型、汇报关系、工具和全部原历史。
+
+网页保存沿原生文件服务执行，并通过`role-instruction-store.mjs`同步manifest及内容历史。错误返回时保留具体修改记录，按原修改对账恢复，不能删除记录或改写旧permit/claim。预检对尚未同步的角色明确拒绝。候选通过回归、评审后复用既有镜像，应用和宿主传输都切到同一候选；旧Compose和旧材料继续可恢复。现场验收见[验收手册](acceptance-runbook.md)。
+
 ## 独立 Chief 真实 RWB 试点
 
 单镜像复验使用 `docs/super-agent/chief-single-image-verification.md`。应用、独立模型容器和宿主发布器绑定同一个构建候选，复验中重启应用前后核对镜像 ID。

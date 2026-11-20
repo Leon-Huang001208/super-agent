@@ -6,6 +6,7 @@ import { isSubscriptionAuth } from './codex-hello-gate.mjs';
 import { executeIsolatedRole } from '../bridge/role-isolated-transport.mjs';
 import { NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
 import {ROLE_KEYS} from '../bridge/role-labels.mjs';
+import {isRoleInstructionPermitPath} from '../bridge/role-instruction-paths.mjs';
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
@@ -46,7 +47,7 @@ export function validateRoleCall({ permit, args, env, cwd, now }) {
       permit.expiresAt <= now || permit.expiresAt - now > 300000 ||
       permit.cwd !== cwd || !(cwd.startsWith(ROOT + '/workspaces/') || cwd === '/paperclip/instances/default/projects/'+permit.companyId+'/'+permit.projectId+'/_default') ||
       !/^[a-f0-9]{64}$/.test(permit.materialSha256 ?? '') ||
-      !/^\/paperclip\/control\/research-pm\/materials\/[a-f0-9-]{36}\.md$/.test(permit.instructionsFilePath ?? '') ||
+      !isRoleInstructionPermitPath(permit) ||
       ['OPENAI_API_KEY','CODEX_API_KEY','OPENAI_BASE_URL','ANTHROPIC_API_KEY'].some(k => Boolean(env[k])) ||
       env.PAPERCLIP_RUN_ID !== permit.runId || env.PAPERCLIP_AGENT_ID !== permit.agentId ||
       env.PAPERCLIP_COMPANY_ID !== permit.companyId || env.PAPERCLIP_TASK_ID !== permit.taskId ||
