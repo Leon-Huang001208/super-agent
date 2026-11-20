@@ -5,8 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {taskInputRevision} from '../bridge/task-input.mjs';
-import {requireNoPendingOwnerInput} from '../bridge/team-native-runtime.mjs';
-import {validateNativeRoleRetry,advanceNativeRetryFlow,archiveNativeRetryFailure,clearArchivedRetryLock,rebindNativeRetryContext,NATIVE_RETRY_CONTEXT} from '../bridge/role-native-retry.mjs';
+import {requireNoPendingOwnerInput,resolveNativeRetryScope,assertNativeRetryControl,nativeRetryControlMode} from '../bridge/team-native-runtime.mjs';
+import {validateNativeRoleRetry,advanceNativeRetryFlow,archiveNativeRetryFailure,clearArchivedRetryLock,rebindNativeRetryContext,settleNativeRetryWithoutProvider,canReleaseSettledNativeRetryPhase,NATIVE_RETRY_CONTEXT} from '../bridge/role-native-retry.mjs';
+import {observeContextCallEvidence} from '../bridge/chief-context-paperclip.mjs';
 
 const id=n=>n.repeat(8)+'-'+n.repeat(4)+'-4'+n.repeat(3)+'-8'+n.repeat(3)+'-'+n.repeat(12);
 function fixture(){
@@ -32,6 +33,28 @@ test('Native DB successor binds a fresh operation without a new task, wake or bu
  assert.equal(flow.attemptHistory.backend[0].operationId,f.operation.id);assert.equal(flow.attemptHistory.backend[0].runId,f.parentRun.id);
  assert.equal(flow.attemptHistory.backend[0].retryRunId,f.run.id);assert.equal(flow.dispatches.backend.leaseNonce,f.registry.lease.nonce);
  assert.deepEqual(f,before);assert.equal(f.budgetCount,2);
+});
+test('M2 retry selects the original project and exact generation without capturing retired or portable flows',()=>{
+ const f=fixture(),personal=id('3'),workspaceId=id('4'),cwd='/paperclip/instances/default/projects/'+f.registry.companyId+'/'+f.task.projectId+'/_default';
+ f.registry.team.projectId=personal;f.registry.operations=[f.operation];f.registry.context={schemaVersion:1,enabled:true,catalog:{schemaVersion:1,defaultProjectKey:'personal',projects:[
+  {key:'personal',aliases:[],companyId:f.registry.companyId,ownerId:'owner',projectId:personal,adapterKey:'native-docs',allowedRoles:['backend-engineer'],maximumAction:'read_only',workspaceCwd:'/paperclip/instances/default/projects/'+f.registry.companyId+'/'+personal+'/_default'},
+  {key:'rwb',aliases:[],companyId:f.registry.companyId,ownerId:'owner',projectId:f.task.projectId,adapterKey:'rwb-docs',allowedRoles:['backend-engineer'],maximumAction:'read_only',workspaceCwd:cwd,projectWorkspaceId:workspaceId}]}};
+ f.task.projectWorkspaceId=workspaceId;f.rootTask.projectWorkspaceId=workspaceId;
+ const generation=id('5');Object.assign(f.operation,{contextVersion:1,projectKey:'rwb',workspaceCwd:cwd,projectWorkspaceId:workspaceId,artifactGeneration:generation});
+ Object.assign(f.flow,{contextVersion:1,projectKey:'rwb',workspaceCwd:cwd,projectWorkspaceId:workspaceId,artifactGeneration:generation});
+ const retired={...structuredClone(f.flow),artifactGeneration:id('6'),dispatches:{backend:{...f.flow.dispatches.backend,operationId:id('7')}}};
+ const before=structuredClone(f.registry),resolved=resolveNativeRetryScope({...f,flows:[{file:'retired',flow:retired},{file:'current',flow:f.flow}],log(){}});
+ assert.equal(resolved.registry.team.projectId,f.task.projectId);assert.equal(resolved.registry.contextProject.workspaceCwd,cwd);
+ assert.equal(resolved.file,'current');assert.equal(resolved.flow.artifactGeneration,generation);assert.deepEqual(f.registry,before);
+ const control={managed:true,inputRevision:taskInputRevision(f.rootTask),projectWorkspaceId:workspaceId,pendingInputs:[],pauseRequested:false,reviewBeforeDispatch:false};
+ assert.doesNotThrow(()=>assertNativeRetryControl({registry:resolved.registry,rootTask:f.rootTask,flow:f.flow,control}));
+ for(const change of [{pauseRequested:true},{pendingInputs:[{text:'owner supplement'}]},{inputRevision:'f'.repeat(64)},{projectWorkspaceId:id('8')},{reviewBeforeDispatch:true}])
+  assert.throws(()=>assertNativeRetryControl({registry:resolved.registry,rootTask:f.rootTask,flow:f.flow,control:{...control,...change}}),/TEAM_NATIVE_RETRY_CONTROL_CHANGED/);
+ assert.throws(()=>assertNativeRetryControl({registry:resolved.registry,rootTask:f.rootTask,flow:f.flow,control:null}),/TEAM_NATIVE_RETRY_CONTROL_CHANGED/);
+ assert.throws(()=>resolveNativeRetryScope({...f,task:{...f.task,projectWorkspaceId:id('8')},flows:[{file:'current',flow:f.flow}],log(){}}),/CONTEXT|TEAM_NATIVE_RETRY/);
+ const old={...f.operation};for(const key of ['contextVersion','projectKey','workspaceCwd','projectWorkspaceId','artifactGeneration'])delete old[key];
+ const oldFlow={...f.flow};for(const key of ['contextVersion','projectKey','workspaceCwd','projectWorkspaceId','artifactGeneration'])delete oldFlow[key];
+ assert.equal(resolveNativeRetryScope({...f,operation:old,flows:[{file:'legacy',flow:oldFlow}],log(){}}).registry.context.enabled,false);
 });
 test('missing or uncertain Native, transport, authority, lease and budget proof refuses a rebind',()=>{
  const cases=[f=>{f.run.retryOfRunId=null;f.run.contextSnapshot={retryOfRunId:f.parentRun.id};},f=>{f.run.status='scheduled_retry';},f=>{f.run.scheduledRetryAttempt=3;},f=>{f.parentRun.status='running';},f=>{f.parentRun.finishedAt=null;},
@@ -95,4 +118,37 @@ test('Native queued owner inputs on the root or child block the existing retry a
   wakes=[{companyId:f.registry.companyId,actorType:'user',status:'queued',payload:{issueId:f.rootTask.id},...other}];
   await requireNoPendingOwnerInput(p,f.registry,f.rootTask.id);
  }
+});
+test('owner pause or pending settles a proved failure without a new operation, flow, model or budget slot',t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'native-retry-settle-'));t.after(()=>fs.rmSync(root,{recursive:true}));
+ const f=fixture(),hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+ f.registry.context={schemaVersion:1,enabled:true,catalog:{}};
+ const control={managed:true,inputRevision:taskInputRevision(f.rootTask),pendingInputs:[],pauseRequested:false,reviewBeforeDispatch:false};
+ for(const change of [{pauseRequested:true},{pendingInputs:[{text:'Owner supplement'}]}])assert.equal(nativeRetryControlMode({registry:f.registry,rootTask:f.rootTask,flow:f.flow,control:{...control,...change}}),'settle-only');
+ assert.equal(nativeRetryControlMode({registry:f.registry,rootTask:f.rootTask,flow:f.flow,control}),'execute');
+ fs.mkdirSync(root+'/budget/'+f.rootTask.id,{recursive:true,mode:0o700});fs.mkdirSync(root+'/operations',{mode:0o700});fs.mkdirSync(root+'/transport/'+f.parentRun.id,{recursive:true,mode:0o700});
+ const stdout=Buffer.from('Failed provider output'),stderr=Buffer.from('Known failed exit');
+ Object.assign(f,{budgetCount:1,stdoutSha256:hash(stdout),stderrSha256:hash(stderr)});Object.assign(f.transportResult,{stdoutSha256:f.stdoutSha256,stderrSha256:f.stderrSha256});
+ for(const [name,value]of [['stdout',stdout],['stderr',stderr],['result.json',JSON.stringify(f.transportResult)]])fs.writeFileSync(root+'/transport/'+f.parentRun.id+'/'+name,value,{mode:0o600});
+ fs.writeFileSync(root+'/call.lock',JSON.stringify(f.callLock)+'\n',{mode:0o600});
+ fs.writeFileSync(root+'/budget/'+f.rootTask.id+'/'+f.operation.id+'.json',JSON.stringify(f.budgetRecord),{mode:0o600});fs.writeFileSync(root+'/operations/'+f.operation.id+'.json',JSON.stringify(f.operationBinding),{mode:0o600});
+ const before=structuredClone(f),result=settleNativeRetryWithoutProvider({...f,root,reason:'owner_control',log(){}});
+ assert.equal(result.errorCode,'TEAM_NATIVE_RETRY_SETTLED_NO_PROVIDER');assert.equal(fs.existsSync(root+'/call.lock'),false);assert.deepEqual(f,before);
+ assert.equal(fs.readdirSync(root+'/budget/'+f.rootTask.id).length,1);assert.equal(fs.readdirSync(root+'/operations').length,1);
+ assert.deepEqual(settleNativeRetryWithoutProvider({...f,root,reason:'owner_control',log(){}}),result);
+ const noProvider={...f.run,status:'failed',resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
+ const evidence=observeContextCallEvidence({task:f.rootTask,ids:[f.rootTask.id,f.task.id],runs:[f.parentRun,noProvider],root});
+ assert.equal(evidence.unknown,false);assert.deepEqual(evidence.settledFailedRunIds,[f.parentRun.id]);
+ assert.equal(canReleaseSettledNativeRetryPhase({runs:[f.parentRun,noProvider],evidence}),true);
+ assert.equal(canReleaseSettledNativeRetryPhase({runs:[f.parentRun,noProvider],evidence:{...evidence,unknown:true}}),false);
+ control.pendingInputs=[];control.pauseRequested=false;assert.equal(nativeRetryControlMode({registry:f.registry,rootTask:f.rootTask,flow:f.flow,control}),'execute');
+});
+test('settle-only refuses unknown physical evidence and can conclude a proved sixth failed call without adding a seventh',t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'native-retry-limit-'));t.after(()=>fs.rmSync(root,{recursive:true}));const f=fixture();
+ fs.writeFileSync(root+'/call.lock',JSON.stringify(f.callLock)+'\n',{mode:0o600});f.transportResult.outputUnknown=true;
+ assert.throws(()=>settleNativeRetryWithoutProvider({...f,root,reason:'owner_control',log(){}}),/TRANSPORT_UNSETTLED/);assert.equal(fs.existsSync(root+'/call.lock'),true);
+ f.transportResult.outputUnknown=false;f.budgetCount=6;
+ assert.throws(()=>validateNativeRoleRetry(f),/BUDGET_DENIED/);
+ assert.equal(settleNativeRetryWithoutProvider({...f,root,reason:'budget_exhausted',log(){}}).errorCode,'TEAM_NATIVE_RETRY_SETTLED_NO_PROVIDER');
+ assert.equal(fs.existsSync(root+'/call.lock'),false);
 });

@@ -37,8 +37,8 @@ function trustedBinding(value) {
  * Matching envelope fields do not authenticate an arbitrary HTTP/JSON caller.
  * Native owns task creation, source-ID/body conflicts and durable idempotency.
  */
-export function createChiefFeishuIntake({ binding, registerTrustedMessage, resolveProject, log } = {}) {
-  if (typeof registerTrustedMessage !== 'function' || typeof log !== 'function') {
+export function createChiefFeishuIntake({ binding, registerTrustedMessage, resolveProject, log, parseCommand } = {}) {
+  if (typeof registerTrustedMessage !== 'function' || typeof log !== 'function' || parseCommand!==undefined&&typeof parseCommand!=='function') {
     fail('CHIEF_FEISHU_CONFIGURATION_INVALID');
   }
   const scope = trustedBinding(binding);
@@ -69,12 +69,12 @@ export function createChiefFeishuIntake({ binding, registerTrustedMessage, resol
       return reject('CHIEF_FEISHU_MESSAGE_INVALID', message.message_id);
     }
     let goal = text.slice('/chief'.length).trim(),projectSelector;
-    if(/^--project(?:\s|$)/.test(goal)){
+    if(!parseCommand&&/^--project(?:\s|$)/.test(goal)){
       const selected=/^--project\s+(?:"([^"]+)"|'([^']+)'|([^\s"']+))\s+([\s\S]+)$/.exec(goal);
       if(!selected)return reject('CHIEF_FEISHU_GOAL_INVALID',message.message_id);
       projectSelector=selected[1]??selected[2]??selected[3];goal=selected[4].trim();
     }
-    if (!goal || goal.length > 12_000) return reject('CHIEF_FEISHU_GOAL_INVALID', message.message_id);
+    if (!parseCommand&&(!goal || goal.length > 12_000)) return reject('CHIEF_FEISHU_GOAL_INVALID', message.message_id);
 
     const sender = event.sender;
     const tenantKey = header.tenant_key ?? sender?.tenant_key;
@@ -94,10 +94,20 @@ export function createChiefFeishuIntake({ binding, registerTrustedMessage, resol
     }
 
     const bodySha256 = createHash('sha256').update(text, 'utf8').digest('hex');
+    let command,commandError,createdAt;
+    if(parseCommand){
+      try{command=parseCommand(text);if(!isObject(command))throw Object.assign(new Error('invalid command'),{code:'CHIEF_CONTEXT_COMMAND_INVALID'});}
+      catch(error){commandError=/^CHIEF_CONTEXT_[A-Z_]+$/.test(error?.code??'')?error.code:'CHIEF_CONTEXT_COMMAND_INVALID';}
+      if(message.create_time!==undefined){
+        if(!/^[0-9]{10,16}$/.test(String(message.create_time)))return reject('CHIEF_FEISHU_MESSAGE_INVALID',message.message_id);
+        const date=new Date(Number(message.create_time));if(!Number.isFinite(date.getTime()))return reject('CHIEF_FEISHU_MESSAGE_INVALID',message.message_id);
+        createdAt=date.toISOString();
+      }
+    }
     const sourceParams = {
       source: 'feishu', eventType, appId: scope.appId, tenantKey, ownerOpenId: scope.ownerOpenId,
       messageId: message.message_id, chatId: message.chat_id,
-      ...(header.event_id !== undefined && { eventId: header.event_id }), bodySha256,
+      ...(header.event_id !== undefined && { eventId: header.event_id }), bodySha256,...(createdAt&&{createdAt}),
     };
     let projectId=scope.projectId;
     if(projectSelector){
@@ -110,13 +120,14 @@ export function createChiefFeishuIntake({ binding, registerTrustedMessage, resol
       schemaVersion: 1, ...scope,projectId,...(projectSelector?{projectSelector}:{}), source: 'feishu', externalId: message.message_id,
       ...(header.event_id !== undefined && { eventId: header.event_id }),
       messageId: message.message_id, chatId: message.chat_id, text, goal, bodySha256, sourceParams,
+      ...(command&&{command}),...(commandError&&{commandError}),...(createdAt&&{createdAt}),
     });
     try {
       // Replays deliberately reach Native with the same identity and exact body hash.
       // Never retry here: a rejected transport response can follow a committed result.
       return { kind: 'registered', result: await registerTrustedMessage(snapshot) };
     } catch (error) {
-      const code = /^(?:CHIEF_FEISHU|TEAM|ROLE|ADMISSION)_[A-Z0-9_]+$/.test(error?.code ?? '')
+      const code = /^(?:CHIEF_FEISHU|CHIEF_CONTEXT|CONTEXT_PROJECT|PROJECT_KNOWLEDGE|TEAM|ROLE|ADMISSION)_[A-Z0-9_]+$/.test(error?.code ?? '')
         ? error.code : 'CHIEF_FEISHU_NATIVE_RESULT_UNKNOWN';
       try { await log({ code, messageId: snapshot.messageId }); } catch { /* Preserve the original Native outcome. */ }
       throw error;

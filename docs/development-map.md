@@ -2,6 +2,9 @@
 
 | 子系统 | 本仓库入口 | 维护与验证 |
 |---|---|---|
+| M2 项目与本人命令 | `bridge/context-projects.mjs`、`bridge/chief-context-commands.mjs`、`bridge/chief-context-native.mjs` | catalog 绑定 Native project/可选 workspace ID；原 activity 持久化项目/任务选择、补充、暂停、继续与 linked followup。`context-projects`、`chief-context-commands`、`chief-context-native` 同名测试核对契约。 |
+| M2 记忆与协调 | `bridge/project-knowledge-store.mjs`、`bridge/team-context.mjs`、`bridge/team-native-runtime.mjs` | owner-confirmed 当前版本按项目共享/角色私有先隔离后检索；新 session 不带旧任务 history；六次同根额度、原操作对账和分代产物保留。对应 `project-knowledge-store`、`team-context` 测试。 |
+| M2 材料与配置 | `bridge/role-material-snapshot.mjs`、`bridge/native-role-runtime.mjs`、`scripts/role-container-transport.mjs`、`scripts/context-configure.mjs` | 专用只读 snapshot，manifest/permit/项目/workspace 同域；配置默认 preview、显式 apply，保留旧 RWB primary/回调。`native-role-runtime-context`、`role-container-materials`、`context-configure` 及既有 gate/adapter/preparation 测试；合同见[跨项目专题](cross-project-context.md)。 |
 | 通用岗位与能力 | `team-roles.mjs`、`role-capabilities.mjs`、`role-skill-bundles.mjs`、`assets/role-profiles/`、`assets/role-skills/` | 11职业说明、默认/补充能力、可复核完整Skill包。能力按技术栈/服务选择，安装或缓存存在不能当调用通过。 |
 | 跨项目接单 | `role-project-context.mjs`、Native角色及Chief现有入口 | 使用Native workspace.metadata扩展，任务项目决定知识/工作区/交付；官方schema/service合同fixture覆盖真实原始DB和API投影。 |
 | 宿主执行与MCP | `role-host-capabilities.mjs`、`role-host-mcp.mjs`、`role-host-call-queue.mjs`、`docker/role-host-mcp-server.mjs`、`scripts/role-host-mcp-config.mjs` | 现有传输内执行Git/check/已授权动作及选定stdio MCP；仅本run实际host工具逐项批准，服务器默认prompt。固定CLI合同读回真实审批配置；取消清理自有进程组，失败保留有限脱敏诊断。 |
@@ -21,7 +24,7 @@
 | 受管 PR 复用 | `scripts/existing-pr-runner.mjs` | 精确候选、同仓库同基线、拒绝其他动作和 SHA 条件合并；真实保护、CI 与评审状态仍必需 |
 | 项目工程运行时 | `scripts/project-runtime.mjs`、`scripts/vendor/leon-engineering/` | 固定 0.19.4 模块与来源校验，显式 Harness 和交付入口，旧回执续接；`tests/project-runtime.test.mjs` 和 `tests/management/project-runtime-git.mjs` |
 
-本轮候选要求已改为 `gpt-6.1-sol` / `low`，预检拒绝旧 xhigh 配置；`acceptance` 仍为 NOT_RUN。此更改不修改运行实例的 Agent 配置或 hello 历史，也不代表业务模型调用已发生。
+业务验收沿用固定 `gpt-6.1-sol` / `low`，预检拒绝旧 xhigh 配置。M2 首轮本地 Docker 全量为 515/515（`logs/m2-full-first.log`，加入配置工具前），不表示最终总数、Mini 激活或真实业务通过；后续精确候选须另留回执。
 
 `role-instruction-paths.mjs`把Managed入口与company、Agent、role绑定，复用Native已登记的本run材料副本及baseline；按当前或历史manifest匹配当次摘要。调用门和宿主传输使用完整路径及内容摘要，不再用同名文件的basename定位。网页后续保存不修改已经固定的Native副本。旧UUID许可的原路径合同继续保留。
 
@@ -86,13 +89,17 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 
 `bridge/team-native-runtime.mjs`将本人Native输入、结构化Chief计划、角色派发、收回、独立质检及通知接到现有Native服务。`team-plan.mjs`校验根预算、DAG和质量依赖；`role-control-store.mjs`仅保存控制映射/意图/回执。`task-input.mjs`统一title及description输入版本。父子调用共用`role-call-budget.mjs`根预算。
 
+PR30的Native内置retry只绑定已存在的后继run。M2绑定先按原operation/Native task派生局部项目，精确选择同输入/同代际dispatch所属flow；旧flow和其他代际保留。原项目artifact与meter使用该局部绑定，Native control的暂停/pending/输入/计划确认仍在原根事务核对，provider启动守卫继续生效；不增加wake、root或重置六次预算。`tests/role-native-retry.test.mjs`覆盖RWB专用workspace、全局默认个人项目不变、旧portable flow及暂停/版本负例，真实重试另行留证。
+
+PR32复用Native唯一queued消费者。若M2本人已暂停/补充或预算用尽，现有后继run仅在原scope、输入和完整physical failure证据通过后settle-only：只读归档、持久幂等回执、精确释放父调用锁，并返回bootstrap NoProvider；不创建operation、不推进flow、不调用模型或新增预算。Native终态与原archive共同证明已结清后，既有phase释放复用`observeContextCallEvidence`及Native租约核对；unknown不释放。`chief-context-native`串联回归验证pause/add→queued消费→NoProvider证据→本人continue同根应用输入；Docker夹具不等于Mini实测。
+
 `native-role-adapter.mjs`在实际QA派发的可信提示中明确JSON契约：verdict仅为`PASS`或`NEEDS_WORK`，`findings`/`notRun`始终是数组，`reviewedArtifacts`逐项匹配可信执行绑定。范围和限制保留在独立字段；未执行验收继续记入`notRun`，必需证据缺失不能转成PASS。上游报告仍作为证据数据传递，不提升为指令。`tests/native-role-adapter.test.mjs`捕获真实`nativeExecute`最终prompt，验证QA协议、精确产物绑定及非QA不受影响；严格collector、材料、权限、预算和调度均未修改。源码回归不代表旧运行报告已修复或真实业务通过。
 
 `team-plan.mjs`的可信Chief协议明确最终飞书发信由run结束后的控制器受管outbox负责；模型仅写summary，并将发信阶段标为等待控制器回执。模型不能自行宣称已发送，也不为这一步发现飞书插件、索取凭据或另发消息；尚无回执不能推断连接缺失或发送失败。其他已授权Apps/Plugins照常用于其指定任务。上述回归同样捕获实际Chief summary派发提示；发送器、通知回执及运行配置不在本次提示修复范围。
 
 `team-result-notification.mjs`复用已有飞书SDK和本人绑定，持久化结果outbox；发送成功不重复调用，未知结果停止等待核对。`scripts/role-transport-resident.mjs`是既有宿主Node的Docker管理传输与只读宿主快照，模型及产品协调逻辑仍在Docker。只读Snapshot不授予系统修改权，使用WorkDisk/原数据卷前核对固定UUID。新宿主开机服务不在本轮配置。
 
-`team-configure.mjs`明确新角色paused纯登记，保护原ID/配置/材料；`team-bootstrap.mjs`串行复用原Native lifecycle，保留真实探针与无新探针的区别。296项当前离线回归已通过；Native11配置及8新探针通过，新的Chief联合闭环尚未作为通过记录。
+`team-configure.mjs`明确新角色paused纯登记，保护原ID/配置/材料；`team-bootstrap.mjs`串行复用原Native lifecycle，保留真实探针与无新探针的区别。原 M1 阶段的296项离线回归、Native11配置及8新探针是各自时点证据；不能替代 M2 精确候选或多项目真实业务验收。M2 复用原角色，不重跑一次性 team-configure 重建身份。
 
 ## Chief 飞书入口
 

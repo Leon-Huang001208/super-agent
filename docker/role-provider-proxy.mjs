@@ -16,7 +16,8 @@ const claims=JSON.parse(Buffer.from(auth.tokens.id_token.split('.')[1],'base64ur
 const account=auth.tokens.account_id??claims['https://api.openai.com/auth']?.chatgpt_account_id;
 if(!account||!auth.tokens.access_token)throw Error('ROLE_PROXY_AUTH_REQUIRED');
 let session=null,count=0,mcpCount=0;
-let allowedTools=[...(config.effectiveCapabilities?.mcpAllowedTools??config.mcpAllowedTools??[])];
+const admittedTools=[...(config.effectiveCapabilities?.mcpAllowedTools??config.mcpAllowedTools??[])];
+let allowedTools=config.readOnlyToolsOnly===true?[]:[...admittedTools];
 for(const tool of config.hostTools??[])if(!allowedTools.includes(tool.name))allowedTools.push(tool.name);
 const publicIp=ip=>/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)&&
  !/^(?:0\.|10\.|127\.|169\.254\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|224\.|255\.)/.test(ip);
@@ -91,7 +92,9 @@ const handler=async(req,res)=>{
    const text=transformMcpCatalogBody(await upstream.text(),upstream.headers.get('content-type'),message=>{
     if(!Array.isArray(message.result?.tools))return message;
     const resolved=config.role?resolveRoleCapabilities({role:config.role,additionalCapabilities:config.additionalCapabilities??[],projectContext:config.projectContext??{},toolCatalog:message.result.tools}):{mcpAllowedTools:allowedTools};
-    const tools=filterMcpTools(message.result.tools,{allowedTools:resolved.mcpAllowedTools,projectContext:config.projectContext});
+    const admitted=new Set(admittedTools),dynamic=new Set(resolved.mcpAllowedTools);
+    const ceiling=config.readOnlyToolsOnly===true?message.result.tools.filter(tool=>admitted.has(tool.name)&&dynamic.has(tool.name)&&tool.annotations?.readOnlyHint===true):message.result.tools;
+    const tools=filterMcpTools(ceiling,{allowedTools:resolved.mcpAllowedTools,projectContext:config.projectContext});
     allowedTools=tools.map(tool=>tool.name);return{...message,result:{...message.result,tools}};
    });
    res.writeHead(upstream.status,out);res.end(text);audit({code:'ROLE_PROXY_MCP_CATALOG_FILTERED',runId:config.runId,toolCount:allowedTools.length});return;

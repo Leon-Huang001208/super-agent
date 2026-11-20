@@ -5,6 +5,7 @@
 - [项目规则](../AGENTS.md)：代理入口、权限与安全边界。
 - [产品目标与验收](product.md)：目标、非目标、两条闭环的完成标准。
 - [架构](architecture.md)：Paperclip 主线、组件、数据流与失败边界。
+- [跨项目、续接与记忆 M2](cross-project-context.md)：统一 `/chief` 命令、项目绑定、确认记忆、隔离及配置预览；源码验证与 Mini 实测分开。
 - [开发地图](development-map.md)：代码归属、验证入口及证据范围。
 - [开发交付流程](agent-workflow.md)：Harness、worktree、评审、PR、CI、合并及收尾。
 - [文档治理](documentation-governance.md)：权威关系、同步映射、免更新与检查。

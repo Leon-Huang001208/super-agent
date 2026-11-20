@@ -24,6 +24,23 @@ Native全局scheduler保持原受控关闭状态。恢复既有scheduled retry�
 - 新鲜宿主磁盘证据至少 5 GiB，专用 APFS 挂载正确；按上海时间保留新任务统计、取消每日数量硬上限；全局单写与模型调用预算在实际入口生效。
 - 业务许可精确绑定任务、项目、候选、模型、推理档位、workspace、动作上限及有效期；开发与评审独立会话，确认实际加载 Skills。hello 许可不能执行业务任务。
 
+## M2 跨项目续接与记忆
+
+命令与作用域合同见[跨项目专题](cross-project-context.md)。2026-11-20的515/515仅为加入配置工具前的首轮本地Docker回归，既不是最终候选总数，也不证明Mini激活/真实业务。下列M2现场项目当前均为`NOT_RUN`，按同一组合候选保存原始回执；不拿模型自述替代机械证据。
+
+| 必须取得的现场证据 | 通过边界 |
+| --- | --- |
+| 精确源码/镜像、配置preview与apply、排空和唯一飞书连接 | Mini实际运行指纹匹配组合候选；原11角色/Native配置保留；RWB旧primary/callback不变，无第二监听。 |
+| 两个真实项目与持久选择 | 本人projects/project/status、重启后恢复选择；task/flow/operation/permit/cwd及可选workspace ID一致，项目查询不建task/不调用模型。 |
+| 同根两轮补充、等待与继续 | 保存本人原消息、pending应用时点、新旧输入SHA、分代artifact；原预算累计≤6，先对账已登记dispatch；重复消息/UNKNOWN不换operation、不重复模型/通知。blocked重规划不足三次时零新调用并明确受阻。 |
+| 普通继续及可选plan-first | 默认目标无额外审阅；同版本暂停/continue复用原计划，plan-first只暂停一次，补充后continue按最新要求执行，无复制64SHA门。 |
+| done后的独立新目标 | 本人显式followup产生linked新根且无parentId，旧六次账本不变；failed/UNKNOWN/原结果修正不能走此路线。 |
+| 新Task和全新session召回/更正 | 本人remember后完成A；B无A history/预装答案仍引用实际记忆ID/version/source hash。本人correct后C新session取v2，旧版本可查。 |
+| 项目共享/角色私有隔离与显式share | 两项目及不同role的负例由读取范围、mount/broker原始证据证明；本人share后只目标共享分区可读。legacy明确historical-reference，不伪造确认；材料快照无跨项目可读文件。 |
+| 实际能力、闭环与收尾 | 保存本轮Skill读取/选定工具真实调用、Chief派发/收回/QA、精确artifact、本人飞书最终sent回执，核对零在途角色容器/调用锁；未执行项继续NOT_RUN。 |
+
+以下网页、RWB和个人M1章节保留各自原专项及历史验收合同，不能据此恢复旧入口或扩大M2动作范围。M2不接管RWB旧callback/primary或其发布流程。
+
 ## Chief 网页续接试点
 
 原任务 LEO-4 对应 RWB #261。历史飞书回执确认原版已完成且调用账为 8/8。网页试点验证本人对话下的一次补充、同任务和同 PR、精确候选确认，以及等待 CI 时的专用应用恢复。原任务两轮反馈修复已用完，额外一次开发和一次独评按新输入版本单独授权，Chief 调用另记。
@@ -98,5 +115,7 @@ Native全局scheduler保持原受控关闭状态。恢复既有scheduled retry�
 父角色run失败后，先只读核对Native已存在的`scheduled_retry`、父run、attempt序号和原子任务。不得另发manual wake或新建root。本人认证的`POST /issues/:id/scheduled-retry/retry-now`只推进原有run；Agent pause会取消scheduled retry，不能把pause/resume当作原attempt的无损暂停。
 
 后继run进入执行时核对：父run终态及结束时间、host result的run ID和非unknown/非超时/非取消、stdout/stderr实际SHA、原budget/operation映射、root/child输入版本、当前唯一Native执行与父Native租约释放。只对精确匹配的旧call锁归档和清除；失败产物有自己的run/operation/file/SHA只读archive。核对新operation的`acceptedRunId`为原Native后继run、`retryOfOperationId`指向旧操作，flow历史保留旧dispatch，Admission nonce、同child/root/session保持。确认物理调用开始后仅新增一条原根预算记录，六次上限及最多两次修复不变。
+
+另验本人pause/add与已queued retry并存：后继run核实原物理失败后只能settle-only，保存同一原锁的immutable archive及settlement回执，以bootstrap NoProvider终结，不建新operation/advance flow/花预算。核对实际Native终态、环境租约释放与原Admission phase回收后，本人continue仍应用同root补充、旧hash/产物/预算保留。任何未知输出、scope/hash变化或锁漂移仍保留现场；不能凭模型或settlement日志声称Native已经终结。
 
 离线回归覆盖伪造context retry声明、未启动的scheduled run、Native父关系不符、unknown/超时/取消或摘要错误、活动执行/未释放租约、输入改变、满额预算、错误锁和archive冲突。任何拒绝都保留旧证据。源码回归通过不代表真实重试、工具审批修复或业务验收已通过；这三项分别以实际Native和host回执记录。
