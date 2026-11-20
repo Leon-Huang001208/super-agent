@@ -6,6 +6,8 @@
 
 `publish-role-profiles.mjs --apply`要求暂停本团队新派发且无活动run，通过现有本人会话执行真正的网页文件读写接口；CAPABILITIES先保存，再CAS更新入口AGENTS，Native保存链保留旧内容并同步摘要。同内容重跑不增加变更。恢复原团队开关后才启动Chief主服务，避免把维护暂停误判为部署绑定错误。
 
+材料发布只保存Managed AGENTS/CAPABILITIES，保留原Native Agent简介及连接配置；简介PATCH会触发连接验证，材料发布不需要这一步。
+
 新运行候选必须同时包含bridge、docker与完整Skill资产包，provider broker需要其只读源码挂载；Actor另挂选定Skill入口、只读包和任务代码。宿主MCP配置只在宿主读取选定服务，不复制完整配置或凭据给模型。使用实际目录/调用验证能力，按失败码诊断，不自动安装缺依赖或补回已经停用的全局Hook。
 
 宿主检查与MCP使用异步子进程，取消或超时只终止本调用独立进程组；旧已开始而结果未知的动作保留原run目录和started记录，不重新执行。原生QA绑定真实Git候选与检查记录，发布继续使用目标项目已登记受管入口和允许动作。

@@ -49,7 +49,6 @@ async function main(){
    readFile:(agentId,file)=>request('/agents/'+agentId+'/instructions-bundle/file?path='+encodeURIComponent(file)),
    writeFile:({agentId,...body})=>request('/agents/'+agentId+'/instructions-bundle/file',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),
   });
-  for(const entry of r.agents)await request('/agents/'+entry.profile.agentId,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({capabilities:TEAM_ROLES[entry.profile.role].duty})});
   console.log(JSON.stringify(result));
  }finally{await s.closeRegisteredClients(url);}
 }
