@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {recoverOfficialChiefGoal} from '../bridge/chief-official-message-recovery.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { createChiefContextController, chiefContextSourceKey } from '../bridge/chief-context-native.mjs';
@@ -140,6 +141,21 @@ test('all commands recheck source binding before accessing Native or creating ef
   const f=fixture();const m=f.message('/chief projects');m.ownerOpenId='ou_other';
   await assert.rejects(f.controller.dispatchTrustedCommand(m),{code:'CHIEF_CONTEXT_BINDING_DENIED'});
   assert.equal(f.transactions(),0);assert.equal(f.registrations.length,0);assert.equal(f.acks.length,0);
+});
+
+test('only a closed official GET verifier admits the new-goal recovery origin, never raw JSON or other commands',async()=>{
+  const f=fixture(),sdk=f.message('/chief --plan-first new 原消息目标'),item={message_id:sdk.messageId,chat_id:sdk.chatId,msg_type:'text',create_time:String(Date.parse(sdk.createdAt)),
+    deleted:false,updated:true,sender:{id_type:'open_id',id:f.binding.ownerOpenId,sender_type:'user',tenant_key:f.binding.tenantKey},body:{content:JSON.stringify({text:sdk.text})}};
+  const message=await recoverOfficialChiefGoal({binding:f.binding,client:{im:{message:{get:async()=>({code:0,data:{items:[item]}})}}},
+    getBoundChatIds:async()=>[sdk.chatId],messageId:sdk.messageId,expectedBodySha256:sdk.bodySha256,log:event=>f.logs.push(event)});
+  const before=f.transactions();
+  await assert.rejects(f.controller.dispatchTrustedCommand(structuredClone(message)),{code:'CHIEF_CONTEXT_BINDING_DENIED'});
+  assert.equal(f.transactions(),before);assert.equal(f.registrations.length,0);
+  const first=await f.controller.dispatchTrustedCommand(message),again=await f.controller.dispatchTrustedCommand(message);
+  assert.equal(first.taskId,again.taskId);assert.equal(f.registrations.length,1);assert.equal(f.state.tasks.size,1);
+  const intent=[...f.state.events.values()].find(value=>value.kind==='new'&&value.originalText===sdk.text);
+  assert.equal(intent.sourceParams.eventType,'feishu.message_api_recovery');assert.equal(Object.hasOwn(intent.sourceParams,'eventId'),false);
+  assert.equal(intent.source.createdAt,message.createdAt);
 });
 
 test('project selection restores each Native project task and status has no task/model effects',async()=>{
