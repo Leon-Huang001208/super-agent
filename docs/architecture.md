@@ -2,6 +2,8 @@
 
 ## 当前原生执行改造
 
+固定安装版Agent路由将Zod投影后的AI绑定与JSONB对象作字符串比较，键顺序不同会误触发订阅变更验证。`role-ai-binding-hook`在进程内按精确源SHA将唯一比较替换为语义深比较；真实绑定变化、兼容性、身份和认证校验全部保留，安装包磁盘不修改。`loadServer`先装ChiefWeb hook、再装AI hook，统一导入、验证和逆序注销，避免提前缓存其他模式的待修改模块。
+
 公司Skill本地导入和版本快照创建是两个原生操作。运行选择仅使用已核验的currentVersion；后端批准的公司workspace暂存与实际快照字段保持一致，不将工作区路径拒绝解释为需要关闭访问控制。
 
 2026-11-20本人选定Mac原生Agent＋按需Docker，取代下文旧基线中的Docker模型执行默认。Paperclip仍拥有任务、订阅、运行和恢复历史；最终执行器、公司Skill分配及职责权限见[原生执行和技能分配](plans/native-skills-20261120.md)。可信策略进入当次permit，真实宿主路径、每run订阅broker和Skill快照进入原生Codex。原Docker模式显式保留供兼容与回退，不能在未知模型结果后自动切换执行器。
