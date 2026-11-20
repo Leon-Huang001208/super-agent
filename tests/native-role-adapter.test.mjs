@@ -164,3 +164,15 @@ test('trusted binding exposes the selected host actions and controller-verified 
  const data=JSON.parse(f.getDispatched().config.promptTemplate.split('Trusted execution binding data.\n')[1].split('\n')[0]);
  assert.deepEqual(data.authorizedHostActions,['switch-proxy']);assert.equal(data.codeReview.candidateSha,'a'.repeat(40));
 });
+
+test('explicit native policy accepts bypass but rejects legacy arguments and excludes company Skill bytes from prompts',async()=>{
+ const f=dispatchFixture('research'),executionPolicy={executor:'macos_native',sandbox:'none',approvalPolicy:'never',docker:'on_demand'};
+ f.registration.profile.executionPolicy=executionPolicy;f.ctx.config.extraArgs=[];f.ctx.config.dangerouslyBypassApprovalsAndSandbox=true;f.ctx.config.dangerouslyBypassSandbox=true;
+ f.registration.projectContext={id:'project'};f.registration.effectiveCapabilities={role:'research',skills:[{name:'research'}],companySkillSnapshot:{secretBody:'do not inline skill bodies'}};
+ let dispatched;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Role',log(){},readRegistration:async()=>f.registration,
+  prepareRole:async()=>({binding:f.registration.binding,sessionMode:'new',knowledge:[],config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:true}}),
+  nativeExecute:async value=>{dispatched=value;return{exitCode:0};}});
+ assert.equal((await execute(f.ctx)).exitCode,0);assert.equal(dispatched.config.promptTemplate.includes('do not inline skill bodies'),false);
+ await assert.rejects(execute({...f.ctx,config:{...f.ctx.config,extraArgs:['--sandbox','workspace-write']}}),/SCOPE_DENIED/);
+});

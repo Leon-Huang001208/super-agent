@@ -1,5 +1,9 @@
 # Paperclip 集成架构
 
+## 当前原生执行改造
+
+2026-11-20本人选定Mac原生Agent＋按需Docker，取代下文旧基线中的Docker模型执行默认。Paperclip仍拥有任务、订阅、运行和恢复历史；最终执行器、公司Skill分配及职责权限见[原生执行和技能分配](plans/native-skills-20261120.md)。可信策略进入当次permit，真实宿主路径、每run订阅broker和Skill快照进入原生Codex。原Docker模式显式保留供兼容与回退，不能在未知模型结果后自动切换执行器。
+
 ## 通用角色、项目与能力
 
 11角色的职责与专业方法属于岗位，仓库、工作树、规则、checks和交付方式属于当前Native项目。合法项目扩展存放于`project_workspaces.metadata.superAgentProject`，通过原Native API登记；固定安装版的`runtimeConfig`是严格运行环境schema，不承载这份扩展。本人明确项目优先，其次当前/父任务项目，歧义才询问。旧M1记录继续保留。

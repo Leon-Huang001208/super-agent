@@ -14,6 +14,9 @@
 
 API、业务逻辑、权限、后台任务、SQL和事务。
 
+公司Skill分配以Agent的paperclipSkillSync.desiredSkills为唯一选择来源；每run固定公司版本与完整文件摘要。未配置公司选择的历史run保留旧包兼容，显式空选择不恢复旧专业包。
+公司默认分配：paperclip、handoff、verification-before-completion、systematic-debugging、test-driven-development、property-based-testing。条件技能只在任务stack/services/domains匹配时启用；上方公司分配优先，以下为保留的历史包来源说明。
+
 entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。
 
 - systematic-debugging：openai-curated-remote/superpowers@7.0.1；文件 packages/superpowers/7.0.1/skills/systematic-debugging/SKILL.md；入口文件摘要 entrypointSha256=51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202；文件集摘要 fileSetSha256=5da558cf3d2c9d21a19329ea8dab1163c77b40ce581673d5deb2647ff99e11c7。
@@ -28,7 +31,7 @@ entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留�
 宿主候选工具：host.project_inspect、host.project_check、host.project_git。这些名称表示岗位候选权限；是否已经接通须看实际目录与传输，具体仓库、动作、路径和服务参数仍由当前任务约束。
 projectContext.hostMcpServers登记本岗位可用的服务和方法时，才能提供host.mcp_call；services仅描述项目服务，不能替代具体MCP登记。
 Skill完整只读包在独立资产目录，CODEX_HOME/skills入口指向所需包；包内相对引用、必要references/scripts及每文件摘要保留。未配置的可选技能或工具仍不可调用。
-宿主Skill文件存在只证明资料存在；Docker内CLI、Python、浏览器、Figma连接、项目受管发布器等运行依赖必须单独核实。缺依赖写明NOT_RUN和缺失项，保留已完成成果。
+Skill文件存在只证明资料存在；Mac原生CLI、Python、浏览器、Figma连接、项目受管发布器等运行依赖必须单独核实。缺依赖写明NOT_RUN和缺失项，保留已完成成果。
 需要新增安装、外部写入或高影响动作而现有授权不足时，只提交具体缺口；授权内自主执行，不导入无条件重复审批。
 
 ## 失败与证据

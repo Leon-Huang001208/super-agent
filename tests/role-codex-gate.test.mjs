@@ -79,3 +79,12 @@ test('role gate accepts an exact managed role entry and pins its run copy', () =
     {instructionsFilePath:permit.instructionsFilePath.replace('/research/','/research/../research/')},
   ]) assert.throws(()=>validateRoleCall({...input,permit:{...permit,...change}}),/SCOPE_DENIED/);
 });
+
+test('trusted native permit accepts exact bypass and rejects sandbox downgrade',()=>{
+ const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+ const permit={schemaVersion:1,credentialGrantId:id,projectId:id,role:'research',runId:id,taskId:id,agentId:id,companyId:id,model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:200000,cwd:'/paperclip/control/research-pm/workspaces/demo',instructionsFilePath:'/paperclip/control/research-pm/materials/'+id+'.md',materialSha256:'a'.repeat(64),executionPolicy:{executor:'macos_native',sandbox:'none',approvalPolicy:'never',docker:'on_demand'}};
+ const env={PAPERCLIP_RUN_ID:id,PAPERCLIP_AGENT_ID:id,PAPERCLIP_COMPANY_ID:id,PAPERCLIP_TASK_ID:id,CODEX_HOME:'/tmp/paperclip-ai-'+id+'-'+id+'-abcdef/provider'};
+ const args=['--search','exec','--json','--model',permit.model,'-c','model_reasoning_effort="low"','--dangerously-bypass-approvals-and-sandbox','-'];
+ assert.equal(validateRoleCall({permit,args,env,cwd:permit.cwd,now:100000}),permit);
+ assert.throws(()=>validateRoleCall({permit,args:args.filter(value=>value!=='--dangerously-bypass-approvals-and-sandbox'),env,cwd:permit.cwd,now:100000}),/ARGUMENTS_DENIED/);
+});

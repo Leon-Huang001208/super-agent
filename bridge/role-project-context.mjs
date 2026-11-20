@@ -38,6 +38,9 @@ export function resolveRoleProjectContext({companyId,ownerId,project,workspace,l
  if(hostPath!==null&&(typeof hostPath!=='string'||!path.posix.isAbsolute(hostPath)||path.posix.normalize(hostPath)!==hostPath))fail('ROLE_PROJECT_WORKSPACE_DENIED');
  const repository={url:entry.repository?.url??workspace?.repoUrl??null,fullName:entry.repository?.fullName??null,hostPath};
  const rules=entry.rules??[],checks=entry.checks??[];
+ const registeredDomains=entry.domains??[];
+ if(!Array.isArray(registeredDomains)||registeredDomains.some(domain=>typeof domain!=='string'||!domain.trim()))fail('ROLE_PROJECT_DOMAINS_INVALID');
+ const domains=[...new Set(registeredDomains.map(domain=>domain.trim().toLowerCase()))];
  if(!Array.isArray(rules)||rules.some(rule=>typeof rule?.path!=='string'||typeof rule.text!=='string'||
   createHash('sha256').update(rule.text).digest('hex')!==rule.sha256))fail('ROLE_PROJECT_RULES_INVALID');
  if(!Array.isArray(checks)||checks.some(check=>typeof check?.id!=='string'||typeof check.label!=='string'||
@@ -54,7 +57,7 @@ export function resolveRoleProjectContext({companyId,ownerId,project,workspace,l
  }
  return {schemaVersion:1,id:project.id,key,name:project.name??project.id,repository,
   workspace:{hostPath:worktreePath,containerPath:'/workspace/project',...(entry.workspace?.prepare?{prepare:entry.workspace.prepare}:{})},rules,checks,delivery,
-  hostMcpServers:entry.hostMcpServers??[],hostActions:entry.hostActions??[],services:entry.services??{},stack:entry.stack??[],
+  hostMcpServers:entry.hostMcpServers??[],hostActions:entry.hostActions??[],services:entry.services??{},stack:entry.stack??[],domains,
   nativeWorkspaceId:workspace?.id??null};
 }
 

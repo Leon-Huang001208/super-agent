@@ -1,4 +1,5 @@
 /** Explicit owner-authorized metadata configuration; all new roles start paused. */
+import {roleExecutionPolicy,roleAdapterArgs,isMacNative} from '../bridge/role-execution-policy.mjs';
 import fs from'node:fs';import{randomUUID,createHash}from'node:crypto';
 import{TEAM_ROLES,roleInstructions,validateTeamRoster}from'/opt/super-agent/role/bridge/team-roles.mjs';
 const R='/paperclip/control/research-pm',P='/opt/paperclip/node_modules',sha=b=>createHash('sha256').update(b).digest('hex');
@@ -36,8 +37,9 @@ write(R+'/registry.team-config.tmp',r);fs.renameSync(R+'/registry.team-config.tm
 const lifecycle=(await import(P+'/@paperclipai/server/dist/services/agent-lifecycle.js')).createAgentLifecycle(db);
 for(const[key,role]of Object.entries(TEAM_ROLES)){
  const id=intent.ids[key],material=R+'/materials/'+intent.materials[key],existing=before.find(x=>x.id===id);
+ const configuredProfile=r.agents.find(value=>value.profile.agentId===id).profile,native=isMacNative(configuredProfile);
  const config={name:role.name,title:role.name,role:role.nativeRole,reportsTo:role.parent?intent.ids[role.parent]:null,capabilities:role.duty,adapterType:'codex_local',
-  adapterConfig:{engine:'cli',command:'/opt/super-agent/bin/codex',cwd:R+'/workspaces/'+key,instructionsFilePath:material,model:'gpt-6.1-sol',modelReasoningEffort:'low',search:true,dangerouslyBypassApprovalsAndSandbox:false,dangerouslyBypassSandbox:false,extraArgs:['--sandbox','workspace-write'],env:{SUPER_AGENT_ROLE_ENABLED:'true',SUPER_AGENT_ROLE_AGENT_ID:id}},
+  adapterConfig:{engine:'cli',command:'/opt/super-agent/bin/codex',cwd:R+'/workspaces/'+key,instructionsFilePath:material,model:'gpt-6.1-sol',modelReasoningEffort:'low',search:true,dangerouslyBypassApprovalsAndSandbox:native,dangerouslyBypassSandbox:native,extraArgs:roleAdapterArgs(configuredProfile),...(configuredProfile.executionPolicy?{executionPolicy:roleExecutionPolicy(configuredProfile)}:{}),env:{SUPER_AGENT_ROLE_ENABLED:'true',SUPER_AGENT_ROLE_AGENT_ID:id}},
   runtimeConfig:{heartbeat:{enabled:false,wakeOnDemand:true,maxConcurrentRuns:1,maxDailyRuns:60},aiConnection:{mode:'responsible_user',method:'subscription',provider:'openai'}}};
  if(existing)await lifecycle.updateConfiguration(id,config);
  else await lifecycle.requestHire(r.companyId,{id,...config,status:'paused',spentMonthlyCents:0,budgetMonthlyCents:0},{createdByUserId:r.ownerId,responsibleUserId:r.ownerId});

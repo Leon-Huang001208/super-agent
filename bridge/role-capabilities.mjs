@@ -1,5 +1,6 @@
 import {ROLE_KEYS,ROLE_DISPLAY_NAMES} from './role-labels.mjs';
-import {resolveRoleSkillBundles,ROLE_SKILL_BUNDLE_SHA256} from './role-skill-bundles.mjs';
+import {resolveRoleSkillBundles,ROLE_SKILL_BUNDLE_SHA256,ROLE_SKILL_BUNDLES} from './role-skill-bundles.mjs';
+import {resolveCompanyRoleSkills,roleSkillNames} from './company-role-skills.mjs';
 
 const hostBase=['host.project_inspect','host.project_check','host.project_git'];
 const entries={
@@ -34,7 +35,7 @@ function conditionMatches(condition,projectContext){
  const stack=(projectContext.stack??[]).map(x=>String(x).toLowerCase());
  return condition.stack?.some(x=>stack.includes(x))||condition.service?.some(x=>serviceNames(projectContext).includes(x));
 }
-export function resolveRoleCapabilities({role,additionalCapabilities=[],projectContext={},toolCatalog=[]}){
+export function resolveRoleCapabilities({role,additionalCapabilities=[],projectContext={},toolCatalog=[],agent,companySkills,companySkillVersions}){
  if(!ROLE_KEYS.includes(role))throw Error('TEAM_ROLE_UNKNOWN');
  if(!Array.isArray(additionalCapabilities)||additionalCapabilities.some(x=>!ROLE_KEYS.includes(x)))throw Error('ROLE_CAPABILITY_UNKNOWN');
  if(!Array.isArray(toolCatalog)||toolCatalog.some(x=>!x||typeof x.name!=='string'))throw Error('ROLE_TOOL_CATALOG_INVALID');
@@ -47,10 +48,13 @@ export function resolveRoleCapabilities({role,additionalCapabilities=[],projectC
  const registeredMcp=(projectContext.hostMcpServers??[]).some(server=>server&&Array.isArray(server.tools)&&server.tools.length&&(!server.allowedRoles||server.allowedRoles.includes(role)));
  const hostAllowedTools=[...new Set([...hostBase,...capabilities.flatMap(x=>x.hostTools),...(capabilities.some(x=>x.serviceMcp)&&registeredMcp?['host.mcp_call']:[])])];
  const skillNames=capabilities.flatMap(capability=>[...capability.skills,...(capability.conditionalSkills??[]).filter(x=>conditionMatches(x,projectContext)).map(x=>x.name)]);
- const skills=resolveRoleSkillBundles(skillNames).map(skill=>({name:skill.name,path:`${skill.directory}/SKILL.md`,entrypointSha256:skill.files.find(file=>file.path==='SKILL.md').sha256,fileSetSha256:skill.source.sha256,source:skill.source,dependencies:skill.dependencies,
+ const company=resolveCompanyRoleSkills({agent,role,projectContext,companySkills,companySkillVersions,bundledSkills:ROLE_SKILL_BUNDLES});
+ const dependencyStatus=dependency=>({...dependency,status:dependency.kind==='mcp'?(toolCatalog.some(tool=>namespaceMatches(tool.name,dependency.namespace))?'discovered':'not-discovered'):(toolCatalog.some(tool=>tool.name===dependency.tool)?'discovered':'requires-host-transport')});
+ const skills=company?company.skills.map(skill=>({...skill,availability:{bundle:'company-version',dependencies:skill.runtimeDependencies.map(dependencyStatus)}})):resolveRoleSkillBundles(skillNames).map(skill=>({name:skill.name,path:`${skill.directory}/SKILL.md`,entrypointSha256:skill.files.find(file=>file.path==='SKILL.md').sha256,fileSetSha256:skill.source.sha256,source:skill.source,dependencies:skill.dependencies,
   availability:{bundle:'bundled',dependencies:skill.runtimeDependencies.map(dependency=>({...dependency,status:dependency.kind==='mcp'?(toolCatalog.some(tool=>namespaceMatches(tool.name,dependency.namespace))?'discovered':'not-discovered'):(toolCatalog.some(tool=>tool.name===dependency.tool)?'discovered':'requires-host-transport')}))},
  }));
  return {schemaVersion:1,role,capabilityIds,skills,mcpAllowedTools,hostAllowedTools,skillBundleSha256:ROLE_SKILL_BUNDLE_SHA256,
+  ...(company?{skillSelectionSource:'company',companySkillSnapshot:company.companySkillSnapshot}:{}),
   availability:{mcpTools:toolCatalog.length?'discovered':'not-discovered',hostTools:hostAllowedTools.map(name=>({name,status:toolCatalog.some(tool=>tool.name===name)?'discovered':'requires-host-transport'})),missingNamespaces:namespaces.filter(namespace=>!toolCatalog.some(tool=>namespaceMatches(tool.name,namespace)))},
  };
 }
@@ -67,6 +71,8 @@ export function renderRoleCapabilitiesMarkdown(role){
   '- Apps是连接的外部服务（如GitHub、Figma）；需要有效连接、服务权限及本次任务范围。',
   '- 插件是分发Skills、Tools或Apps连接的包；能发现插件不等于已经安装、连接或获准写入。','',
   '## 默认专业能力','',capability.purpose,'',
+  '公司Skill分配以Agent的paperclipSkillSync.desiredSkills为唯一选择来源；每run固定公司版本与完整文件摘要。未配置公司选择的历史run保留旧包兼容，显式空选择不恢复旧专业包。',
+  `公司默认分配：${roleSkillNames({role}).join('、')}。条件技能只在任务stack/services/domains匹配时启用；上方公司分配优先，以下为保留的历史包来源说明。`,'',
   'entrypointSha256校验入口SKILL.md实际文件字节；fileSetSha256（保留在source.sha256）是files清单的聚合摘要，不能拿它与单个文件内容摘要比较。','',
   ...resolved.skills.map(skill=>`- ${skill.name}：${skill.source.origin}@${skill.source.version}；文件 ${skill.path}；入口文件摘要 entrypointSha256=${skill.entrypointSha256}；文件集摘要 fileSetSha256=${skill.fileSetSha256}。`),
   ...(capability.conditionalSkills??[]).map(skill=>`- ${skill.name}：仅projectContext确认stack/services匹配${[...(skill.stack??[]),...(skill.service??[])].join(' / ')}时加载。`),'',
@@ -76,7 +82,7 @@ export function renderRoleCapabilitiesMarkdown(role){
   `宿主候选工具：${resolved.hostAllowedTools.join('、')}。这些名称表示岗位候选权限；是否已经接通须看实际目录与传输，具体仓库、动作、路径和服务参数仍由当前任务约束。`,
   capability.serviceMcp?'projectContext.hostMcpServers登记本岗位可用的服务和方法时，才能提供host.mcp_call；services仅描述项目服务，不能替代具体MCP登记。':'',
   'Skill完整只读包在独立资产目录，CODEX_HOME/skills入口指向所需包；包内相对引用、必要references/scripts及每文件摘要保留。未配置的可选技能或工具仍不可调用。',
-  '宿主Skill文件存在只证明资料存在；Docker内CLI、Python、浏览器、Figma连接、项目受管发布器等运行依赖必须单独核实。缺依赖写明NOT_RUN和缺失项，保留已完成成果。',
+  'Skill文件存在只证明资料存在；Mac原生CLI、Python、浏览器、Figma连接、项目受管发布器等运行依赖必须单独核实。缺依赖写明NOT_RUN和缺失项，保留已完成成果。',
   '需要新增安装、外部写入或高影响动作而现有授权不足时，只提交具体缺口；授权内自主执行，不导入无条件重复审批。','',
   '## 失败与证据','',
   '按实际工具响应区分已完成、失败、NOT_RUN和结果未知。记录候选、来源、命令或调用摘要及可定位的脱敏日志；未知结果先核对原操作，不更换ID盲目重发。',

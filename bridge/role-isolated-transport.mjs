@@ -18,7 +18,7 @@ export async function executeIsolatedRole({permit,args,input,home}) {
  exclusive(dir+'/provider/auth.json',initialAuth);
  exclusive(dir+'/stdin',Buffer.from(input));
  exclusive(dir+'/request.json',Buffer.from(JSON.stringify({schemaVersion:1,runId:permit.runId,taskId:permit.taskId,role:permit.role,cwd:permit.cwd,
-   home,args,inputSha256:hash(input),expiresAt:permit.expiresAt,createdAt:new Date().toISOString()})+'\n'));
+   home,args,...(permit.executionPolicy?{executionPolicy:permit.executionPolicy}:{}),inputSha256:hash(input),expiresAt:permit.expiresAt,createdAt:new Date().toISOString()})+'\n'));
  let interrupted=false,outputFailed=false;
  const stop=()=>{interrupted=true;if(!fs.existsSync(dir+'/cancel.json'))exclusive(dir+'/cancel.json',Buffer.from(JSON.stringify({runId:permit.runId})+'\n'));};
  const outputError=()=>{outputFailed=true;stop();};
