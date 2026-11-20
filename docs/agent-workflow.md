@@ -48,3 +48,11 @@ CI 成功不等于业务验收。合并后验证远端默认分支包含候选�
 固定模块沿用 Git common directory 的 `leon-engineering/harness` 和 `leon-engineering/deliveries` 存储，以及原主机资源账本。已有任务以原 project、task ID 和 session ID 续接。旧 `.ai/harness` 可先用 `storage --preview` 检查，再按已有迁移合同处理。Codex 全局 Hooks 退役后，通过上述显式入口创建任务和记录结果，待补清资源通过受管交付或 `lifecycle event` 的原恢复事件处理。入口自身的脱敏日志写入 `SUPER_AGENT_LOG_ROOT` 或 `logs/project-runtime.jsonl`。
 
 RWB 代办使用 RWB 自身入口及规则，最高交付 PR；不得调用可能合并的 `delivery --status`。真实任务操作另见 [验收手册](acceptance-runbook.md)。
+
+## 组合交付对账与收尾
+
+当子任务尚为 started，而其原提交已由另一个受管任务的组合 PR 保留并合入，使用项目 scripts/reconcile-merged-delivery.mjs 只读预览；不要直接改 receipt。参数固定项目、子/父 task、完整 feature SHA、PR number、完整 PR head 和 merge SHA，以及原 WorkDisk delivery 根。脚本不安装产品依赖或调用模型，也不接管任何运行实例。
+
+应用前保留精确源码评审、真实 PR/CI/保护及源归属证据，并确认本任务授权。dry-run 的 receiptSha256 必须通过 --expect-receipt-sha256 原样绑定，--apply 是显式写入门；没有该开关不写状态或创建路径。占用尚未自然释放时仅等待，不使用 TTL 猜空闲，不重启 Docker 或强删。真实对账只创建子任务自己的 integration alias、不可覆盖的 intent 证据、ci_passed 回执和审计事件；父回执保持不变。父验证通过记录作为来源引用，不谎称重新执行了其测试。
+
+发生部分 Git 写入、回执漂移或未知结果时保留 intent、原回执和已创建资源，禁止自动重试、另起名字或消除锁。先对照同一 operation 的真实 Git/回执现场；未核清不能再次 apply。完成对账后仍由固定 project-runtime.mjs delivery --status/--cleanup 及 enforce --require-delivery 执行真实门禁。回收前重查源和 integration alias 的进程、容器引用及未知文件；对账本身不删除工作树、分支或远端资源。
