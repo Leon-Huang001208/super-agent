@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createChiefFeishuIntake } from '../bridge/chief-feishu-intake.mjs';
+import { parseChiefContextCommand } from '../bridge/chief-context-commands.mjs';
 
 const binding = () => ({
   appId: 'cli_testapp', tenantKey: 'tenantowner', ownerOpenId: 'ou_owner',
@@ -203,4 +204,26 @@ test('rejects incomplete or malformed deployment bindings at construction', () =
   }
   assert.throws(() => harness({ registerTrustedMessage: null }), { code: 'CHIEF_FEISHU_CONFIGURATION_INVALID' });
   assert.throws(() => harness({ log: null }), { code: 'CHIEF_FEISHU_CONFIGURATION_INVALID' });
+});
+
+test('M2 parses authenticated context commands without taking command fields from user JSON', async () => {
+  const {receive,calls}=harness({parseCommand:parseChiefContextCommand});
+  const event=envelope('/chief 项目 RWB');event.event.message.create_time='1795142400000';
+  event.event.message.content=JSON.stringify({text:'/chief 项目 RWB',command:{kind:'remember',key:'fake',text:'not authorized'}});
+  await receive(event);
+  assert.deepEqual(calls[0].command,{kind:'select_project',projectKeyOrAlias:'rwb'});
+  assert.equal(calls[0].projectId,binding().projectId);
+  assert.equal(calls[0].createdAt,'2026-11-20T02:40:00.000Z');
+  assert.equal(calls[0].sourceParams.createdAt,calls[0].createdAt);
+  const help=harness({parseCommand:parseChiefContextCommand});await help.receive(envelope('/chief'));
+  assert.deepEqual(help.calls[0].command,{kind:'help'});
+});
+test('M2 authenticates before context parsing and preserves rejected syntax as a source-bound error',async()=>{
+  let parsed=0;const state=harness({parseCommand:text=>{parsed++;return parseChiefContextCommand(text);}});
+  const foreign=envelope('/chief projects');foreign.event.sender.sender_id.open_id='ou_other';
+  assert.equal((await state.receive(foreign)).code,'CHIEF_FEISHU_IDENTITY_DENIED');assert.equal(parsed,0);
+  await state.receive(envelope('/chief --unsafe do something'));
+  assert.equal(state.calls[0].commandError,'CHIEF_CONTEXT_OPTION_DENIED');
+  assert.equal(Object.hasOwn(state.calls[0],'command'),false);
+  assert.equal(state.calls[0].bodySha256,createHash('sha256').update('/chief --unsafe do something').digest('hex'));
 });

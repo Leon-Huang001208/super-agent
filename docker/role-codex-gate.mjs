@@ -6,6 +6,7 @@ import { isSubscriptionAuth } from './codex-hello-gate.mjs';
 import { executeIsolatedRole } from '../bridge/role-isolated-transport.mjs';
 import { NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
 import {ROLE_KEYS} from '../bridge/role-labels.mjs';
+import {validateRoleMaterialSnapshot,ROLE_MATERIAL_ROOT} from '../bridge/role-material-snapshot.mjs';
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
@@ -38,6 +39,7 @@ export function normalizeNativeRoleArgs(args) {
 }
 
 export function validateRoleCall({ permit, args, env, cwd, now }) {
+  let materialSnapshot;try{materialSnapshot=validateRoleMaterialSnapshot(permit);}catch{fail('ROLE_GATE_MATERIAL_SNAPSHOT_DENIED');}
   if(permit?.evidencePacket&&(permit.role!=='qa'||permit.evidencePacket.name!=='qa-evidence-v2'||!/^[a-f0-9]{64}$/.test(permit.evidencePacket.manifestSha256??'')))fail('ROLE_GATE_EVIDENCE_DENIED');
   if (!permit || permit.schemaVersion !== 1 || !ROLE_KEYS.includes(permit.role) ||
       !['runId','taskId','agentId','companyId','projectId','credentialGrantId'].every(k => uuid.test(permit[k] ?? '')) ||
@@ -46,7 +48,7 @@ export function validateRoleCall({ permit, args, env, cwd, now }) {
       permit.expiresAt <= now || permit.expiresAt - now > 300000 ||
       permit.cwd !== cwd || !(cwd.startsWith(ROOT + '/workspaces/') || cwd === '/paperclip/instances/default/projects/'+permit.companyId+'/'+permit.projectId+'/_default') ||
       !/^[a-f0-9]{64}$/.test(permit.materialSha256 ?? '') ||
-      !/^\/paperclip\/control\/research-pm\/materials\/[a-f0-9-]{36}\.md$/.test(permit.instructionsFilePath ?? '') ||
+      (!materialSnapshot&&!/^\/paperclip\/control\/research-pm\/materials\/[a-f0-9-]{36}\.md$/.test(permit.instructionsFilePath ?? '')) ||
       ['OPENAI_API_KEY','CODEX_API_KEY','OPENAI_BASE_URL','ANTHROPIC_API_KEY'].some(k => Boolean(env[k])) ||
       env.PAPERCLIP_RUN_ID !== permit.runId || env.PAPERCLIP_AGENT_ID !== permit.agentId ||
       env.PAPERCLIP_COMPANY_ID !== permit.companyId || env.PAPERCLIP_TASK_ID !== permit.taskId ||
@@ -67,6 +69,8 @@ export async function runRoleGate() {
     const raw = readPrivate(ROOT + '/permits/' + process.env.PAPERCLIP_RUN_ID + '.json');
     permit = validateRoleCall({permit:JSON.parse(raw),args:process.argv.slice(2),env:process.env,cwd:process.cwd(),now:Date.now()});
     if (hash(readPrivate(permit.instructionsFilePath)) !== permit.materialSha256) fail('ROLE_GATE_MATERIAL_CHANGED');
+    if(permit.materialSnapshot){const snapshot=validateRoleMaterialSnapshot(permit);let total=0;for(const file of snapshot.manifest.files){const bytes=readPrivate(path.join(ROLE_MATERIAL_ROOT,file.path));total+=bytes.length;if(total>1048576||hash(bytes)!==file.sha256)fail('ROLE_GATE_MATERIAL_CHANGED');}
+      process.stderr.write(JSON.stringify({code:'ROLE_GATE_MATERIALS_VERIFIED',runId:permit.runId,projectId:permit.projectId,role:permit.role,manifestSha256:snapshot.manifestSha256,fileCount:snapshot.manifest.files.length})+'\n');}
     const auth = JSON.parse(readPrivate(process.env.CODEX_HOME + '/auth.json'));
     if (!isSubscriptionAuth(auth)) fail('ROLE_GATE_SUBSCRIPTION_REQUIRED');
     for (const name of ['claims','results']) {

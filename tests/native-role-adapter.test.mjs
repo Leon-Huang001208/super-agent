@@ -2,6 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createNativeRoleAdapter, NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
 
+test('M2 Native adapter projects only the trusted per-run cwd and instructions without changing Agent defaults',async()=>{
+ const f=dispatchFixture('pm'),cwd='/paperclip/instances/default/projects/company/project/_default';
+ f.registration.contextVersion=1;f.registration.workspaceCwd=cwd;f.registration.profile.projectId='project';f.registration.profile.projectKey='beta';
+ f.ctx.config.cwd='/legacy/private-role-workspace';
+ f.ctx.config.promptTemplate='Unshared legacy project A prompt';
+ f.ctx.context.paperclipWorkspaces=[{projectId:'foreign',cwd:'/foreign-project',description:'Unshared project context'},
+  {projectId:'project',cwd,description:'Authorized workspace'}];
+ const before=structuredClone(f.ctx);let output;const events=[];
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Assigned role',log:event=>events.push(event),readRegistration:async()=>f.registration,
+  prepareRole:async()=>({binding:f.registration.binding,contextVersion:1,workspaceCwd:cwd,sessionMode:'new',knowledge:[],
+    config:{instructionsFilePath:'/materials/beta/instructions.md',dangerouslyBypassApprovalsAndSandbox:false}}),
+  nativeExecute:async value=>{output=value;return{exitCode:0};}});
+ assert.equal((await execute(f.ctx)).exitCode,0);assert.equal(output.config.cwd,cwd);
+ assert.deepEqual(output.context.paperclipWorkspaces,[{projectId:'project',cwd,description:'Authorized workspace'}]);
+ assert.equal(output.config.promptTemplate.includes('Unshared legacy project A prompt'),false);
+ assert.match(events.find(event=>event.code==='NATIVE_ROLE_DISPATCH').templateSha256,/^[a-f0-9]{64}$/);
+ assert.equal(JSON.stringify(events).includes('Unshared legacy project A prompt'),false);assert.equal(output.agent.id,f.ctx.agent.id);
+ assert.equal(output.config.instructionsFilePath,'/materials/beta/instructions.md');assert.deepEqual(f.ctx,before);
+ await assert.rejects(execute({...f.ctx,context:{...f.ctx.context,paperclipWorkspace:{cwd:'/foreign-project'}}}),/NATIVE_ROLE.*SCOPE|NATIVE_ROLE.*WORKSPACE/);
+});
+
 test('Native adapter port prepares mandatory materials before exactly one original execute call', async () => {
   const binding = {runId:'run',agentId:'agent',companyId:'company',projectId:'project',taskId:'task',ownerId:'owner',inputRevision:'revision'};
   const registration = {binding,profile:{engine:'codex_local',role:'research'}};
@@ -103,4 +124,16 @@ test('actual Chief summary dispatch leaves final delivery to the controller outb
   assert.equal(output.config.search,true);
   assert.deepEqual(output.config.extraArgs,NATIVE_ROLE_MANAGED_ARGS);
   assert.equal(f.getCalls(),1);
+});
+test('trusted generation-bound plan and final targets reach Native without changing task or run identity',async()=>{
+ const f=dispatchFixture('chief');
+ f.registration.artifactGeneration='00000000-0000-4000-8000-000000000033';
+ f.registration.planFile='chief-dispatch-root-current-generation.json';
+ f.registration.summaryFile='team-root-current-generation-summary.md';f.registration.outputPrefix='team-root-current-generation-';
+ await f.execute(f.ctx);
+ const prompt=f.getDispatched().config.promptTemplate;
+ const data=JSON.parse(prompt.split('Trusted execution binding data.\n')[1].split('\n')[0]);
+ assert.equal(data.planFile,f.registration.planFile);assert.equal(data.summaryFile,f.registration.summaryFile);
+ assert.equal(data.outputPrefix,f.registration.outputPrefix);assert.equal(data.taskId,f.registration.binding.taskId);
+ assert.equal(f.getDispatched().runId,f.ctx.runId);assert.deepEqual(f.getDispatched().config.extraArgs,NATIVE_ROLE_MANAGED_ARGS);
 });
