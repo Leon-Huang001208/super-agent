@@ -1,15 +1,28 @@
 /** Serial Native lifecycle verification, never direct status-row edits. */
-import fs from'node:fs';import{randomUUID}from'node:crypto';import{AdmissionMeter}from'/opt/super-agent/role/bridge/admission.mjs';
+import fs from'node:fs';import{randomUUID}from'node:crypto';
+import path from'node:path';import{pathToFileURL}from'node:url';
+import {ROLE_KEYS} from '../bridge/role-labels.mjs';
 const R='/paperclip/control/research-pm',P='/opt/paperclip/node_modules';
 const read=p=>JSON.parse(fs.readFileSync(p,'utf8'));const write=(p,v)=>{const t=p+'.'+randomUUID()+'.tmp';fs.writeFileSync(t,JSON.stringify(v)+'\n',{mode:0o600,flag:'wx'});fs.renameSync(t,p);};
-if(process.platform!=='linux'||process.getuid()!==0||!process.argv.includes('--apply'))throw Error('TEAM_BOOTSTRAP_EXPLICIT_APPLY_REQUIRED');
+/** A stored intent belongs to the exact current roster; old records are never migrated here. */
+export function validateTeamBootstrapIntent(intent,ids){
+ if(!ids||Object.keys(ids).length!==ROLE_KEYS.length||ROLE_KEYS.some(role=>!Object.hasOwn(ids,role)||typeof ids[role]!=='string'||!ids[role]))throw Error('TEAM_BOOTSTRAP_SCOPE_CHANGED');
+ const roles=intent?.roles;
+ if(intent?.schemaVersion!==1||!roles||typeof roles!=='object'||Array.isArray(roles)||Object.keys(roles).length!==ROLE_KEYS.length||
+  ROLE_KEYS.some(role=>!Object.hasOwn(roles,role)||roles[role]?.agentId!==ids[role]))throw Error('TEAM_BOOTSTRAP_INTENT_CHANGED');
+ return intent;
+}
+
+async function main(){
+ if(process.platform!=='linux'||process.getuid()!==0||!process.argv.includes('--apply'))throw Error('TEAM_BOOTSTRAP_EXPLICIT_APPLY_REQUIRED');
+ const{AdmissionMeter}=await import('/opt/super-agent/role/bridge/admission.mjs');
 const url='postgres://paperclip:'+encodeURIComponent(fs.readFileSync('/paperclip/secrets/postgres-password','utf8').trim())+'@db:5432/paperclip';process.env.DATABASE_URL=url;
 const s=await import(P+'/@paperclipai/db/dist/index.js'),o=await import(P+'/drizzle-orm/index.js');const db=s.createDb(url,{maxConnections:2});let meter;
 try{
-let r=read(R+'/registry.json');const ids=r.team?.ids;if(!ids||Object.keys(ids).length!==11||r.team.enabled!==false||fs.existsSync(R+'/call.lock'))throw Error('TEAM_BOOTSTRAP_SCOPE_CHANGED');
+let r=read(R+'/registry.json');const ids=r.team?.ids;if(!ids||Object.keys(ids).length!==ROLE_KEYS.length||ROLE_KEYS.some(role=>!ids[role])||r.team.enabled!==false||fs.existsSync(R+'/call.lock'))throw Error('TEAM_BOOTSTRAP_SCOPE_CHANGED');
 const active=await db.select().from(s.heartbeatRuns).where(o.inArray(s.heartbeatRuns.status,['running','queued','scheduled_retry']));if(active.length)throw Error('TEAM_BOOTSTRAP_NATIVE_BUSY');
 meter=new AdmissionMeter({filename:'/paperclip/control/admission.sqlite',allowedProjectIds:[r.projectId],log:e=>fs.appendFileSync(R+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...e})+'\n',{mode:0o600})});
-const intentFile=R+'/team-bootstrap.intent.json';let intent;if(fs.existsSync(intentFile))intent=read(intentFile);else{intent={schemaVersion:1,at:new Date().toISOString(),roles:Object.fromEntries(Object.entries(ids).map(([key,id])=>[key,{agentId:id,taskId:randomUUID(),operationId:randomUUID()}]))};write(intentFile,intent);}
+const intentFile=R+'/team-bootstrap.intent.json';let intent;if(fs.existsSync(intentFile))intent=validateTeamBootstrapIntent(read(intentFile),ids);else{intent=validateTeamBootstrapIntent({schemaVersion:1,at:new Date().toISOString(),roles:Object.fromEntries(Object.entries(ids).map(([key,id])=>[key,{agentId:id,taskId:randomUUID(),operationId:randomUUID()}]))},ids);write(intentFile,intent);}
 const issue=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(db),lifecycle=(await import(P+'/@paperclipai/server/dist/services/agent-lifecycle.js')).createAgentLifecycle(db);
 const results=fs.existsSync(R+'/team-bootstrap.receipts.json')?read(R+'/team-bootstrap.receipts.json'):{};
 if(meter.verifyLease(r.lease).allowed){
@@ -38,3 +51,6 @@ for(const[key,setup]of Object.entries(intent.roles)){
 }
 console.log(JSON.stringify({readyRoles:Object.keys(results).length,status:'NATIVE_READINESS_CHECKED',businessAcceptance:'NOT_RUN'}));
 }finally{meter?.close();await s.closeRegisteredClients(url)}
+
+}
+if(process.argv[1]&&pathToFileURL(path.resolve(process.argv[1])).href===import.meta.url)await main();

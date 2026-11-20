@@ -13,6 +13,7 @@
     "qa": {"skills": ["code-review", "frontend-testing-debugging", "webapp-testing", "differential-review", "property-based-testing"]},
     "devops": {"skills": ["gh-fix-ci", "gh-address-comments", "engineering-delivery", "systematic-debugging", "read-docs"]},
     "network-engineer": {"skills": ["diagnosing-bugs", "systematic-debugging", "read-docs"]},
-    "system-resource-engineer": {"skills": ["storage-analyzer", "systematic-debugging"]}
+    "system-resource-engineer": {"skills": ["storage-analyzer", "systematic-debugging"]},
+    "document-specialist": {"skills": ["xlsx", "docx", "pptx", "pdf", "doc-coauthoring", "theme-factory"]}
   }
 }

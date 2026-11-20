@@ -2,6 +2,8 @@
 
 ## 现行规则与设计
 
+- [Document Specialist](plans/document-specialist.md)：新增文档岗的职责、9项技能、现有工具链与单岗接入/验证边界。
+
 - [Mac原生执行和公司技能分配](plans/native-skills-20261120.md)：11角色的执行策略、技能来源、持续授权和本轮验收边界。
 
 - [项目规则](../AGENTS.md)：代理入口、权限与安全边界。
