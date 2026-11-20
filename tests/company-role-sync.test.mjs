@@ -17,11 +17,14 @@ function fixture(){
  ...[...names].filter(name=>!ROLE_SKILL_BUNDLES[name]).map(name=>({id:name,key:name,slug:name,name,sourceLocator:'https://github.com/example/skills'}))];
  const agents=registry.agents.map(entry=>({id:entry.profile.agentId,companyId:'company',adapterConfig:{model:'gpt-6.1-sol',env:{keep:'value'}},permissions:{},capabilities:'old'}));
  const calls=[];
+ const versions=new Map(Object.values(ROLE_SKILL_BUNDLES).map(bundle=>['bundle-'+bundle.name,{id:bundle.name+'-v1',fileInventory:bundle.files.map(file=>({path:file.path,content:fs.readFileSync(path.join(DEFAULT_ROLE_SKILL_ASSET_ROOT,bundle.directory,file.path)).toString('base64'),encoding:'base64',executable:file.executable}))}]));
  const ports={registry,readLibrary:async()=>library,readAgent:async id=>structuredClone(agents.find(agent=>agent.id===id)),saveBefore:async()=>calls.push('before'),
+ readImportedVersion:async id=>versions.get(id)??null,
+ createImportedVersion:async id=>{calls.push('version:'+id);const name=id.slice('bundle-'.length),bundle=ROLE_SKILL_BUNDLES[name];versions.set(id,{id:name+'-created',fileInventory:bundle.files.map(file=>({path:file.path,content:fs.readFileSync(path.join(DEFAULT_ROLE_SKILL_ASSET_ROOT,bundle.directory,file.path)).toString('base64'),encoding:'base64',executable:file.executable}))});},
  importSource:async()=>calls.push('import'),syncSkills:async(id,body)=>{calls.push('skills');const agent=agents.find(agent=>agent.id===id);agent.adapterConfig.paperclipSkillSync={desiredSkills:body.desiredSkills};},
  updateAgent:async(id,body)=>{calls.push('agent');Object.assign(agents.find(agent=>agent.id===id),body);},
  updatePermissions:async(id,body)=>{calls.push('permissions');agents.find(agent=>agent.id===id).permissions=body;},updateRegistry:async edit=>{calls.push('registry');edit(registry);}};
- return{...ports,agents,library,calls};
+ return{...ports,agents,library,calls,versions};
 }
 test('preview performs no import, configuration, permission or registry writes',async()=>{
  const f=fixture();const result=await syncCompanyRoleSkills(f);
@@ -72,4 +75,24 @@ test('successful import HTTP response must still match the complete Native versi
  assert.equal(validateReviewedImportedVersion({files,version:{id:'version',fileInventory:[{path:'SKILL.md',content:'reviewed'}]}}).versionId,'version');
  assert.throws(()=>validateReviewedImportedVersion({files,version:{fileInventory:[{path:'SKILL.md',content:'different'}]}}),/IMPORTED_VERSION_CHANGED/);
  assert.throws(()=>validateReviewedImportedVersion({files,version:{fileInventory:[{path:'SKILL.md',content:'reviewed'},{path:'extra.sh',content:'extra'}]}}),/IMPORTED_VERSION_CHANGED/);
+});
+
+test('previously imported local sources without a current version recover once before assignments',async()=>{
+ const f=fixture();f.versions.delete('bundle-leader');
+ const result=await syncCompanyRoleSkills({...f,apply:true});
+ assert.equal(result.updatedAgents,11);assert.equal(f.calls.filter(call=>call==='version:bundle-leader').length,1);
+ assert.ok(f.calls.indexOf('version:bundle-leader')<f.calls.indexOf('agent'));
+ f.calls.length=0;await syncCompanyRoleSkills({...f,apply:true});assert.deepEqual(f.calls,[]);
+});
+
+test('fresh local imports create and read back a current version without replacing existing versions',async()=>{
+ const f=fixture(),leader=f.library.find(skill=>skill.id==='bundle-leader');
+ f.library.splice(f.library.indexOf(leader),1);f.versions.delete(leader.id);
+ f.importSource=async source=>{f.calls.push('import');assert.equal(source,leader.sourceLocator);f.library.push(leader);return{imported:[leader]};};
+ await syncCompanyRoleSkills({...f,apply:true});
+ assert.equal(f.calls.filter(call=>call.startsWith('version:')).length,1);
+ assert.ok(f.calls.indexOf('import')<f.calls.indexOf('version:bundle-leader'));
+ const bad=fixture();bad.versions.get('bundle-leader').fileInventory[0].content=Buffer.from('changed').toString('base64');
+ await assert.rejects(syncCompanyRoleSkills({...bad,apply:true}),/IMPORTED_VERSION_CHANGED/);
+ assert.ok(!bad.calls.some(call=>call.startsWith('version:')||call==='agent'));
 });

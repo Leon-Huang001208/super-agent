@@ -55,34 +55,45 @@ export function validateReviewedImportedVersion({files,version}){
 }
 
 /** A preview performs only reads. Apply uses existing authenticated Native endpoints. */
-export async function syncCompanyRoleSkills({registry,readLibrary,readAgent,readImportedVersion,importSource,syncSkills,updateAgent,updatePermissions,updateRegistry,saveBefore,recordReview,importSources=[],assetRoot=DEFAULT_ROLE_SKILL_ASSET_ROOT,apply=false,log=()=>{}}){
+export async function syncCompanyRoleSkills({registry,readLibrary,readAgent,readImportedVersion,createImportedVersion,importSource,syncSkills,updateAgent,updatePermissions,updateRegistry,saveBefore,recordReview,importSources=[],assetRoot=DEFAULT_ROLE_SKILL_ASSET_ROOT,apply=false,log=()=>{}}){
  if(!registry?.companyId||!registry.ownerId||!Array.isArray(registry.agents)||registry.agents.length!==11)fail('COMPANY_ROLE_SYNC_REGISTRY_INVALID');
  if(apply&&registry.team?.enabled!==false)fail('COMPANY_ROLE_SYNC_DISPATCH_BUSY');
  let library=await readLibrary();if(!Array.isArray(library))fail('COMPANY_ROLE_SYNC_LIBRARY_INVALID');
  const agents=await Promise.all(registry.agents.map(entry=>readAgent(entry.profile.agentId)));
  if(agents.some((agent,index)=>!agent||agent.id!==registry.agents[index].profile.agentId||agent.companyId!==registry.companyId))fail('COMPANY_ROLE_SYNC_AGENT_CHANGED');
  const bundledSources=Object.values(ROLE_SKILL_BUNDLES).map(skill=>({name:skill.name,source:path.join(assetRoot,skill.directory),bundled:true,files:skill.files}));
- const imports=[...bundledSources,...importSources].filter(source=>!library.some(skill=>skill.sourceLocator===source.source));
+ const sources=[...bundledSources,...importSources];
+ const imports=sources.filter(source=>!library.some(skill=>skill.sourceLocator===source.source));
  let beforeSaved=false;
  if(apply){
   // A durable before snapshot is needed only if this invocation will change imports,
   // assignments or settings. Configuration changes are captured below before writes.
   if(imports.length){await saveBefore?.({registry,agents,skills:library,imports});beforeSaved=true;}
-  if(imports.length&&!readImportedVersion)fail('COMPANY_ROLE_SYNC_VERSION_READER_MISSING');
+  if(sources.length&&!readImportedVersion)fail('COMPANY_ROLE_SYNC_VERSION_READER_MISSING');
   for(const source of imports){
    validateReviewedSourceDirectory(source);
    const imported=await importSource(source.source),row=imported?.imported?.find(skill=>skill.sourceLocator===source.source);
    const skill=row??(await readLibrary()).find(skill=>skill.sourceLocator===source.source);
    if(!skill)fail('COMPANY_ROLE_SYNC_IMPORTED_SOURCE_MISSING');
-   validateReviewedImportedVersion({files:source.files,version:await readImportedVersion(skill.id)});
    log({code:'COMPANY_ROLE_SKILL_IMPORTED',name:source.name});
   }
   if(imports.length)library=await readLibrary();
-  for(const source of importSources.filter(source=>source.reviewedSource)){
+  for(const source of sources){
    const skill=library.find(skill=>skill.sourceLocator===source.source);if(!skill)fail('COMPANY_ROLE_SYNC_IMPORTED_SOURCE_MISSING');
-   if(!readImportedVersion)fail('COMPANY_ROLE_SYNC_VERSION_READER_MISSING');
    validateReviewedSourceDirectory(source);
-   validateReviewedImportedVersion({files:source.files,version:await readImportedVersion(skill.id)});
+   let version=await readImportedVersion(skill.id);
+   if(!version){
+    // A local import does not create currentVersion on the installed Native release.
+    // Recover that exact imported row without replacing a pre-existing version.
+    if(skill.currentVersionId)fail('COMPANY_ROLE_SYNC_IMPORTED_VERSION_CHANGED');
+    if(!createImportedVersion)fail('COMPANY_ROLE_SYNC_VERSION_CREATOR_MISSING');
+    if(!beforeSaved){await saveBefore?.({registry,agents,skills:library,imports});beforeSaved=true;}
+    await createImportedVersion(skill.id,{label:'Reviewed role skill '+source.name});
+    version=await readImportedVersion(skill.id);
+    log({code:'COMPANY_ROLE_SKILL_VERSION_CREATED',name:source.name,skillId:skill.id});
+   }
+   validateReviewedImportedVersion({files:source.files,version});
+   if(!source.reviewedSource)continue;
    if(!isDeepStrictEqual(skill.metadata?.reviewedSource,source.reviewedSource)&&!beforeSaved){await saveBefore?.({registry,agents,skills:library,imports});beforeSaved=true;}
    if(!recordReview)fail('COMPANY_ROLE_SYNC_REVIEW_WRITER_MISSING');await recordReview(skill.id,source.reviewedSource);
   }
@@ -141,10 +152,11 @@ async function main(){
  const request=(route,method,body)=>api.request(route,{method,headers:{'content-type':'application/json'},body:JSON.stringify(body)});
  const log=event=>fs.appendFileSync(controlRoot+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});
  try{
-  const result=await syncCompanyRoleSkills({registry,apply,importSources:sources,log,recordReview:api.recordSkillReview,
+  const result=await syncCompanyRoleSkills({registry,apply,importSources:sources,assetRoot:value('--asset-root')??DEFAULT_ROLE_SKILL_ASSET_ROOT,log,recordReview:api.recordSkillReview,
    readLibrary:async()=>{const result=await api.request('/companies/'+registry.companyId+'/skills');return Array.isArray(result)?result:result.skills??result.items;},
    readAgent:id=>api.request('/agents/'+id),
    readImportedVersion:async id=>(await api.request('/companies/'+registry.companyId+'/skills/'+id))?.currentVersion,
+   createImportedVersion:(id,body)=>request('/companies/'+registry.companyId+'/skills/'+id+'/versions','POST',body),
    importSource:source=>request('/companies/'+registry.companyId+'/skills/import','POST',{source}),
    syncSkills:(id,body)=>request('/agents/'+id+'/skills/sync','POST',body),
    updateAgent:(id,body)=>request('/agents/'+id,'PATCH',body),

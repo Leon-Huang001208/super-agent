@@ -7,6 +7,12 @@ const fail=code=>{throw Object.assign(Error(code),{code});};
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const normalized=value=>String(value??'').toLowerCase().replace(/\/$/,'');
 const safeName=value=>typeof value==='string'&&/^[a-z0-9][a-z0-9._-]{0,159}$/.test(value)&&value!=='.'&&value!=='..';
+function reviewedName(skill){
+ const source=skill.metadata?.reviewedSource;
+ if(!/^[a-f0-9]{40}$/.test(source?.sourceRef??'')||!['PASS','PASS_STATIC_WITH_NOTES','REVIEW_ADAPT_BEFORE_ENABLE'].includes(source.review?.verdict))return null;
+ const name=typeof source.sourcePath==='string'?path.posix.basename(source.sourcePath):null;
+ return safeName(name)?name:null;
+}
 function safeFile(value){return typeof value==='string'&&value.length>0&&!path.isAbsolute(value)&&!value.includes('\\')&&!value.includes('\0')&&!value.split('/').some(part=>!part||part==='.'||part==='..'||['.git','node_modules'].includes(part)||/^\.env(?:\.|$)/.test(part));}
 function bytes(file){
  if(file.encoding==='base64'){
@@ -46,11 +52,13 @@ export function resolveRoleSkillAssignments({role,companySkills=[],projectContex
  const add=name=>{if(seen.has(name))return;seen.add(name);names.push(name);for(const dependency of bundledSkills[name]?.dependencies??[])add(dependency);};for(const name of roots)add(name);
  for(const name of names){
   const bundle=bundledSkills[name],bundleMatches=bundle?companySkills.filter(skill=>String(skill.sourceLocator??'').replaceAll('\\','/').endsWith('/assets/role-skills/'+bundle.directory)):[];
-  let candidates=companySkills.filter(skill=>skill.name===name||skill.slug===name||bundleMatches.includes(skill));
+  let candidates=companySkills.filter(skill=>skill.name===name||skill.slug===name||reviewedName(skill)===name||bundleMatches.includes(skill));
   const preferred=ROLE_SKILL_ASSIGNMENTS.preferredSources[name];
   let preferredSelected=false;
   if(preferred){const matches=candidates.filter(skill=>normalized(skill.sourceLocator)===normalized(preferred)||normalized('https://github.com/'+skill.metadata?.reviewedSource?.sourceRepo)===normalized(preferred));if(matches.length){candidates=matches;preferredSelected=true;}}
-  if(!preferredSelected&&bundleMatches.length)candidates=bundleMatches;
+  const reviewed=candidates.filter(skill=>reviewedName(skill)===name);
+  if(reviewed.length)candidates=reviewed;
+  else if(!preferredSelected&&bundleMatches.length)candidates=bundleMatches;
   if(!candidates.length){missing.push(name);continue;}
   if(candidates.length!==1)fail('COMPANY_ROLE_SKILL_ASSIGNMENT_AMBIGUOUS');
   const selectedSkill=candidates[0];selected.push({name,key:selectedSkill.key});
@@ -71,7 +79,7 @@ export function resolveCompanyRoleSkills({agent,role,projectContext={},companySk
   const skill=companySkills.find(value=>value.key===key&&(!agent.companyId||value.companyId===agent.companyId));
   if(!skill||skill.compatibility==='invalid')fail('COMPANY_ROLE_SKILL_MISSING');
   const bundle=Object.values(bundledSkills).find(value=>String(skill.sourceLocator??'').replaceAll('\\','/').endsWith('/assets/role-skills/'+value.directory));
-  const name=bundle?.name??skill.slug??skill.name;
+  const name=bundle?.name??reviewedName(skill)??skill.slug??skill.name;
   if(inactiveConditionalNames.has(name))continue;
   if(!safeName(name))fail('COMPANY_ROLE_SKILL_NAME_INVALID');
   if(names.has(name))fail('COMPANY_ROLE_SKILL_NAME_CONFLICT');names.add(name);
