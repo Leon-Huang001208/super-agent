@@ -2,6 +2,10 @@
 
 登记文件沿共享的4 MiB私有控制文件合同读取，其他私有配置保留原1 MiB上限及归属、权限和链接检查。已登记子任务在首次物理尝试前发生官方明确的bootstrap未启动失败时，现有Native首次重试可在原owner、输入、派发、预留phase及零物理证据全部核验后复用原context和operation；正常执行器首次创建绑定并计费。旧成功运行与原预算不改，读取或绑定证据未知时保持reconciliation与providerWorkStarted=null，不伪造传输结果或另建目标。
 
+普通Native任务的重试沿当前任务项目解析受管产物目录，不要求旧操作补写M2专用目录字段；M2操作的显式目录仍须通过原项目验证。目录解析修复不修改原operation、任务输入、历史失败或已用预算。
+
+若首次Native retry被受控入口拒绝且历史结果保持`reconciliation/providerWorkStarted=null`，只支持原始bootstrap失败、该前置拒绝、已登记第二次retry构成的完整三行链。前置拒绝须匹配唯一受控返回合同、空输出及无进程/会话，另通过Native只读reconciliation的身份、停止与租约检查；再核对三行同一operation、当前输入/flow/phase、无物理产物及预算余量。该核对不改写历史为false、不标记continuation、不创建retry或替代operation；任一证据不符继续拒绝。
+
 ## 2026-11-22默认策略
 
 普通原根默认20次，补充、继续、重规划、QA和Native失败重试不重置已用次数；旧6/12证据继续可读。RWB常规开发长期登记源码workspace、隔离worktree、规则/checks和受管交付，项目catalog可按既有授权允许merge，不再另设Super Agent专属PR-only限制，未登记项目仍不从任务正文获取权限。
@@ -45,11 +49,11 @@ M2关联由真实Native control及显式`operation.contextVersion=1`共同识别
 
 ## 同根续接与预算
 
-同一根的Chief计划、子任务、QA和汇总共用原六次角色外层调用额度；补充、暂停、重启、输入改版及新session均不清零。先核对已登记dispatch/run，再判断新调用额度，不能因缺少本地回执换operation重发。UNKNOWN只沿原operation核对。
+同一根的Chief计划、子任务、QA和汇总共用原根可信调用额度（普通默认20次，历史明确12次与QA专项保持）；补充、暂停、重启、输入改版及新session均不清零。先核对已登记dispatch/run，再判断新调用额度，不能因缺少本地回执换operation重发。UNKNOWN只沿原operation核对。
 
 add先持久保存pending输入。在途run未明确终态前不改其绑定输入；provider启动前与pending应用共用Native根的短事务守卫，模型执行在事务外。输入变化后保留旧flow、计划、summary和原SHA，新代际产物名含稳定operation/run关联，不覆盖同hash的旧文件。
 
-同任务继续使用全新模型session，从原Native授权输入和已绑定产物重建上下文，不伪造provider/session/lease身份。普通暂停且同版本仍有计划时不多起一次计划调用；已收尾的blocked阶段收到未消费continue时，先对账原操作，仅明确无在途/未知结果且至少剩余三次调用才新规划。额度不足明确停住，不花最后槽或重发旧summary。done旧根及其六次账本保留，followup新根不冒充旧根子任务。
+同任务继续使用全新模型session，从原Native授权输入和已绑定产物重建上下文，不伪造provider/session/lease身份。普通暂停且同版本仍有计划时不多起一次计划调用；已收尾的blocked阶段收到未消费continue时，先对账原操作，仅明确无在途/未知结果且至少剩余三次调用才新规划。额度不足明确停住，不花最后槽或重发旧summary。done旧根及其原调用账本保留，followup新根不冒充旧根子任务。
 
 ## 项目绑定与执行材料
 
