@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createNativeRoleAdapter, NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
+import {assertRolePermitSize,ROLE_PERMIT_MAX_BYTES} from '../bridge/role-permit-contract.mjs';
+import * as roleRuntime from '../bridge/native-role-runtime.mjs';
+
+test('oversize permit failure survives the actual adapter and no-provider boundary without logging content',async()=>{
+ const f=dispatchFixture('document-specialist'),events=[],marker='private-permit-content',permit={padding:marker+'x'.repeat(ROLE_PERMIT_MAX_BYTES)};
+ let persisted=0,providerCalls=0;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Assigned role',log:event=>events.push(event),readRegistration:async()=>f.registration,
+  prepareRole:async()=>({binding:f.registration.binding,sessionMode:'new',knowledge:[],config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:false}}),
+  nativeExecute:async()=>{assertRolePermitSize(permit);persisted++;providerCalls++;return {exitCode:0};}});
+ let caught;try{await execute(f.ctx);}catch(error){caught=error;}
+ assert.equal(caught?.code,'NATIVE_ROLE_PERMIT_TOO_LARGE');
+ const result=roleRuntime.nativeRolePreflightFailure(caught);
+ assert.equal(result.errorCode,'NATIVE_ROLE_PERMIT_TOO_LARGE');assert.equal(result.errorMessage,result.errorCode);
+ assert.deepEqual(result.resultJson.executionRecovery,{kind:'bootstrap',providerWorkStarted:false});
+ assert.equal(persisted,0);assert.equal(providerCalls,0);assert.equal(events.at(-1).code,result.errorCode);
+ assert.equal(JSON.stringify({events,result}).includes(marker),false);
+});
 
 test('M2 Native adapter projects only the trusted per-run cwd and instructions without changing Agent defaults',async()=>{
  const f=dispatchFixture('pm'),cwd='/paperclip/instances/default/projects/company/project/_default';

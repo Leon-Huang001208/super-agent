@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
+import {ROLE_COMPANY_SKILL_SNAPSHOT_MAX_BYTES} from './role-permit-contract.mjs';
 
 export const ROLE_SKILL_ASSIGNMENTS=Object.freeze(JSON.parse(fs.readFileSync(new URL('../assets/role-skill-assignments.json',import.meta.url),'utf8')));
 const fail=code=>{throw Object.assign(Error(code),{code});};
@@ -102,7 +103,7 @@ export function resolveCompanyRoleSkills({agent,role,projectContext={},companySk
    files:bundle?manifest:files});
  }
  const companySkillSnapshot={schemaVersion:1,skills:snapshots};
- if(Buffer.byteLength(JSON.stringify(companySkillSnapshot))>8*1024*1024)fail('COMPANY_ROLE_SKILL_SNAPSHOT_TOO_LARGE');
+ if(Buffer.byteLength(JSON.stringify(companySkillSnapshot))>ROLE_COMPANY_SKILL_SNAPSHOT_MAX_BYTES)fail('COMPANY_ROLE_SKILL_SNAPSHOT_TOO_LARGE');
  companySkillSnapshot.sha256=hash(JSON.stringify({schemaVersion:1,skills:snapshots}));
  return{source:'company',companySkillSnapshot,sha256:companySkillSnapshot.sha256,skills:snapshots.map(skill=>({key:skill.key,name:skill.name,versionId:skill.versionId,
   path:skill.directory+'/SKILL.md',directory:skill.directory,entrypointSha256:skill.files.find(file=>file.path==='SKILL.md').sha256,fileSetSha256:skill.source.sha256,source:skill.source,dependencies:skill.dependencies,

@@ -1,5 +1,6 @@
 /** Existing host Node manages Docker stdio only; Native owns all task decisions. */
 import {transportExecutor} from './role-host-transport.mjs';
+import {readRolePermit} from '../bridge/role-control-store.mjs';
 import fs from'node:fs';import os from'node:os';import http from'node:http';import path from'node:path';import{fileURLToPath}from'node:url';import{spawnSync,spawn}from'node:child_process';
 const D='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0',R=D+'/state/control/research-pm',docker='/usr/local/bin/docker',context=['--context','desktop-linux'];
 const run=(cmd,args,input)=>{const r=spawnSync(cmd,args,{encoding:'utf8',input,timeout:12000,maxBuffer:1024*1024});if(r.error||r.signal||r.status!==0)throw Error('HOST_OBSERVATION_COMMAND_UNAVAILABLE');return r.stdout;};
@@ -27,7 +28,7 @@ try{log({code:'HOST_ROLE_TRANSPORT_RESIDENT_STARTED',pid:process.pid});while(!st
  if(Date.now()-observed>60000){await observe();observed=Date.now();}
  const base=R+'/transport';for(const id of fs.readdirSync(base)){if(!/^[a-f0-9-]{36}$/.test(id))continue;const dir=base+'/'+id;if(!fs.existsSync(dir+'/request.json')||fs.existsSync(dir+'/host.claim.json')||fs.existsSync(dir+'/cancel.json')||fs.existsSync(dir+'/result.json'))continue;
   const req=JSON.parse(fs.readFileSync(dir+'/request.json','utf8'));if(req.runId!==id||req.expiresAt<Date.now())continue;identity();log({code:'HOST_NATIVE_TRANSPORT_CLAIMING',runId:id});
-  const permit=JSON.parse(fs.readFileSync(R+'/permits/'+id+'.json','utf8'));const executor=transportExecutor(req,permit);
+  const permit=readRolePermit(R+'/permits/'+id+'.json',{ownerUid:process.getuid()});const executor=transportExecutor(req,permit);
   child=spawn(process.execPath,[fileURLToPath(new URL(executor==='macos_native'?'./role-host-transport.mjs':'./role-container-transport.mjs',import.meta.url)),id],{stdio:['ignore','pipe','pipe']});let output='';child.stdout.on('data',b=>{output+=String(b).slice(0,2000);});child.stderr.on('data',()=>{});const exit=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});child=null;log({code:'HOST_NATIVE_TRANSPORT_ENDED',runId:id,exitCode:exit});if(exit!==0&&!fs.existsSync(dir+'/result.json'))throw Error('HOST_TRANSPORT_RECONCILIATION_REQUIRED');break;
  }
  await new Promise(resolve=>setTimeout(resolve,1000));

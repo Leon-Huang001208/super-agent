@@ -19,13 +19,14 @@ import {createNativeRoleTls} from './role-proxy-tls.mjs';
 import {rwbReleaseTimeoutPolicy} from '../bridge/rwb-release.mjs';
 import {hostProxyEnvironment as proxyEnvironment} from '../bridge/host-proxy-environment.mjs';
 import {prepareNativeNpmCache} from '../bridge/native-npm-cache.mjs';
+import {ROLE_PERMIT_MAX_BYTES} from '../bridge/role-permit-contract.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0';
 const ROOT=DATA+'/state/control/research-pm';
 const fail=code=>{throw Object.assign(Error(code),{code});};
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const uuid=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
-function read(filename){
- const stat=fs.lstatSync(filename);if(!stat.isFile()||stat.isSymbolicLink()||stat.uid!==process.getuid()||stat.nlink!==1||(stat.mode&0o077)||stat.size>16*1024*1024)fail('ROLE_HOST_FILE_DENIED');
+function read(filename,maximumBytes=16*1024*1024){
+ const stat=fs.lstatSync(filename);if(!stat.isFile()||stat.isSymbolicLink()||stat.uid!==process.getuid()||stat.nlink!==1||(stat.mode&0o077)||stat.size>maximumBytes)fail('ROLE_HOST_FILE_DENIED');
  return fs.readFileSync(filename);
 }
 function durable(filename,value){const fd=fs.openSync(filename,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);try{fs.writeFileSync(fd,JSON.stringify(value)+'\n');fs.fsyncSync(fd);}finally{fs.closeSync(fd);}}
@@ -158,7 +159,7 @@ export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/le
  if(platform!=='darwin'||!uuid.test(runId??''))fail('ROLE_HOST_TRANSPORT_ARGUMENT_DENIED');
  const root=path.join(dataRoot,'state/control/research-pm'),dir=root+'/transport/'+runId;
  const log=event=>fs.appendFileSync(root+'/host-transport.jsonl',JSON.stringify({at:new Date().toISOString(),runId,...event})+'\n',{mode:0o600});
- const request=JSON.parse(read(dir+'/request.json')),permitBytes=read(root+'/permits/'+runId+'.json'),permit=JSON.parse(permitBytes),claim=JSON.parse(read(root+'/claims/'+runId+'.json'));
+ const request=JSON.parse(read(dir+'/request.json')),permitBytes=read(root+'/permits/'+runId+'.json',ROLE_PERMIT_MAX_BYTES),permit=JSON.parse(permitBytes),claim=JSON.parse(read(root+'/claims/'+runId+'.json'));
  if(transportExecutor(request,permit)!=='macos_native')fail('ROLE_HOST_EXECUTION_POLICY_DENIED');
  validateRoleCall({permit,args:request.args,cwd:request.cwd,now:Date.now(),env:{PAPERCLIP_RUN_ID:permit.runId,PAPERCLIP_AGENT_ID:permit.agentId,PAPERCLIP_COMPANY_ID:permit.companyId,PAPERCLIP_TASK_ID:permit.taskId,CODEX_HOME:request.home}});
  if(request.runId!==runId||request.taskId!==permit.taskId||claim.runId!==runId||claim.permitSha256!==sha(permitBytes)||request.inputSha256!==sha(read(dir+'/stdin'))||fs.existsSync(dir+'/host.claim.json')||fs.existsSync(dir+'/cancel.json'))fail('ROLE_HOST_TRANSPORT_BINDING_DENIED');

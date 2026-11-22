@@ -47,6 +47,15 @@ function fixture(t){
 }
 function bind(f){return bindChiefTransportRetry({...f,editRegistry:edit=>{f.registry=edit(structuredClone(f.registry));return f.registry;},verifyPhaseLease:()=>true,log(){}});}
 
+test('large role permits retain their byte binding through transport evidence and retry validation',t=>{
+ const f=fixture(t),name='permits/'+f.parentRun.id+'.json',permit=JSON.parse(fs.readFileSync(f.root+'/'+name));
+ permit.padding='x'.repeat(9*1024*1024);f.put(name,permit);
+ const claimName='claims/'+f.parentRun.id+'.json',claim=JSON.parse(fs.readFileSync(f.root+'/'+claimName));
+ claim.permitSha256=hash(fs.readFileSync(f.root+'/'+name));f.put(claimName,claim);
+ assert.equal(readChiefTransportFailureEvidence(f).kind,'chief_https_no_response');
+ assert.equal(bind(f).context.roleOperationId,f.registry.operations.at(-1).id);
+});
+
 test('a proved Chief HTTPS/no-response failure archives its own lock, binds only the Native second retry and preserves both spent slots',t=>{
  const f=fixture(t),oldSlots=fs.readdirSync(f.root+'/budget/'+f.task.id).map(n=>[n,hash(fs.readFileSync(f.root+'/budget/'+f.task.id+'/'+n))]),before=structuredClone(f.parentRun),nonce=f.registry.lease.nonce;
  assert.equal(isChiefTransportPlanRetry(f.operation,f.parentRun),true);const physical=readChiefTransportFailureEvidence(f);assert.equal(physical.kind,'chief_https_no_response');

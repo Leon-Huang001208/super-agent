@@ -13,13 +13,14 @@ import {materializeEffectiveRoleSkills,ROLE_SKILL_BUNDLE_SHA256} from '../bridge
 import {prepareRoleProjectWorkspace,createHostCapabilityExecutor} from '../bridge/role-host-capabilities.mjs';
 import {serveHostCapabilityCalls} from '../bridge/role-host-call-queue.mjs';
 import {roleHostMcpConfigArgs} from './role-host-mcp-config.mjs';
+import {ROLE_PERMIT_MAX_BYTES} from '../bridge/role-permit-contract.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0',ROOT=DATA+'/state/control/research-pm';
 const IMAGE='sha256:ce66c5354e5efdd7279953134cba2a43c16b54e618a9e15ca6eb83e6bcae0c6c';
 const runId=process.argv[2],resumeSetup=process.argv[3]==='--resume-setup',sha=x=>createHash('sha256').update(x).digest('hex'),docker='/usr/local/bin/docker';
 const common=['--context','desktop-linux'],fail=code=>{throw Object.assign(new Error(code),{code});};
-function read(file){
+function read(file,maximumBytes=16*1024*1024){
  const s=fs.lstatSync(file);
- if(!s.isFile()||s.isSymbolicLink()||s.uid!==process.getuid()||s.nlink!==1||(s.mode&0o077)||s.size>16*1024*1024)fail('ROLE_CONTAINER_FILE_DENIED');
+ if(!s.isFile()||s.isSymbolicLink()||s.uid!==process.getuid()||s.nlink!==1||(s.mode&0o077)||s.size>maximumBytes)fail('ROLE_CONTAINER_FILE_DENIED');
  return fs.readFileSync(file);
 }
 function exec(args){const r=spawnSync(docker,[...common,...args],{encoding:'utf8',timeout:15000,maxBuffer:1048576});if(r.status!==0||r.error||r.signal)fail('ROLE_CONTAINER_DOCKER_UNKNOWN');return r.stdout;}
@@ -66,7 +67,7 @@ let stream,err,input,network,broker,terminal=false,hostCallsTimer,hostController
 const log=event=>fs.appendFileSync(ROOT+'/host-transport.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});
 try{
  if(process.platform!=='darwin'||!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(runId??''))fail('ROLE_CONTAINER_ARGUMENT_DENIED');
- const dir=ROOT+'/transport/'+runId,request=JSON.parse(read(dir+'/request.json')),permitBytes=read(ROOT+'/permits/'+runId+'.json'),permit=JSON.parse(permitBytes);
+ const dir=ROOT+'/transport/'+runId,request=JSON.parse(read(dir+'/request.json')),permitBytes=read(ROOT+'/permits/'+runId+'.json',ROLE_PERMIT_MAX_BYTES),permit=JSON.parse(permitBytes);
  const selectedSnapshot=validateRoleMaterialSnapshot(permit);
  validateRoleCall({permit,args:request.args,env:{PAPERCLIP_RUN_ID:permit.runId,PAPERCLIP_AGENT_ID:permit.agentId,
   PAPERCLIP_COMPANY_ID:permit.companyId,PAPERCLIP_TASK_ID:permit.taskId,CODEX_HOME:request.home},cwd:request.cwd,now:Date.now()});
