@@ -80,7 +80,7 @@ export function knownBootstrapClosure(run,markers,{executionEvents}={}){
   return{kind:'native-bootstrap-no-provider',proofSource:'native_identity_setup',runId:run.id,gateCode:'NATIVE_IDENTITY_SETUP_FAILED',finishedAt:new Date(run.finishedAt).toISOString(),nativeResultSha256:sha(JSON.stringify(run.resultJson))};
  }
  let gate;for(const text of [run.error,run.resultJson?.stderr,run.stderrExcerpt])for(const line of String(text??'').split('\n')){
-  try{const value=JSON.parse(line);if(/^ROLE_(?:OPENCODE_)?GATE_[A-Z_]+$/.test(value.code??'')&&value.claimed===false)gate=value;}catch{}
+  try{const value=JSON.parse(line);if(/^ROLE_(?:OPENCODE_|CLAUDE_)?GATE_[A-Z_]+$/.test(value.code??'')&&value.claimed===false)gate=value;}catch{}
  }
  if(!gate)fail('MULTI_RUNTIME_BOOTSTRAP_CLAIM_NOT_PROVEN');
  return{kind:'native-bootstrap-no-provider',runId:run.id,gateCode:gate.code,finishedAt:new Date(run.finishedAt).toISOString(),nativeResultSha256:sha(JSON.stringify(run.resultJson))};
@@ -194,13 +194,14 @@ export function validateCompletedMultiRuntimeState({plan,registry,rootTask,agent
 }
 export function validateCurrent13SuccessPrefix({current,plan,registry,runs,budget,pendingEvidence}){
  const finalization=current?.postExecutionPrefixFinalization;
+ const repairCount=validateCurrent13PreclaimRepairHistory(current),accounting=repairCount?current.postExecutionPreclaimRepair:finalization;
  const specs=[['fullstack-feature','full-stack-engineer','minimax_opencode'],['backend-transfer','backend-engineer','codex_subscription'],['minimax-claude-preferences','full-stack-engineer','minimax_claude'],
   ['deepseek-claude-crosscheck','research','deepseek_claude'],['deepseek-opencode-crosscheck','research','deepseek_opencode'],['qa13','qa','codex_subscription']];
  if(current?.schemaVersion!==1||current.kind!=='isolated-native-current13'||current.status!=='PARTIAL_VALIDATED'||current.sourceRoleCount!==13||current.companyId!==plan.companyId||current.projectId!==plan.projectId||current.workspaceId!==plan.workspaceId||
   current.rootTaskId!==plan.rootTaskId||current.rootInputRevision!==plan.rootInputRevision||!isDeepStrictEqual(current.agentIds,registry.team.ids)||current.steps?.length!==6||
   current.steps.some((step,index)=>[step.key,step.role,step.runtimeProfileId].some((value,part)=>value!==specs[index][part])||step.agentId!==registry.team.ids[step.role])||
   current.steps[0].taskId!==current.steps[1].taskId||current.steps[5].taskId!==plan.steps.find(step=>step.role==='qa').taskId||new Set(current.steps.map(step=>step.operationId)).size!==6||
-  current.callsSpent!==budget.length||finalization?.schemaVersion!==1||finalization.kind!=='closed-success-prefix'||finalization.modelCallsAdded!==0||finalization.budgetUsedBefore!==budget.length||finalization.budgetUsedAfter!==budget.length||
+  current.callsSpent!==budget.length||finalization?.schemaVersion!==1||finalization.kind!=='closed-success-prefix'||finalization.modelCallsAdded!==0||accounting.budgetUsedBefore!==budget.length||accounting.budgetUsedAfter!==budget.length||
   !/^[a-f0-9]{64}$/.test(finalization.sourceReportSha256??'')||!Array.isArray(current.budgetRecords)||current.budgetRecords.length!==budget.length||current.budgetRecords.some(ref=>!budget.some(value=>ref.operationId===value.operationId&&ref.sha256===value.sha256&&ref.taskId===value.taskId&&ref.agentId===value.agentId&&ref.role===value.role)))fail('MULTI_RUNTIME_CURRENT13_PREFIX_DENIED');
  let prefix=0,pending=false;
  for(const step of current.steps){
@@ -215,6 +216,83 @@ export function validateCurrent13SuccessPrefix({current,plan,registry,runs,budge
   }
  }
  if(prefix<1||prefix>=current.steps.length||finalization.successfulPrefix!==prefix)fail('MULTI_RUNTIME_CURRENT13_PREFIX_DENIED');return prefix;
+}
+const controlReference=value=>value&&typeof value.file==='string'&&value.file.length<=512&&!value.file.startsWith('/')&&value.file.split('/').every(part=>/^[a-zA-Z0-9_.-]+$/.test(part)&&part!=='.'&&part!=='..')&&/^[a-f0-9]{64}$/.test(value.sha256??'');
+export function validateCurrent13PreclaimRepairHistory(current){
+ const all=(current?.steps??[]).flatMap(step=>step.priorAttempts??[]),meta=current?.postExecutionPreclaimRepair;if(!all.length&&!meta)return 0;
+ const step=current.steps?.[2],prior=step?.priorAttempts?.[0],proof=prior?.proof,uuid=value=>/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(value??'');
+ if(all.length!==1||step.key!=='minimax-claude-preferences'||step.role!=='full-stack-engineer'||step.runtimeProfileId!=='minimax_claude'||step.priorAttempts.length!==1||
+  meta?.schemaVersion!==1||meta.kind!=='known-unclaimed-preflight-repair'||meta.companyId!==current.companyId||meta.rootTaskId!==current.rootTaskId||meta.repairedStepIndex!==2||meta.taskId!==step.taskId||meta.agentId!==step.agentId||meta.role!==step.role||meta.runtimeProfileId!==step.runtimeProfileId||
+  meta.fromOperationId!==prior.operationId||meta.fromRunId!==prior.runId||meta.newOperationId!==step.operationId||!uuid(prior.runId)||!uuid(prior.operationId)||!uuid(step.operationId)||prior.operationId===step.operationId||
+  prior.taskId!==step.taskId||prior.agentId!==step.agentId||prior.role!==step.role||prior.runtimeProfileId!==step.runtimeProfileId||prior.status!=='FAILED_PRECLAIM'||proof?.kind!=='official-bootstrap-unclaimed'||proof.gateCode!=='ROLE_CLAUDE_GATE_SCOPE_DENIED'||proof.providerWorkStarted!==false||proof.claimed!==false||
+  !controlReference(meta.releaseReceipt)||!controlReference(meta.native)||!controlReference(meta.permit)||!isDeepStrictEqual(meta.releaseReceipt,proof.releaseReceipt)||!isDeepStrictEqual(meta.native,proof.native)||!isDeepStrictEqual(meta.permit,proof.permit)||meta.stderrSha256!==proof.stderrSha256||
+  !/^[a-f0-9]{64}$/.test(meta.sourceReportSha256??'')||!/^[a-f0-9]{64}$/.test(meta.sourceRegistrySha256??'')||!/^[a-f0-9]{64}$/.test(proof.stderrSha256??'')||meta.modelCallsAdded!==0||meta.budgetUsedBefore!==9||meta.budgetUsedAfter!==9||
+  proof.budgetRecord?.operationId!==prior.operationId||proof.budgetRecord.taskId!==prior.taskId||proof.budgetRecord.agentId!==prior.agentId||proof.budgetRecord.role!==prior.role||!/^[a-f0-9]{64}$/.test(proof.budgetRecord.sha256??''))fail('MULTI_RUNTIME_PRECLAIM_HISTORY_DENIED');
+ return 1;
+}
+export function inspectCurrent13PreclaimAttempt({current,registry,rootTask,task,agent,run,release,releaseRef,permit,permitRef,budget,markers,nativeStopped,activeRunIds,sourceReportSha256,sourceRegistrySha256,materialDigests,authorized}){
+ const step=current?.steps?.[2],op=registry?.operations?.find(value=>value.id===step?.operationId);
+ if(authorized!==true||current?.kind!=='isolated-native-current13'||current.status!=='FAILED'||current.sourceRoleCount!==13||current.steps.length!==6||current.steps.slice(0,2).some(value=>value.status!=='PASS')||current.steps.slice(3).some(value=>value.status!=='NOT_RUN'||value.runId)||
+  (current.steps.flatMap(value=>value.priorAttempts??[])).length||registry.lease!==undefined||!isDeepStrictEqual(registry.team?.ids,current.agentIds)||rootTask?.id!==current.rootTaskId||rootTask.companyId!==current.companyId||rootTask.projectId!==current.projectId||rootTask.responsibleUserId!==registry.ownerId||taskInputRevision(rootTask)!==current.rootInputRevision||
+  step.key!=='minimax-claude-preferences'||step.role!=='full-stack-engineer'||step.runtimeProfileId!=='minimax_claude'||agent?.id!==step.agentId||agent.companyId!==current.companyId||agent.role!==TEAM_ROLES[step.role].nativeRole||agent.reportsTo!==current.agentIds.architect||agent.adapterType!=='claude_local'||
+  task?.id!==step.taskId||task.companyId!==current.companyId||task.projectId!==current.projectId||task.projectWorkspaceId!==current.workspaceId||task.parentId!==current.rootTaskId||task.responsibleUserId!==registry.ownerId||
+  !op||op.agentId!==step.agentId||op.role!==step.role||op.taskId!==step.taskId||op.rootTaskId!==current.rootTaskId||taskInputRevision(task)!==op.inputRevision||!isDeepStrictEqual(op.taskRuntimeRoute,step.taskRuntimeRoute)||op.taskRuntimeRoute.profileId!=='minimax_claude'||
+  run?.id!==step.runId||run.companyId!==current.companyId||run.issueId!==step.taskId||run.agentId!==step.agentId||run.responsibleUserId!==registry.ownerId||run.errorCode!=='adapter_failed'||nativeStopped!==true||!Array.isArray(activeRunIds)||activeRunIds.length)fail('MULTI_RUNTIME_PRECLAIM_REPAIR_DENIED');
+ const closure=knownBootstrapClosure(run,markers);if(closure.gateCode!=='ROLE_CLAUDE_GATE_SCOPE_DENIED')fail('MULTI_RUNTIME_PRECLAIM_REPAIR_DENIED');
+ const slot=budget.find(value=>value.operationId===step.operationId);
+ if(!Array.isArray(budget)||budget.length!==9||current.callsSpent!==9||!slot||slot.taskId!==step.taskId||slot.agentId!==step.agentId||slot.role!==step.role||
+  release?.schemaVersion!==1||release.kind!=='known-unstarted-current13-phase'||release.runId!==run.id||release.operationId!==step.operationId||release.taskId!==step.taskId||release.companyId!==current.companyId||release.rootTaskId!==current.rootTaskId||release.sourceReportSha256!==sourceReportSha256||release.modelCallsAdded!==0||release.providerWorkStarted!==false||release.gate?.claimed!==false||release.gate?.code!==closure.gateCode||release.budgetSpent!==9||
+  !Array.isArray(release.budgetRecords)||release.budgetRecords.length!==budget.length||release.budgetRecords.some(ref=>!budget.some(value=>ref.file===value.operationId+'.json'&&ref.sha256===value.sha256))||!controlReference(releaseRef)||!controlReference(release.native)||
+  permit?.runId!==run.id||permit.taskId!==step.taskId||permit.agentId!==step.agentId||permit.companyId!==current.companyId||permit.projectId!==current.projectId||permit.rootTaskId!==current.rootTaskId||permit.role!==step.role||permit.runtimeProfileId!=='minimax_claude'||permit.model!==RUNTIME_PROFILES.minimax_claude.model||permit.apiFallback!==false||
+  permitRef?.sha256!==release.permitSha256||!controlReference(permitRef)||!Array.isArray(materialDigests)||!permit.materialFiles?.length||permit.materialFiles.some(ref=>!materialDigests.some(value=>value.path===ref.path&&value.sha256===ref.sha256))||!materialDigests.some(value=>value.instructions===true&&value.sha256===permit.materialSha256))fail('MULTI_RUNTIME_PRECLAIM_EVIDENCE_DENIED');
+ return{schemaVersion:1,kind:'verified-current13-preclaim-attempt',companyId:current.companyId,rootTaskId:current.rootTaskId,taskId:step.taskId,agentId:step.agentId,role:step.role,runtimeProfileId:step.runtimeProfileId,
+  operationId:step.operationId,runId:run.id,sourceReportSha256,sourceRegistrySha256,releaseReceipt:releaseRef,native:release.native,permit:permitRef,stderrSha256:sha(run.stderrExcerpt),budgetRecord:slot,budgetRecords:budget,closure};
+}
+export function projectCurrent13PreclaimRepair(current,proof,{newOperationId=randomUUID()}={}){
+ const original=current?.steps?.[2];if(proof?.kind!=='verified-current13-preclaim-attempt'||proof.operationId!==original?.operationId||proof.runId!==original.runId||proof.companyId!==current.companyId||proof.rootTaskId!==current.rootTaskId||!/^[-a-f0-9]{36}$/.test(newOperationId)||newOperationId===original.operationId)fail('MULTI_RUNTIME_PRECLAIM_REPAIR_DENIED');
+ const next=structuredClone(current),step=next.steps[2],{goal,priorAttempts,...old}=structuredClone(original);
+ const refs={releaseReceipt:proof.releaseReceipt,native:proof.native,permit:proof.permit,stderrSha256:proof.stderrSha256};
+ step.priorAttempts=[{...old,status:'FAILED_PRECLAIM',proof:{kind:'official-bootstrap-unclaimed',gateCode:'ROLE_CLAUDE_GATE_SCOPE_DENIED',providerWorkStarted:false,claimed:false,...refs,budgetRecord:proof.budgetRecord}}];
+ step.operationId=newOperationId;step.retryOfOperationId=original.operationId;step.status='NOT_RUN';for(const key of ['runId','nativeStatus','nativeEvidence','taskRuntimeRoute','leaseReleased','wakeAttemptedAt','modelEvidence','proofs','implementationProof','testing','artifacts'])delete step[key];
+ next.status='PARTIAL_VALIDATED';delete next.errorCode;next.callsSpent=proof.budgetRecords.length;next.rootCallsSpent=proof.budgetRecords.length;next.budgetRecords=structuredClone(proof.budgetRecords);
+ next.postExecutionPreclaimRepair={schemaVersion:1,kind:'known-unclaimed-preflight-repair',companyId:next.companyId,rootTaskId:next.rootTaskId,taskId:step.taskId,agentId:step.agentId,role:step.role,runtimeProfileId:step.runtimeProfileId,repairedStepIndex:2,
+  fromOperationId:proof.operationId,fromRunId:proof.runId,newOperationId,...refs,sourceReportSha256:proof.sourceReportSha256,sourceRegistrySha256:proof.sourceRegistrySha256,budgetUsedBefore:9,budgetUsedAfter:9,modelCallsAdded:0};
+ validateCurrent13PreclaimRepairHistory(next);return next;
+}
+export async function verifyCurrent13PreclaimAttempt({current,ports,root=ACCEPTANCE_ROOT,cwd,sourceReportReference,authorized=process.env.SUPER_AGENT_REPAIR_CURRENT13_PRECLAIM==='1'}){
+ if(authorized!==true||['getRun','getActiveRuns','verifyNativeStopped','getRootTask','getTask','getAgent'].some(key=>typeof ports?.[key]!=='function'))fail('MULTI_RUNTIME_PRECLAIM_REPAIR_AUTH_REQUIRED');
+ const step=current?.steps?.[2],reportFile=root+'/multi-runtime-current13-acceptance.json',registryFile=root+'/registry.json',registry=privateJson(registryFile);
+ const readRef=ref=>{if(!controlReference(ref))fail('MULTI_RUNTIME_PRECLAIM_PROOF_PATH_DENIED');let cursor=root;for(const part of ref.file.split('/')){cursor=path.join(cursor,part);if(fs.lstatSync(cursor).isSymbolicLink())fail('MULTI_RUNTIME_PRECLAIM_PROOF_PATH_DENIED');}
+  const stat=fs.lstatSync(cursor);if(!stat.isFile()||stat.nlink!==1||stat.size>1048576||(stat.mode&0o022))fail('MULTI_RUNTIME_PRECLAIM_PROOF_PATH_DENIED');const bytes=fs.readFileSync(cursor);if(sha(bytes)!==ref.sha256)fail('MULTI_RUNTIME_PRECLAIM_PROOF_CHANGED');return bytes;};
+ const releaseFile='closed-phase-releases/'+step.operationId+'.json',releaseRef={file:releaseFile,sha256:sha(fs.readFileSync(root+'/'+releaseFile))},release=JSON.parse(readRef(releaseRef));
+ for(const ref of [release.native,release.previousReport,release.previousRegistry])readRef(ref);
+ if(release.previousReport.sha256!==release.sourceReportSha256||release.previousRegistry.sha256!==release.sourceRegistrySha256)fail('MULTI_RUNTIME_PRECLAIM_PROOF_CHANGED');
+ const oldRegistry=JSON.parse(readRef(release.previousRegistry));if(!isDeepStrictEqual(oldRegistry.lease,release.lease)||oldRegistry.companyId!==current.companyId||oldRegistry.taskId!==current.rootTaskId)fail('MULTI_RUNTIME_PRECLAIM_RELEASE_CHANGED');
+ const run=await ports.getRun(step.runId),task=await ports.getTask(step.taskId),agent=await ports.getAgent(step.agentId),rootTask=await ports.getRootTask();
+ const permitRef={file:'permits/'+run.id+'.json',sha256:sha(fs.readFileSync(root+'/permits/'+run.id+'.json'))},permit=JSON.parse(readRef(permitRef)),materialDigests=[];
+ const material=file=>{if(typeof file!=='string'||!path.isAbsolute(file)||path.normalize(file)!==file)fail('MULTI_RUNTIME_PRECLAIM_MATERIAL_DENIED');let cursor=path.parse(file).root;
+  for(const part of file.slice(cursor.length).split(path.sep)){cursor=path.join(cursor,part);if(fs.lstatSync(cursor).isSymbolicLink())fail('MULTI_RUNTIME_PRECLAIM_MATERIAL_DENIED');}
+  const stat=fs.lstatSync(file);if(!stat.isFile()||stat.nlink!==1||stat.size>262144||(stat.mode&0o022))fail('MULTI_RUNTIME_PRECLAIM_MATERIAL_DENIED');return sha(fs.readFileSync(file));};
+ materialDigests.push({instructions:true,sha256:material(permit.instructionsFilePath)});
+ for(const ref of permit.materialFiles??[]){if(!controlReference({file:ref.path,sha256:ref.sha256}))fail('MULTI_RUNTIME_PRECLAIM_MATERIAL_DENIED');materialDigests.push({path:ref.path,sha256:material(path.join(permit.materialRoot,ref.path))});}
+ const directory=root+'/budget/'+current.rootTaskId,budget=fs.readdirSync(directory).sort().map(file=>{const bytes=fs.readFileSync(directory+'/'+file),value=privateJson(directory+'/'+file);if(file!==value.id+'.json')fail('MULTI_RUNTIME_PRECLAIM_BUDGET_DENIED');return{operationId:value.id,taskId:value.taskId,agentId:value.agentId,role:value.role,sha256:sha(bytes)};});
+ if(fs.existsSync(root+'/call.lock')||registry.lease!==undefined)fail('MULTI_RUNTIME_PRECLAIM_EXECUTION_OPEN');
+ const markers={claimExists:fs.existsSync(root+'/claims/'+run.id+'.json'),transportExists:fs.existsSync(root+'/transport/'+run.id),providerAuditExists:fs.existsSync(root+'/transport/'+run.id+'/proxy-audit'),callLockExists:fs.existsSync(root+'/call.lock')};
+ const proof=inspectCurrent13PreclaimAttempt({current,registry,rootTask,task,agent,run,release,releaseRef,permit,permitRef,budget,markers,nativeStopped:await ports.verifyNativeStopped(step.agentId),activeRunIds:await ports.getActiveRuns(),
+  sourceReportSha256:sha(sourceReportReference?readRef(sourceReportReference):fs.readFileSync(reportFile)),sourceRegistrySha256:sha(fs.readFileSync(registryFile)),materialDigests,authorized});
+ if(cwd&&fs.existsSync(path.join(cwd,'item-preferences.mjs'))&&sha(fs.readFileSync(path.join(cwd,'item-preferences.mjs')))!==sha('export function normalizePreferences(value){return value;}\nexport function mergePreferences(current,patch){return patch;}\n'))fail('MULTI_RUNTIME_PRECLAIM_FUTURE_ARTIFACT_CHANGED');
+ return proof;
+}
+function verifyCurrent13PreclaimHistoryFiles(current,runs,budget,root=ACCEPTANCE_ROOT){
+ if(!validateCurrent13PreclaimRepairHistory(current))return;
+ const prior=current.steps[2].priorAttempts[0],run=runs.find(row=>row.id===prior.runId),proof=prior.proof;
+ if(!run||run.companyId!==current.companyId||run.issueId!==prior.taskId||run.agentId!==prior.agentId||run.errorCode!=='adapter_failed'||
+  budget.find(record=>record.operationId===prior.operationId)?.sha256!==proof.budgetRecord.sha256)fail('MULTI_RUNTIME_PRECLAIM_HISTORY_CHANGED');
+ const closed=knownBootstrapClosure(run,{claimExists:fs.existsSync(root+'/claims/'+run.id+'.json'),transportExists:fs.existsSync(root+'/transport/'+run.id),providerAuditExists:fs.existsSync(root+'/transport/'+run.id+'/proxy-audit'),callLockExists:fs.existsSync(root+'/call.lock')});
+ if(closed.gateCode!==proof.gateCode||sha(run.stderrExcerpt)!==proof.stderrSha256)fail('MULTI_RUNTIME_PRECLAIM_HISTORY_CHANGED');
+ for(const ref of [proof.releaseReceipt,proof.native,proof.permit]){let cursor=root;for(const component of ref.file.split('/')){cursor=path.join(cursor,component);if(fs.lstatSync(cursor).isSymbolicLink())fail('MULTI_RUNTIME_PRECLAIM_HISTORY_CHANGED');}if(sha(fs.readFileSync(cursor))!==ref.sha256)fail('MULTI_RUNTIME_PRECLAIM_HISTORY_CHANGED');}
+ const permit=privateJson(root+'/'+proof.permit.file),release=privateJson(root+'/'+proof.releaseReceipt.file);
+ if(permit.runId!==run.id||permit.taskId!==prior.taskId||permit.agentId!==prior.agentId||permit.runtimeProfileId!==prior.runtimeProfileId||release.runId!==run.id||release.operationId!==prior.operationId||release.permitSha256!==proof.permit.sha256||release.providerWorkStarted!==false||release.gate?.claimed!==false||release.gate.code!==proof.gateCode)fail('MULTI_RUNTIME_PRECLAIM_HISTORY_CHANGED');
 }
 /** Authorizes historical work-product continuation only; this never makes an old implementation eligible for the current runtime pool. */
 export async function validateHistoricalPrefixSourceTransition({descriptor,before,after,bridgeBefore,bridgeAfter,diff,review,reviewOutput,regression,regressionStdout,regressionStderr,current,plan,implementations,permits,currentBindings,observedBindings}){
@@ -263,7 +341,8 @@ async function readHistoricalPrefixTransition({current,plan,implementations,perm
 
 async function verifyCurrent13PrefixFiles({current,plan,registry,runs,budget,cwd,validation,allowHistoricalSourceTransition=false}){
  if(typeof validation?.validateRunEvidence!=='function'||!Array.isArray(validation.fixedInputs)||validation.fixedInputs.length!==4)fail('MULTI_RUNTIME_CURRENT13_VALIDATOR_REQUIRED');
- const allowedPreviousRuns=new Set([...plan.steps,...current.steps.filter(step=>step.status==='PASS')].map(step=>step.runId));
+ verifyCurrent13PreclaimHistoryFiles(current,runs,budget);
+ const allowedPreviousRuns=new Set([...plan.steps,...current.steps.filter(step=>step.status==='PASS'),...current.steps.flatMap(step=>step.priorAttempts??[])].map(step=>step.runId));
  const pendingEvidence=current.steps.filter(step=>step.status!=='PASS').map(step=>({operationId:step.operationId,nativeRunIds:runs.filter(run=>run.contextSnapshot?.roleOperationId===step.operationId||run.issueId===step.taskId&&!allowedPreviousRuns.has(run.id)).map(run=>run.id),
   operationFile:fs.existsSync(ACCEPTANCE_ROOT+'/operations/'+step.operationId+'.json')||fs.existsSync('/paperclip/control/daily/tasks/'+step.taskId+'/managed-wake-'+step.operationId+'.json'),budgetSlot:budget.some(value=>value.operationId===step.operationId),orphanControl:false}));
  const knownRuns=new Set(runs.map(run=>run.id));
@@ -281,7 +360,7 @@ async function verifyCurrent13PrefixFiles({current,plan,registry,runs,budget,cwd
   const bytes=fs.readFileSync(cursor);if(bytes.length>4194304||sha(bytes)!==ref.sha256)fail('MULTI_RUNTIME_CURRENT13_PROOF_CHANGED');return bytes;};
  for(const ref of validation.fixedInputs){const file=path.join(cwd,ref.file);if(path.dirname(file)!==cwd||sha(fs.readFileSync(file))!==ref.sha256)fail('MULTI_RUNTIME_CURRENT13_FROZEN_INPUT_CHANGED');}
  const release=JSON.parse(controlBytes(current.postExecutionPrefixFinalization.releaseReceipt)),last=passed.at(-1);
- if(release.schemaVersion!==1||release.kind!=='known-closed-current13-phase'||release.runId!==last.runId||release.taskId!==last.taskId||release.operationId!==last.operationId||release.modelCallsAdded!==0||release.budgetSpent!==budget.length||
+ if(release.schemaVersion!==1||release.kind!=='known-closed-current13-phase'||release.runId!==last.runId||release.taskId!==last.taskId||release.operationId!==last.operationId||release.modelCallsAdded!==0||release.budgetSpent!==current.postExecutionPrefixFinalization.budgetUsedAfter||
   release.sourceReportSha256!==current.postExecutionPrefixFinalization.sourceReportSha256||release.transportSha256!==sha(fs.readFileSync(ACCEPTANCE_ROOT+'/transport/'+last.runId+'/result.json'))||
   release.providerAuditSha256!==sha(fs.readFileSync(ACCEPTANCE_ROOT+'/transport/'+last.runId+'/proxy-audit/provider.jsonl')))fail('MULTI_RUNTIME_CURRENT13_RELEASE_PROOF_DENIED');
  const {taskRuntimeImplementationFiles,computeTaskRuntimeImplementationBinding}=await import('../../bridge/task-runtime-router.mjs'),sourceRoot=fileURLToPath(new URL('../../',import.meta.url));
@@ -458,8 +537,10 @@ export async function createMultiRuntimeNativeFixture(plan,input,{resumeKnownBoo
    retainedClosures:fs.existsSync(ACCEPTANCE_ROOT+'/bootstrap-closure.json')?[privateJson(ACCEPTANCE_ROOT+'/bootstrap-closure.json')]:[]});
   if(budget.length>plan.callsSpent){
    const current=privateJson(ACCEPTANCE_ROOT+'/multi-runtime-current13-acceptance.json');
+   verifyCurrent13PreclaimHistoryFiles(current,runs,budget);
    if(resumeCurrent13){
-    if(current.postExecutionPrefixFinalization?.sourceRegistrySha256!==sha(fs.readFileSync(ACCEPTANCE_ROOT+'/registry.json')))fail('MULTI_RUNTIME_CURRENT13_REGISTRY_CHANGED');
+    const sourceRegistrySha256=current.postExecutionPreclaimRepair?.sourceRegistrySha256??current.postExecutionPrefixFinalization?.sourceRegistrySha256;
+    if(sourceRegistrySha256!==sha(fs.readFileSync(ACCEPTANCE_ROOT+'/registry.json')))fail('MULTI_RUNTIME_CURRENT13_REGISTRY_CHANGED');
     const verified=await verifyCurrent13PrefixFiles({current,plan,registry,runs,budget,cwd,validation:current13,allowHistoricalSourceTransition:allowHistoricalSourceTransition===true});
     if(!await verified.agentExecutionsHaveStopped(db,verified.passedAgentIds))fail('MULTI_RUNTIME_CURRENT13_EXECUTION_OPEN');
    }else if(current.schemaVersion!==1||current.status!=='PASS'||current.companyId!==plan.companyId||current.projectId!==plan.projectId||current.rootTaskId!==plan.rootTaskId||
@@ -467,6 +548,7 @@ export async function createMultiRuntimeNativeFixture(plan,input,{resumeKnownBoo
    if(!resumeCurrent13)verifyCompletedFiles(current,cwd);
    const accepted=new Set([...plan.steps,...current.steps.filter(step=>step.status==='PASS')].map(step=>step.operationId));
    for(const step of plan.steps)for(const prior of step.priorAttempts??[])accepted.add(prior.operationId);
+   for(const step of current.steps)for(const prior of step.priorAttempts??[])accepted.add(prior.operationId);
    if(budget.some(record=>!accepted.has(record.operationId)))fail('MULTI_RUNTIME_CURRENT_MATRIX_BUDGET_UNPROVEN');
   }
   else if(resumeCurrent13)fail('MULTI_RUNTIME_CURRENT13_PREFIX_DENIED');

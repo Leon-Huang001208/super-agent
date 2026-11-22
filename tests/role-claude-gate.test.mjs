@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateClaudeRoleCall,claudeMetadata} from '../docker/role-claude-gate.mjs';
+import {validateClaudeRoleCall,validateClaudeNativeBundlePath,claudeMetadata} from '../docker/role-claude-gate.mjs';
 import {MACOS_NATIVE_EXECUTION_POLICY} from '../bridge/role-execution-policy.mjs';
 
 const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',other='bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
@@ -16,6 +16,21 @@ function sample(profileId='minimax_claude'){
 }
 test('both canonical Claude profiles accept the exact stock fresh Native invocation',()=>{
  for(const profileId of ['minimax_claude','deepseek_claude']){const input=sample(profileId);assert.equal(validateClaudeRoleCall(input),input.permit);}
+});
+test('installed Native agent header and both fixed prompt cache roots remain bound to the permit',()=>{
+ for(const profileId of ['minimax_claude','deepseek_claude'])for(const root of ['/paperclip/instances/default/companies/','/paperclip/home/.paperclip/instances/default/companies/']){
+  const input=sample(profileId),actual=root+id+'/claude-prompt-cache/'+'a'.repeat(64);
+  input.env.ANTHROPIC_CUSTOM_HEADERS='X-Anthropic-Agent-Id: '+id;
+  input.args=input.args.map(value=>value.replace(bundle,actual));assert.equal(validateClaudeRoleCall(input),input.permit);
+  for(const header of ['X-Anthropic-Agent-Id: '+other,'X-Anthropic-Agent-Id: '+id+'\nX-Extra: value','X-Anthropic-Agent-Id: '+id+'\r','x-anthropic-agent-id: '+id])assert.throws(()=>validateClaudeRoleCall({...input,env:{...input.env,ANTHROPIC_CUSTOM_HEADERS:header}}),/SCOPE_DENIED/);
+  for(const changed of [actual.replace('/paperclip/','/other/'),actual+'/../escape',actual.replace(id,other),actual.replace('/claude-prompt-cache/','/grants/'),actual.replace('/instances/default/','/instances/foreign/')])assert.throws(()=>validateClaudeRoleCall({...input,args:input.args.map(value=>value.replace(actual,changed))}),/ARGUMENTS_DENIED/);
+ }
+});
+test('Native cache metadata rejects symlinks, foreign owners, writable paths and linked instruction files without reading content',()=>{
+ const stat={uid:0,mode:0o755,nlink:1,isSymbolicLink:()=>false,isDirectory:()=>true,isFile:()=>true},lstat=()=>stat;
+ assert.doesNotThrow(()=>validateClaudeNativeBundlePath(bundle,{lstat}));
+ for(const changed of [{isSymbolicLink:()=>true},{uid:501},{mode:0o777},{isDirectory:()=>false}])assert.throws(()=>validateClaudeNativeBundlePath(bundle,{lstat:file=>file==='/paperclip'?{...stat,...changed}:stat}),/PATH_DENIED/);
+ for(const changed of [{isSymbolicLink:()=>true},{nlink:2},{isFile:()=>false}])assert.throws(()=>validateClaudeNativeBundlePath(bundle,{lstat:file=>file.endsWith('/agent-instructions.md')?{...stat,...changed}:stat}),/PATH_DENIED/);
 });
 test('Claude gate rejects stale runtime/model/effort, foreign identity, inherited credentials and nonnative policy',()=>{
  const input=sample();

@@ -10,6 +10,8 @@
 
 `scripts/multi-runtime-acceptance.mjs`和`tests/helpers/multi-runtime-native-fixture.mjs`准备独立Native测试数据库、公司、控制根与task绑定，沿原Native执行器运行有限步骤；它不是另一个自动调度器。定向测试为`task-runtime-policy`、`task-runtime-routing`、`role-runtime-profiles`、`role-opencode-config`、`role-opencode-gate`、`role-api-routing`、`role-api-proxy`、`role-isolated-transport`和`multi-runtime-acceptance`，并保留原prep/adapter/host/budget/QA回归。离线通过、真实Native模型、同任务handoff、生产部署和12岗业务是不同证据；本轮实际模型结果尚待填写，保持NOT_RUN。
 
+`role-claude-gate`兼容stock Native精确的单Agent header及两个固定实例缓存根，实际入口检查缓存目录和指令文件的归属、权限及无链接；Host继续只使用permit绑定材料，不读取缓存正文授予权限。`current13-runtime-acceptance --repair-current13-preclaim`是显式的隔离管理操作：实际Native官方未开始provider、Gate未claim、无Host请求及租约闭合原件都匹配后，保留失败run、原operation与第9次预算，为同task/root/Agent准备一个新operation；它不唤醒模型，也不退款。相关fixture严格重验唯一失败attempt及预算集合；收存器先保留Native失败或未知状态，再读取Host结果，避免缺失文件掩盖真实原因。
+
 ## 20次预算与原任务开发续接
 
 `task-call-policy`默认20，`native-role-budget`、`chief-context-native`及QA返修共同接受可信20次证据；旧6/12回执和历史QA专项保持其原合同。`task-call-budget --maximum 20`只修改Owner绑定额度，不修改旧budget文件或唤醒模型。相关budget/context/retry回归验证第20/21次边界及原计数保留。

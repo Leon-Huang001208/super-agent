@@ -50,7 +50,9 @@ Codex保持既有会员链。DeepSeek OpenCode固定官方`https://api.deepseek.
 
 `OPENCODE_CONFIG`只允许Agent专属的`/paperclip/control/research-pm/opencode-clients/<agentId>/config.json` marker；它不含真实Key，仅使Native不会误继承原OpenAI订阅。任意路径、内容/目录覆盖和上游凭据env仍拒绝。Host真正的OpenCode私有配置按run生成，不继承个人全局provider、session、MCP或Hooks；Native已提供的指令不重复前置。结束后按原结果/进程证明退休临时凭据，unknown时先核对，不掩盖原结果。
 
-Claude使用独立的`CLAUDE_CONFIG_DIR` marker与Host配置，`--bare`、禁hooks/自动记忆/后台任务、严格MCP与固定所有secondary model；临时`ANTHROPIC_API_KEY`仅是opaque run token。本机假TLS探针已实际验证Claude/OpenCode的SSE及Host MCP协议，它不是厂商模型验收。会员委托不复制真实refresh token：每个Codex步骤在已取得真实租约、Owner及旧执行闭合后，要求至少210秒有效期，不足则向控制侧申请同账号的短委托，响应只写内盘并校验nonce、期限与身份。broker期限不得超过原委托期限；超时或未知不得唤醒模型。`implementation-proof.json`记录实际源码manifest、CLI入口/二进制、args与配置摘要；不记录完整prompt或认证。
+Claude使用独立的`CLAUDE_CONFIG_DIR` marker与Host配置，`--bare`、禁hooks/自动记忆/后台任务、严格MCP与固定所有secondary model；临时`ANTHROPIC_API_KEY`仅是opaque run token。本机假TLS探针已实际验证Claude/OpenCode的SSE及Host MCP协议，它不是厂商模型验收。Native入口仅接受它自动生成、与permit Agent ID精确相等的单行`X-Anthropic-Agent-Id`；额外或不同身份的header继续拒绝。Native prompt cache仅识别`/paperclip/instances/default/companies/`与`/paperclip/home/.paperclip/instances/default/companies/`两种固定实例根、当前company及64位内容摘要，读取前核验无symlink、Root所有权与权限；Host仍使用独立核验的permit材料，不把cache内容当授权。
+
+会员委托不复制真实refresh token：每个Codex步骤在已取得真实租约、Owner及旧执行闭合后，要求至少210秒有效期，不足则向控制侧申请同账号的短委托，响应只写内盘并校验nonce、期限与身份。broker期限不得超过原委托期限；超时或未知不得唤醒模型。`implementation-proof.json`记录实际源码manifest、CLI入口/二进制、args与配置摘要；不记录完整prompt或认证。
 
 ## 隔离验收与证据
 
@@ -59,6 +61,8 @@ Claude使用独立的`CLAUDE_CONFIG_DIR` marker与Host配置，`--bare`、禁hoo
 隔离数据库使用已有固定Postgres镜像、专属network-none命名空间及tmpfs；只对精确隔离库运行固定Native迁移，生产数据库不迁移。原生模型由宿主CLI执行。明文provider工作副本与恢复master保存在内盘受限bind，业务夹具/可配置cache在已核验WorkDisk。初始夹具出现的Postgres启动及材料名失败保留启动记录；材料名修正符合原UUID合同，未放宽gate。
 
 已知bootstrap恢复须重读Native明确provider未开始且gate claimed=false、零Host claim/request、终态run、原12岗/同task/root与累计预算摘要。保留原失败/取消及原预算，新operation/run承接同任务；禁止Native自动重试。仅对已确认没有执行事件/PID/session/用量的取消孤儿补齐管理侧结束确认，原行和摘要先归档，记录Native activity，然后走真实生命周期恢复。未知执行或任何矛盾证据均拒绝，不造成功transport或改写原状态。
+
+13岗收集器的显式管理入口`--repair-current13-preclaim`只处理已核验的未认领入口失败：Native官方bootstrap/providerfalse、精确Gate claimed=false、无Host请求与模型工作、执行终态及原租约闭合回执必须同时成立。它归档原报告、Native错误摘要、操作与已用slot，在同一task/root及原Agent下准备一个新operation，记录`known-unclaimed-preflight-repair`；不退款、不写模型PASS、不自动唤醒或切换模型。真实模型失败、已认领或未知结果不能使用此特例。
 
 预定五步为：Backend routine任务由MiniMax执行；同一Backend task明确handoff给Codex；Research使用DeepSeek；PM使用Codex；独立QA使用Codex。验收固定的合成文件、命令与产物摘要，证明真实Native run/adapter、实际Mac CLI、provider/model、工具执行、结果收存与usage。未参与岗位或更广业务并未因此通过。
 

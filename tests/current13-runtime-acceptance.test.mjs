@@ -182,5 +182,16 @@ test('historical source transition is an explicit resume-only CLI option and nev
  assert.deepEqual(parseCurrent13AcceptanceArgs(['--resume-current13','--allow-historical-source-transition','--input','private.json']),{mode:'resume',inputFile:'private.json',allowHistoricalSourceTransition:true});
  assert.deepEqual(parseCurrent13AcceptanceArgs(['--resume-current13','--input','private.json']),{mode:'resume',inputFile:'private.json',allowHistoricalSourceTransition:false});
  assert.deepEqual(parseCurrent13AcceptanceArgs(['--finalize-current13-prefix','--input','private.json']),{mode:'finalize'});
+ assert.deepEqual(parseCurrent13AcceptanceArgs(['--repair-current13-preclaim','--input','private.json']),{mode:'repair-preclaim'});
+ assert.deepEqual(parseCurrent13AcceptanceArgs(['--repair-current13-preclaim']),{mode:'repair-preclaim'});
  for(const args of [['--allow-historical-source-transition','--input','private.json'],['--input','private.json','--allow-historical-source-transition'],['--finalize-current13-prefix','--allow-historical-source-transition']])assert.throws(()=>parseCurrent13AcceptanceArgs(args),/CURRENT13_ARGUMENT_DENIED/);
+});
+test('Native failure is preserved before reading nonexistent Host result evidence',()=>{
+ const historical=history(),plan=createCurrent13Acceptance({historical,historicalReportSha256:'c'.repeat(64),agentIds:{...historical.agentIds,'full-stack-engineer':randomUUID()}}),step=plan.steps[2];
+ step.runId=randomUUID();const current={id:step.runId,companyId:plan.companyId,responsibleUserId:'owner',issueId:step.taskId,agentId:step.agentId,
+  status:'failed',exitCode:1,startedAt:new Date(1000),finishedAt:new Date(2000),errorCode:'adapter_failed',resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
+ assert.throws(()=>finalizeCurrent13StepBoundary({plan,step,current,ownerId:'owner',cwd:'/does-not-exist',root:'/does-not-exist',beforeBudget:[]}),/CURRENT13_NATIVE_EXECUTION_FAILED/);
+ assert.equal(step.nativeStatus,'failed');assert.equal(step.nativeEvidence.status,'failed');
+ assert.throws(()=>finalizeCurrent13StepBoundary({plan,step,current:{...current,status:'running',exitCode:null,finishedAt:null},ownerId:'owner',cwd:'/does-not-exist',root:'/does-not-exist',beforeBudget:[]}),/CURRENT13_NATIVE_RESULT_UNKNOWN/);
+ assert.equal(step.nativeStatus,'running');
 });

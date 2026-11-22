@@ -11,7 +11,7 @@ import {AdmissionMeter} from '../bridge/admission.mjs';
 import {taskInputRevision} from '../bridge/task-input.mjs';
 import {createTaskRuntimeRoute,projectTaskRuntimeRoute} from '../bridge/task-runtime-routing.mjs';
 import {assertDelegatedAuth,publicRunEvidence,readAcceptanceArtifactJson,reserveAcceptanceTask,rehydrateAcceptancePlan} from './multi-runtime-acceptance.mjs';
-import {ACCEPTANCE_ROOT as ROOT,privateJson,writePrivate,archivePrivateSnapshot,createMultiRuntimeNativeFixture} from '../tests/helpers/multi-runtime-native-fixture.mjs';
+import {ACCEPTANCE_ROOT as ROOT,privateJson,writePrivate,archivePrivateSnapshot,createMultiRuntimeNativeFixture,validateCurrent13PreclaimRepairHistory} from '../tests/helpers/multi-runtime-native-fixture.mjs';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(value);
@@ -219,9 +219,10 @@ function hydrateCurrent13Plan(saved){
 }
 export function validateCurrent13ResumePlan(saved){
  const plan=hydrateCurrent13Plan(saved);if(!['PARTIAL_VALIDATED','PASS'].includes(plan.status))fail('CURRENT13_RESUME_NOT_VALIDATED');
+ const preclaimAttempts=validateCurrent13PreclaimRepairHistory(plan);
  let prefix=0;while(plan.steps[prefix]?.status==='PASS')prefix++;
  if(!prefix||plan.steps.slice(prefix).some(step=>step.status!=='NOT_RUN'||step.runId||step.nativeEvidence||step.nativeStatus||step.wakeAttemptedAt||step.startedAt)||
-  plan.callsSpent!==6+prefix||plan.rootCallsSpent!==plan.callsSpent||plan.budgetRecords?.length!==plan.callsSpent||
+  plan.callsSpent!==6+prefix+preclaimAttempts||plan.rootCallsSpent!==plan.callsSpent||plan.budgetRecords?.length!==plan.callsSpent||
   plan.steps.slice(0,prefix).some(step=>!uuid(step.runId)||!step.artifacts?.length||step.nativeEvidence?.status!=='succeeded'||!step.modelEvidence?.observed||!step.implementationProof||!Array.isArray(step.testing)))fail('CURRENT13_RESUME_PREFIX_DENIED');
  return prefix;
 }
@@ -251,6 +252,7 @@ export function revalidateCurrent13PassedStep({plan,step,current,ownerId,cwd,roo
 export function finalizeCurrent13StepBoundary({plan,step,current,ownerId,cwd,beforeBudget,oldArtifacts=[],priorArtifacts=[],reviewedArtifacts,root=ROOT,started}){
  const profile=RUNTIME_PROFILES[step.runtimeProfileId];step.nativeEvidence=publicRunEvidence(current,profile);step.nativeStatus=current?.status??'UNKNOWN';
  if(current?.companyId!==plan.companyId||current?.responsibleUserId!==ownerId)fail('CURRENT13_NATIVE_OWNER_DENIED');
+ if(current.status!=='succeeded'||current.exitCode!==0||!current.finishedAt)fail(['failed','cancelled'].includes(current.status)?'CURRENT13_NATIVE_EXECUTION_FAILED':'CURRENT13_NATIVE_RESULT_UNKNOWN');
  const proof=readRunProof(step,root),modelEvidence=validateCurrent13RunEvidence({step,run:current,...proof});
  step.modelEvidence={...modelEvidence,providerAudit:proof.references.providerAudit};step.proofs=proof.references;
  if(modelEvidence.optionalPluginState)step.optionalPluginState=modelEvidence.optionalPluginState;
@@ -343,6 +345,41 @@ async function finalizePrefixFromNative(){
  try{return await finalizeCurrent13SucceededPrefix({getRun:async id=>(await db.select().from(schema.heartbeatRuns).where(orm.eq(schema.heartbeatRuns.id,id)))[0],
   getRuns:companyId=>db.select().from(schema.heartbeatRuns).where(orm.eq(schema.heartbeatRuns.companyId,companyId)),
   getRootTask:async id=>(await db.select().from(schema.issues).where(orm.eq(schema.issues.id,id)))[0]});}
+ finally{await schema.closeRegisteredClients(url);}
+}
+
+/** Explicit management repair after a proven preclaim bootstrap failure; no wake/model/database write ports. */
+export async function repairCurrent13Preclaim({getRun,getActiveRuns,verifyNativeStopped,getRootTask,getTask,getAgent,root=ROOT,cwd}={}){
+ if(process.platform!=='linux'||process.getuid()!==0||process.env.SUPER_AGENT_ISOLATED_MULTI_RUNTIME!=='1'||
+  process.env.SUPER_AGENT_ISOLATED_DATABASE_URL!=='postgres://postgres@127.0.0.1:5432/sa_multi_runtime_acceptance'||
+  ![getRun,getActiveRuns,verifyNativeStopped,getRootTask,getTask,getAgent].every(port=>typeof port==='function'))fail('CURRENT13_PRECLAIM_REPAIR_SCOPE_DENIED');
+ const file=root+'/multi-runtime-current13-acceptance.json',bytes=fs.readFileSync(file),plan=hydrateCurrent13Plan(privateJson(file)),registryBytes=fs.readFileSync(root+'/registry.json'),registry=privateJson(root+'/registry.json');
+ const task=await getRootTask(plan.rootTaskId);
+ if(registry.companyId!==plan.companyId||registry.projectId!==plan.projectId||registry.taskId!==plan.rootTaskId||registry.lease||fs.existsSync(root+'/call.lock')||
+  !equal(registry.team?.ids,plan.agentIds)||fs.readFileSync(root+'/.multi-runtime-owner','utf8')!==plan.companyId||task?.id!==plan.rootTaskId||task.companyId!==plan.companyId||
+  task.projectId!==plan.projectId||task.responsibleUserId!==registry.ownerId||taskInputRevision(task)!==plan.rootInputRevision)fail('CURRENT13_PRECLAIM_REPAIR_SCOPE_DENIED');
+ cwd??='/paperclip/instances/default/projects/'+plan.companyId+'/'+plan.projectId+'/_default';
+ const {verifyCurrent13PreclaimAttempt,projectCurrent13PreclaimRepair}=await import('../tests/helpers/multi-runtime-native-fixture.mjs');
+ const proof=await verifyCurrent13PreclaimAttempt({current:plan,ports:{getRun,getActiveRuns,verifyNativeStopped,getRootTask:()=>getRootTask(plan.rootTaskId),getTask,getAgent},root,cwd,authorized:true});
+ for(const step of plan.steps.filter(value=>value.status==='PASS'))revalidateCurrent13PassedStep({plan,step,current:await getRun(step.runId),ownerId:registry.ownerId,cwd,root});
+ const next=projectCurrent13PreclaimRepair(plan,proof),oldReport=archivePrivateSnapshot(root+'/current13-history','preclaim-repair-before',bytes),oldRegistry=archivePrivateSnapshot(root+'/current13-history','preclaim-repair-registry',registryBytes);
+ next.postExecutionPreclaimRepair.previousReport={file:path.relative(root,oldReport.file),sha256:oldReport.sha256};
+ next.postExecutionPreclaimRepair.previousRegistry={file:path.relative(root,oldRegistry.file),sha256:oldRegistry.sha256};
+ validateCurrent13ResumePlan(next);
+ if(sha(fs.readFileSync(file))!==sha(bytes)||sha(fs.readFileSync(root+'/registry.json'))!==sha(registryBytes))fail('CURRENT13_PRECLAIM_REPAIR_CONCURRENT_CHANGE');
+ writePrivate(file,{...next,steps:next.steps.map(({goal,...step})=>step)});
+ return{status:next.status,changed:true,budgetSpent:next.callsSpent,modelCallsAdded:0,oldRunId:plan.steps[2].runId,newOperationId:next.steps[2].operationId,taskId:next.steps[2].taskId};
+}
+async function repairPreclaimFromNative(){
+ const url=process.env.SUPER_AGENT_ISOLATED_DATABASE_URL;
+ if(url!=='postgres://postgres@127.0.0.1:5432/sa_multi_runtime_acceptance'||process.env.SUPER_AGENT_ISOLATED_MULTI_RUNTIME!=='1')fail('CURRENT13_PRECLAIM_REPAIR_SCOPE_DENIED');
+ const schema=await import('/opt/paperclip/node_modules/@paperclipai/db/dist/index.js'),orm=await import('/opt/paperclip/node_modules/drizzle-orm/index.js'),db=schema.createDb(url),
+  {agentExecutionsHaveStopped}=await import('/opt/paperclip/node_modules/@paperclipai/server/dist/services/agent-execution-stop.js');
+ const getTask=async id=>(await db.select().from(schema.issues).where(orm.eq(schema.issues.id,id)))[0];
+ try{return await repairCurrent13Preclaim({getRun:async id=>(await db.select().from(schema.heartbeatRuns).where(orm.eq(schema.heartbeatRuns.id,id)))[0],
+  getActiveRuns:()=>db.select().from(schema.heartbeatRuns).where(orm.inArray(schema.heartbeatRuns.status,['running','queued','scheduled_retry'])),
+  verifyNativeStopped:agentId=>agentExecutionsHaveStopped(db,[agentId]),getRootTask:getTask,getTask,
+  getAgent:async id=>(await db.select({id:schema.agents.id,companyId:schema.agents.companyId,role:schema.agents.role,reportsTo:schema.agents.reportsTo,adapterType:schema.agents.adapterType,name:schema.agents.name}).from(schema.agents).where(orm.eq(schema.agents.id,id)))[0]});}
  finally{await schema.closeRegisteredClients(url);}
 }
 
@@ -440,6 +477,7 @@ export async function runCurrent13RuntimeAcceptance(inputFile,{afterAcceptance,r
 }
 export function parseCurrent13AcceptanceArgs(args){
  if(args[0]==='--finalize-current13-prefix'&&(args.length===1||args.length===3&&args[1]==='--input'))return{mode:'finalize'};
+ if(args[0]==='--repair-current13-preclaim'&&(args.length===1||args.length===3&&args[1]==='--input'))return{mode:'repair-preclaim'};
  if(args.length===3&&args[0]==='--resume-current13'&&args[1]==='--input')return{mode:'resume',inputFile:args[2],allowHistoricalSourceTransition:false};
  if(args.length===4&&args[0]==='--resume-current13'&&args[1]==='--allow-historical-source-transition'&&args[2]==='--input')return{mode:'resume',inputFile:args[3],allowHistoricalSourceTransition:true};
  if(args.length===2&&args[0]==='--input')return{mode:'run',inputFile:args[1]};
@@ -449,6 +487,7 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
  try{const args=parseCurrent13AcceptanceArgs(process.argv.slice(2));let result;
   // The metadata-only branch intentionally does not read the credential input.
   if(args.mode==='finalize')result=await finalizePrefixFromNative();
+  else if(args.mode==='repair-preclaim')result=await repairPreclaimFromNative();
   else if(args.mode==='resume')result=await runCurrent13RuntimeAcceptance(args.inputFile,{resumeCurrent13:true,allowHistoricalSourceTransition:args.allowHistoricalSourceTransition});
   else result=await runCurrent13RuntimeAcceptance(args.inputFile);
   console.log(JSON.stringify(result));}

@@ -45,7 +45,7 @@ export function validateClaudeRoleCall({permit,args,env,cwd,now}){
  let policy;try{policy=roleExecutionPolicy(permit);}catch{fail('ROLE_CLAUDE_GATE_SCOPE_DENIED');}
  let materialSnapshot;try{materialSnapshot=validateRoleMaterialSnapshot(permit);}catch{fail('ROLE_CLAUDE_GATE_MATERIAL_SNAPSHOT_DENIED');}
  const profile=Object.hasOwn(RUNTIME_PROFILES,permit?.runtimeProfileId??'')?RUNTIME_PROFILES[permit.runtimeProfileId]:null;
- const marker=env.CLAUDE_CONFIG_DIR;
+ const marker=env.CLAUDE_CONFIG_DIR,headers=env.ANTHROPIC_CUSTOM_HEADERS;
  if(!permit||permit.schemaVersion!==1||!ROLE_KEYS.includes(permit.role)||!profile||profile.runtime!=='claude'||policy.executor!=='macos_native'||
   !['runId','taskId','agentId','companyId','projectId','credentialGrantId'].every(key=>uuid.test(permit[key]??''))||
   permit.model!==profile.model||permit.reasoningEffort!==null||permit.apiFallback!==false||
@@ -53,19 +53,28 @@ export function validateClaudeRoleCall({permit,args,env,cwd,now}){
   permit.cwd!==cwd||!(cwd.startsWith(ROOT+'/workspaces/')||cwd==='/paperclip/instances/default/projects/'+permit.companyId+'/'+permit.projectId+'/_default')||
   !/^[a-f0-9]{64}$/.test(permit.materialSha256??'')||(!materialSnapshot&&!isRoleInstructionPermitPath(permit))||!materialAndProjectScope(permit)||
   ['OPENAI_API_KEY','CODEX_API_KEY','OPENAI_BASE_URL','DEEPSEEK_API_KEY','DEEPSEEK_BASE_URL','MINIMAX_API_KEY','MINIMAX_BASE_URL',
-   'ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','ANTHROPIC_BASE_URL','ANTHROPIC_CUSTOM_HEADERS','CLAUDE_CODE_OAUTH_TOKEN','CLAUDE_CODE_OAUTH_REFRESH_TOKEN',
+   'ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','ANTHROPIC_BASE_URL','CLAUDE_CODE_OAUTH_TOKEN','CLAUDE_CODE_OAUTH_REFRESH_TOKEN',
    'SUPER_AGENT_ROLE_PROVIDER_API_KEY','OPENCODE_CONFIG','OPENCODE_CONFIG_CONTENT','OPENCODE_CONFIG_DIR'].some(key=>Boolean(env[key]))||
   (marker!==undefined&&marker!==ROOT+'/claude-clients/'+permit.agentId+'/config')||
+  (Boolean(headers)&&headers!=='X-Anthropic-Agent-Id: '+permit.agentId)||
   (env.CODEX_HOME!==undefined&&!new RegExp('^/tmp/paperclip-ai-'+permit.companyId+'-'+permit.credentialGrantId+'-[A-Za-z0-9]+/provider$').test(env.CODEX_HOME))||
   env.PAPERCLIP_RUN_ID!==permit.runId||env.PAPERCLIP_AGENT_ID!==permit.agentId||env.PAPERCLIP_COMPANY_ID!==permit.companyId||env.PAPERCLIP_TASK_ID!==permit.taskId)fail('ROLE_CLAUDE_GATE_SCOPE_DENIED');
  if(permit.evidencePacket&&(permit.role!=='qa'||permit.evidencePacket.name!=='qa-evidence-v2'||!/^[a-f0-9]{64}$/.test(permit.evidencePacket.manifestSha256??'')))fail('ROLE_CLAUDE_GATE_EVIDENCE_DENIED');
  const bundle=Array.isArray(args)?args[args.length-1]:null;
- const prefix='/paperclip/instances/default/companies/'+permit.companyId+'/claude-prompt-cache/';
- if(typeof bundle!=='string'||!bundle.startsWith(prefix)||!/^[a-f0-9]{64}$/.test(bundle.slice(prefix.length)))fail('ROLE_CLAUDE_GATE_ARGUMENTS_DENIED');
+ const prefixes=['/paperclip/instances/default/companies/','/paperclip/home/.paperclip/instances/default/companies/'].map(root=>root+permit.companyId+'/claude-prompt-cache/');
+ const prefix=typeof bundle==='string'?prefixes.find(value=>bundle.startsWith(value)):undefined;
+ if(!prefix||!/^[a-f0-9]{64}$/.test(bundle.slice(prefix.length)))fail('ROLE_CLAUDE_GATE_ARGUMENTS_DENIED');
  const expected=['--print','--output-format','stream-json','--verbose','--dangerously-skip-permissions','--model',permit.model,
   '--max-turns','64','--append-system-prompt-file',bundle+'/agent-instructions.md','--add-dir',bundle];
  if(JSON.stringify(args)!==JSON.stringify(expected))fail('ROLE_CLAUDE_GATE_ARGUMENTS_DENIED');
  return permit;
+}
+// Stock Native owns this cache; its contents are never forwarded to the host CLI.
+export function validateClaudeNativeBundlePath(bundle,{lstat=fs.lstatSync}={}){
+ let cursor='/';for(const part of (bundle+'/agent-instructions.md').slice(1).split('/')){
+  cursor=path.join(cursor,part);const stat=lstat(cursor),file=cursor===bundle+'/agent-instructions.md';
+  if(stat.isSymbolicLink()||stat.uid!==0||(stat.mode&0o022)||(file?(!stat.isFile()||stat.nlink!==1):!stat.isDirectory()))fail('ROLE_CLAUDE_GATE_PATH_DENIED');
+ }
 }
 export function claudeMetadata(args,catalog,{now=Date.now()}={}){
  const captured=Date.parse(catalog?.capturedAt),entry=catalog?.claude;
@@ -89,6 +98,7 @@ export async function runClaudeRoleGate(){
   if(!uuid.test(process.env.PAPERCLIP_RUN_ID??''))fail('ROLE_CLAUDE_GATE_ENVIRONMENT_DENIED');
   const raw=readPrivate(ROOT+'/permits/'+process.env.PAPERCLIP_RUN_ID+'.json',ROLE_PERMIT_MAX_BYTES);
   permit=validateClaudeRoleCall({permit:JSON.parse(raw),args,env:process.env,cwd:process.cwd(),now:Date.now()});
+  validateClaudeNativeBundlePath(args.at(-1));
   if(hash(readPrivate(permit.instructionsFilePath))!==permit.materialSha256)fail('ROLE_CLAUDE_GATE_MATERIAL_CHANGED');
   if(permit.materialSnapshot){const snapshot=validateRoleMaterialSnapshot(permit);let total=0;for(const file of snapshot.manifest.files){const bytes=readPrivate(path.join(ROLE_MATERIAL_ROOT,file.path));total+=bytes.length;if(total>1048576||hash(bytes)!==file.sha256)fail('ROLE_CLAUDE_GATE_MATERIAL_CHANGED');}}
   for(const file of permit.materialFiles??[])if(hash(readPrivate(path.join(permit.materialRoot,file.path)))!==file.sha256)fail('ROLE_CLAUDE_GATE_MATERIAL_CHANGED');
