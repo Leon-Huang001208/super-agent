@@ -33,7 +33,9 @@ if(fs.existsSync(authFile)){
   if(!account||!auth.tokens.access_token)throw Error();
  }catch{startupFail(apiProfile?'ROLE_PROXY_APPS_AUTH_REQUIRED':'ROLE_PROXY_AUTH_REQUIRED');}
 }
-if(!auth&&(!apiProfile||admittedTools.length||config.mcpAllowedTools?.length))startupFail(apiProfile?'ROLE_PROXY_APPS_AUTH_REQUIRED':'ROLE_PROXY_AUTH_REQUIRED');
+if(!auth&&!apiProfile)startupFail('ROLE_PROXY_AUTH_REQUIRED');
+// A role's Cloud Apps catalog is not a connected subscription. Host MCP has its own authorized tools.
+if(apiProfile&&!auth)admittedTools.length=0;
 if(apiProfile){
  const filename=process.env.SUPER_AGENT_ROLE_API_AUTH_FILE??configRoot+'/api-auth.json';
  try{

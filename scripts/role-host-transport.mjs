@@ -261,7 +261,8 @@ export async function runHostTransport(runId,{dataRoot=DATA,transportRoot,codexP
   if(hostExecutor)hostTimer=setInterval(()=>void serveHostCapabilityCalls({root:audit+'/host-calls',permit,executor:hostExecutor,log}).catch(error=>{log({code:'HOST_CALL_QUEUE_FAILED',errorCode:error.code??'HOST_CALL_QUEUE_FAILED'});controller.abort();}),50);
   const documentEnvironment=prepareDocumentRuntimeEnvironment({role:permit.role,runDirectory:client});
   if(permit.role==='document-specialist')documentEnvironment.PAPERCLIP_DOCUMENT_ENGINEERING_RULES=path.join(skillAssetRoot,'shared','engineering.md');
-  const launch=claude?createRoleClaudeLaunch({permit,client,cwd,instructionPath,endpoint,key,hostTools,connectors:Boolean(permit.effectiveCapabilities?.mcpAllowedTools?.length),...(releaseTimeouts?{mcpTimeoutMs:releaseTimeouts.mcpSeconds*1000}:{})}):api?createRoleOpenCodeLaunch({permit,client,cwd,endpoint,key,hostTools,skillPaths:roleSkills?[client+'/skills']:[],connectors:Boolean(permit.effectiveCapabilities?.mcpAllowedTools?.length),...(releaseTimeouts?{mcpTimeoutMs:releaseTimeouts.mcpSeconds*1000}:{})}):null;
+  const connectors=Boolean(permit.effectiveCapabilities?.mcpAllowedTools?.length)&&fs.existsSync(dir+'/provider/auth.json');
+  const launch=claude?createRoleClaudeLaunch({permit,client,cwd,instructionPath,endpoint,key,hostTools,connectors,...(releaseTimeouts?{mcpTimeoutMs:releaseTimeouts.mcpSeconds*1000}:{})}):api?createRoleOpenCodeLaunch({permit,client,cwd,endpoint,key,hostTools,skillPaths:roleSkills?[client+'/skills']:[],connectors,...(releaseTimeouts?{mcpTimeoutMs:releaseTimeouts.mcpSeconds*1000}:{})}):null;
   if(launch){
    const cacheParent=path.join(path.dirname(npmCache.proof.cacheRoot),runtimeProfile.runtime),cache=path.join(cacheParent,runId);
    fs.mkdirSync(cacheParent,{recursive:true,mode:0o700});
