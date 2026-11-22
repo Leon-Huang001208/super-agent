@@ -12,6 +12,8 @@
 
 `role-native-retry`的首个已登记子任务bootstrap路径只验证官方Native明确的未启动provider失败及原自动retry关系，在原flow、owner/input、Chief wake、预留phase nonce、预算余量和零物理证据全部成立时返回原context/operation。缺失permit、budget或transport不是单独的未执行证明；未知证据仍返回reconciliation，不伪造文件、改nonce或生成替代operation。后续正常producer绑定原operation到该Native successor并首次计费；既有queued consumer及普通已执行失败重试合同保持。
 
+该路径的产物目录使用`resolveNativeRetryScope`中`projectForOperation`解析出的可信目录。普通Native操作可以没有M2专用的`contextVersion/workspaceCwd`，仍由公司及当前项目绑定到受管`_default`目录；显式上下文目录继续要求与项目合同一致。`child-bootstrap-retry`回归同时覆盖普通操作缺少这两个字段、目标文件已存在及读取证据未知的拒绝，避免用M2夹具代替普通文档任务。
+
 `bridge/role-permit-contract.mjs`统一公司Skill snapshot原8 MiB上限及完整role permit的12 MiB序列化上限；Native生产端在写operation binding/permit前拒绝超限。`role-control-store.readRolePermit`及Gate、宿主/容器transport、resident、原bootstrap/transport retry和验收/产物采集都使用专用permit上限，普通`readControl`保持4 MiB，其他证据限额不变。`tests/role-permit-contract.test.mjs`以实际公司Skill解析器生成大于4 MiB的合法snapshot，覆盖UTF-8边界、权限与链接拒绝；两种Chief retry回归核对大permit的原字节摘要与原预算保持，不重跑已成功任务。`native-role-adapter`回归验证真实超限错误`NATIVE_ROLE_PERMIT_TOO_LARGE`沿原错误白名单及runtime未进入provider的失败映射保留，日志不携带permit内容。
 
 `bridge/role-artifact-workspace.mjs`与`docker/role-artifact-workspace-hook.mjs`按固定Native源摘要装配非Git产物目录支持；仅明确`non_git_path`、实际owner/role/run/项目/工作区/输入及artifact上界全部匹配时免除`.git`要求，其他Native工作区与代码Git保护保留。`role-preload`在instruction hook有效期间先加载、验证artifact补丁，再启动协调器和飞书服务；server-entry复用同一模块已验证的初始化结果，未知ESM缓存仍拒绝启动。`tests/role-preload-order.test.mjs`以fresh process覆盖飞书提前导入heartbeat、维护模式及未知缓存拒绝。新建M2产物workspace使用该类型，旧local_path仅可重用，不自动获得例外。源码/真实Native函数分支测试与实机新任务分别取证，不创建假Git仓库。
@@ -56,7 +58,7 @@ Native HTTPS、每 run 证书/信任、TLS ready 与 MCP CA 传播的合同及�
 |---|---|---|
 | M2 项目与本人命令 | `bridge/context-projects.mjs`、`bridge/chief-context-commands.mjs`、`bridge/chief-context-native.mjs` | catalog 绑定 Native project/可选 workspace ID；原 activity 持久化项目/任务选择、补充、暂停、继续与 linked followup。`context-projects`、`chief-context-commands`、`chief-context-native` 同名测试核对契约。 |
 | 本人原消息受控补收 | `bridge/chief-official-message-recovery.mjs`、`scripts/chief-feishu-recover.mjs`、M2 service/repository | 官方 GET 验证原 Owner、既有 SDK 单聊、正文 SHA 与原 ID，只恢复 new goal；默认 preview，不造 SDK 事件或直接 wake。`chief-official-message-recovery`、`chief-feishu-recover-cli` 及既有 context 测试覆盖身份拒绝、跨来源并发、ACK 未知与去重。 |
-| M2 记忆与协调 | `bridge/project-knowledge-store.mjs`、`bridge/team-context.mjs`、`bridge/team-native-runtime.mjs` | owner-confirmed 当前版本按项目共享/角色私有先隔离后检索；新 session 不带旧任务 history；六次同根额度、原操作对账和分代产物保留。对应 `project-knowledge-store`、`team-context` 测试。 |
+| M2 记忆与协调 | `bridge/project-knowledge-store.mjs`、`bridge/team-context.mjs`、`bridge/team-native-runtime.mjs` | owner-confirmed 当前版本按项目共享/角色私有先隔离后检索；新 session 不带旧任务 history；原根可信额度（普通20次、历史明确12次与QA专项保持）、原操作对账和分代产物保留。对应 `project-knowledge-store`、`team-context` 测试。 |
 | M2 材料与配置 | `bridge/role-material-snapshot.mjs`、`bridge/native-role-runtime.mjs`、`scripts/role-container-transport.mjs`、`scripts/context-configure.mjs` | 专用只读 snapshot，manifest/permit/项目/workspace 同域；配置默认 preview、显式 apply，保留旧 RWB primary/回调。`native-role-runtime-context`、`role-container-materials`、`context-configure` 及既有 gate/adapter/preparation 测试；合同见[跨项目专题](cross-project-context.md)。 |
 | 通用岗位与能力 | `team-roles.mjs`、`role-capabilities.mjs`、`role-skill-bundles.mjs`、`assets/role-profiles/`、`assets/role-skills/` | 12职业定义（现役11岗，Document Specialist待协调接入）、默认/补充能力、可复核完整Skill包；入口字节摘要与files聚合摘要分别命名并对实物校验。项目规则按实际提供的文件读取，能力按技术栈/服务选择，安装或缓存存在不能当调用通过。 |
 | 跨项目接单 | `role-project-context.mjs`、Native角色及Chief现有入口 | 使用Native workspace.metadata扩展，任务项目决定知识/工作区/交付；官方schema/service合同fixture覆盖真实原始DB和API投影。 |
@@ -134,7 +136,7 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 
 ## 任务数量政策与显示名
 
-本人2026-11-19取消每日10个新任务的数量硬上限。`AdmissionMeter.reserveTask`与Chief只读预准入均不再按日计数拒绝；同一原SQLite继续记录上海日期及任务身份，全局单执行租约、未知结果核对、每任务六个角色外层调用槽及每run64次responses保持。`evaluation/candidate.json`以null明确表示无每日任务数上限，预检拒绝旧数字限制，不能仅修改界面文字。离线测试顺序登记26项同日任务并核对原账本、互斥、释放证据和去重。真实实例生效还须绑定同一已验收源码。
+本人2026-11-19取消每日10个新任务的数量硬上限。`AdmissionMeter.reserveTask`与Chief只读预准入均不再按日计数拒绝；同一原SQLite继续记录上海日期及任务身份，全局单执行租约、未知结果核对、每run64次responses保持；根调用槽随后由2026-11-22的`task-call-policy`更新为普通20次，历史明确12次与QA专项保留。`evaluation/candidate.json`以null明确表示无每日任务数上限，预检拒绝旧数字限制，不能仅修改界面文字。离线测试顺序登记26项同日任务并核对原账本、互斥、释放证据和去重。真实实例生效还须绑定同一已验收源码。
 
 `bridge/role-labels.mjs`仅统一显示名；Native名称更新复用原ID。岗位拆分与新增执行器必须另外确认，不能从命名映射推断已实施。
 
@@ -144,7 +146,7 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 
 `bridge/team-native-runtime.mjs`将本人Native输入、结构化Chief计划、角色派发、收回、独立质检及通知接到现有Native服务。`team-plan.mjs`校验根预算、DAG和质量依赖；`role-control-store.mjs`仅保存控制映射/意图/回执。`task-input.mjs`统一title及description输入版本。父子调用共用`role-call-budget.mjs`根预算。
 
-PR30的Native内置retry只绑定已存在的后继run。M2绑定先按原operation/Native task派生局部项目，精确选择同输入/同代际dispatch所属flow；旧flow和其他代际保留。原项目artifact与meter使用该局部绑定，Native control的暂停/pending/输入/计划确认仍在原根事务核对，provider启动守卫继续生效；不增加wake、root或重置六次预算。`tests/role-native-retry.test.mjs`覆盖RWB专用workspace、全局默认个人项目不变、旧portable flow及暂停/版本负例，真实重试另行留证。
+PR30的Native内置retry只绑定已存在的后继run。M2绑定先按原operation/Native task派生局部项目，精确选择同输入/同代际dispatch所属flow；旧flow和其他代际保留。原项目artifact与meter使用该局部绑定，Native control的暂停/pending/输入/计划确认仍在原根事务核对，provider启动守卫继续生效；不增加wake、root或重置原根累计预算。`tests/role-native-retry.test.mjs`覆盖RWB专用workspace、全局默认个人项目不变、旧portable flow及暂停/版本负例，真实重试另行留证。
 
 PR32复用Native唯一queued消费者。若M2本人已暂停/补充或预算用尽，现有后继run仅在原scope、输入和完整physical failure证据通过后settle-only：只读归档、持久幂等回执、精确释放父调用锁，并返回bootstrap NoProvider；不创建operation、不推进flow、不调用模型或新增预算。Native终态与原archive共同证明已结清后，既有phase释放复用`observeContextCallEvidence`及Native租约核对；unknown不释放。`chief-context-native`串联回归验证pause/add→queued消费→NoProvider证据→本人continue同根应用输入；Docker夹具不等于Mini实测。
 
@@ -162,7 +164,7 @@ PR32复用Native唯一queued消费者。若M2本人已暂停/补充或预算用�
 
 ## 单根QA补核例外
 
-本人仅批准LEO-23根7956bcfe的第七次调用用于原QA补核。`role-call-budget.mjs`在原全局调用锁内匹配受保护授权的owner/company/root/既有child/QA Agent/operation/phase/证据manifest及有效期；仅原目录已有六条时放行一次。第八次、其他角色/目的/Root、换ID或省略父映射均拒绝；未知结果保留原锁。其他根仍六次，不修改Chief计划预算。
+本人仅批准LEO-23根7956bcfe的第七次调用用于原QA补核。`role-call-budget.mjs`在原全局调用锁内匹配受保护授权的owner/company/root/既有child/QA Agent/operation/phase/证据manifest及有效期；仅原目录已有六条时放行一次。第八次、其他角色/目的/Root、换ID或省略父映射均拒绝；未知结果保留原锁。这是历史专项；当前其他根沿`task-call-policy`及其原可信额度，不从该例外提高授权或重置计数。
 
 补包只按签定manifest和逐文件摘要复制到该run专属目录，UID1000只读挂载`/qa-evidence`，不挂整个控制状态或会话内容。原QA NEEDS_WORK、Chief汇总和原通知不覆盖；补核只关闭指定证据缺口。已验证的环境/隔离探针不重跑。Native构件、最终收存及新版本通知各自记录，不能把权限例外当业务通过。
 
