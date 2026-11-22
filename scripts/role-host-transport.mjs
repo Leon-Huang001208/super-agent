@@ -19,6 +19,7 @@ import {createNativeRoleTls} from './role-proxy-tls.mjs';
 import {rwbReleaseTimeoutPolicy} from '../bridge/rwb-release.mjs';
 import {hostProxyEnvironment as proxyEnvironment} from '../bridge/host-proxy-environment.mjs';
 import {prepareNativeNpmCache} from '../bridge/native-npm-cache.mjs';
+import {prepareNativePluginCache} from '../bridge/native-plugin-cache.mjs';
 import {ROLE_PERMIT_MAX_BYTES} from '../bridge/role-permit-contract.mjs';
 const DATA='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0';
 const ROOT=DATA+'/state/control/research-pm';
@@ -155,7 +156,7 @@ async function waitBroker(readyFile,child,runId){
   await new Promise(resolve=>setTimeout(resolve,50));
  }fail('ROLE_HOST_BROKER_READY_TIMEOUT');
 }
-export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/leon/.local/bin/codex',platform=process.platform,npmCacheOptions={}}={}){
+export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/leon/.local/bin/codex',platform=process.platform,npmCacheOptions={},pluginCacheOptions={}}={}){
  if(platform!=='darwin'||!uuid.test(runId??''))fail('ROLE_HOST_TRANSPORT_ARGUMENT_DENIED');
  const root=path.join(dataRoot,'state/control/research-pm'),dir=root+'/transport/'+runId;
  const log=event=>fs.appendFileSync(root+'/host-transport.jsonl',JSON.stringify({at:new Date().toISOString(),runId,...event})+'\n',{mode:0o600});
@@ -169,6 +170,7 @@ export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/le
  durable(dir+'/host.claim.json',{runId,executor:'macos_native',executionPolicy:permit.executionPolicy,at:new Date().toISOString()});
  const client=dir+'/client',proxy=dir+'/proxy',audit=dir+'/proxy-audit';for(const folder of [client,proxy,audit,client+'/home'])fs.mkdirSync(folder,{mode:0o700});
  const npmCache=await prepareNativeNpmCache({...npmCacheOptions,home:client+'/home'});log({code:'ROLE_NATIVE_NPM_CACHE_CONFIGURED',cacheRoot:npmCache.proof.cacheRoot});
+ const pluginCache=await prepareNativePluginCache({...pluginCacheOptions,codexHome:client});log({code:'ROLE_NATIVE_PLUGIN_CACHE_CONFIGURED',cacheRoot:pluginCache.proof.cacheRoot});
  const snapshot=validateRoleMaterialSnapshot(permit);
  const materialProjection=snapshot?createRoleMaterialProjection({permit,materialRoot:root+'/materials',snapshotRoot:dir+'/material-snapshot',clientRoot:client,log}):null;
  const nativeProjection=snapshot?.nativeInstructions?createRoleMaterialProjection({permit,kind:'native-instructions',materialRoot:hostRoleInstructionPath(permit.materialRoot,dataRoot),snapshotRoot:dir+'/native-instructions',clientRoot:client,log}):null;
@@ -226,7 +228,8 @@ export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/le
   if(permit.role==='document-specialist')documentEnvironment.PAPERCLIP_DOCUMENT_ENGINEERING_RULES=path.join(skillAssetRoot,'shared','engineering.md');
   const result=await runNativeRoleProcess({command:codexPath,args:nativeRoleCliArgs({permit,client,instructionPath,endpoint,hostTools}),directory:dir,inputFile:dir+'/host-stdin',cwd,timeoutMs:releaseTimeouts?.processMs??600000,
    env:{PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:client+'/home',CODEX_HOME:client,CODEX_CONNECTORS_TOKEN:key,ROLE_HOST_MCP_ENDPOINT:endpoint+'/role-host-mcp',...(releaseTimeouts?{ROLE_HOST_RWB_RELEASE:'1'}:{}),SSL_CERT_FILE:tls.trustFile,CODEX_CA_CERTIFICATE:tls.trustFile,NODE_EXTRA_CA_CERTS:tls.caFile,...proxyEnvironment(),...documentEnvironment,...npmCache.environment},redactValues:[key],onCancel:()=>controller.abort()});
-  durable(dir+'/native-proof.json',{schemaVersion:1,runId,executor:'macos_native',platform:process.platform,codexPath,cwd,executionPolicy:permit.executionPolicy,skillManifestSha256:roleSkills?.sha256,inputSha256:sha(input),process:JSON.parse(read(dir+'/process.json')),npmCache:npmCache.proof,...(permit.role==='document-specialist'?{documentRuntime:{status:documentEnvironment.PAPERCLIP_DOCUMENT_RUNTIME_STATUS,python:documentEnvironment.PAPERCLIP_DOCUMENT_PYTHON,soffice:documentEnvironment.PAPERCLIP_DOCUMENT_SOFFICE,fontConfig:documentEnvironment.FONTCONFIG_FILE}}:{}),at:new Date().toISOString()});
+  pluginCache.verify();
+  durable(dir+'/native-proof.json',{schemaVersion:1,runId,executor:'macos_native',platform:process.platform,codexPath,cwd,executionPolicy:permit.executionPolicy,skillManifestSha256:roleSkills?.sha256,inputSha256:sha(input),process:JSON.parse(read(dir+'/process.json')),npmCache:npmCache.proof,pluginCache:pluginCache.proof,...(permit.role==='document-specialist'?{documentRuntime:{status:documentEnvironment.PAPERCLIP_DOCUMENT_RUNTIME_STATUS,python:documentEnvironment.PAPERCLIP_DOCUMENT_PYTHON,soffice:documentEnvironment.PAPERCLIP_DOCUMENT_SOFFICE,fontConfig:documentEnvironment.FONTCONFIG_FILE}}:{}),at:new Date().toISOString()});
   await stopOwnedGroup(brokerGroup);brokerGroup=null;
   for(const filename of [client+'/auth.json',proxy+'/config.json'])if(fs.existsSync(filename))fs.unlinkSync(filename);
   durable(dir+'/result.json',{runId,...result,executor:'macos_native',stdoutSha256:sha(fs.readFileSync(dir+'/stdout')),stderrSha256:sha(fs.readFileSync(dir+'/stderr')),at:new Date().toISOString()});terminal=true;log({code:'ROLE_HOST_TRANSPORT_COMPLETED',exitCode:result.exitCode});return result;

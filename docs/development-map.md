@@ -16,6 +16,8 @@
 
 `bridge/native-npm-cache.mjs`在Mac启动本run前校验WorkDisk卷身份、路径、归属和权限，写私有HOME中的纯cache `.npmrc`及`NPM_CONFIG_CACHE`。共享的是可再生npm下载缓存，HOME/CODEX_HOME、认证、会话和产物继续逐run分离；无配置或卷身份不符时不静默落内盘。`tests/native-npm-cache.test.mjs`与Mac transport fixture核对多HOME复用同一cache、拒绝覆盖/符号链接和缺卷零写；配置证明不冒称包或业务通过。
 
+`bridge/native-plugin-cache.mjs`只把私有`CODEX_HOME/plugins/cache`链接到独立的WorkDisk Native插件代码缓存，保持`plugins/data`、认证、配置、会话及SQLite私有。先验证卷身份、canonical路径、owner与权限，拒绝链接整个plugins、逃逸路径、旧私有cache覆盖及sealed recovery目录；CLI返回后只读复核链接，不自动修复。`native-plugin-cache`与完整Mac transport fake CLI回归核对实际写入位置和私有状态隔离。`native-proof.pluginCache`只证明已配置且链接复核通过，真实Codex兼容仍为`NOT_RUN`，由下一正常B1计划调用补证，不加模型探针。
+
 `bridge/host-github-read.mjs`通过`host.github_read`读取Native登记仓库的固定GET端点，复用宿主gh登录，不把凭据复制到独立任务HOME。无代码workspace也可用，原read_only上界只增加允许的只读工具名，不开放代码或写入。`tests/host-github-read.test.mjs`核对路径/方法限制、响应完整性与列表截断；实际连接及业务结论另行验证，见[连接合同](github-read.md)。
 
 `bridge/team-quality-resume.mjs`与`scripts/resume-team-quality.mjs`提供本人已授权的同目标质量续接。默认preview；apply需停派发、原Root/输入/已发送阻断回执及flow摘要匹配、累计预算足够、尚有第二轮额度。Native根行事务记录稳定resume ID，再投影原flow；同事件只对账投影，不新建Root或run。旧summary、通知、QA与调用历史保留。`tests/team-quality-resume.test.mjs`覆盖预算、scope、事务回滚不发事件和投影幂等。

@@ -30,6 +30,10 @@ Native Agent原始配置中的`SUPER_AGENT_ROLE_ENABLED`可保存为plain绑定�
 
 Native npm缓存默认复用WorkDisk下项目专用工具缓存；本run HOME仅新增纯cache配置，不链接或复制宿主`.npmrc`，不混入token/认证，不更改package版本或执行安装。卷身份、canonical路径、UID及权限在写入前核对，已有用户配置拒绝覆盖。`native-proof.npmCache`仅记录配置与卷验证；实际依赖启动及业务结果另行验证。
 
+Native Codex插件代码缓存使用`/Volumes/WorkDisk/Caches/SuperAgent/codex-native/plugins-cache`，仅链接本run私有`CODEX_HOME/plugins/cache`，不移动或链接整个plugins。`plugins/data`、HOME/CODEX_HOME、auth、config、sessions和SQLite继续在原私有目录。该路径是独立的Native可变代码缓存，不能指向sealed retirement恢复副本，也不把宿主凭据或整个Codex用户目录共享。CLI返回后复核链接仍指向预期目标；链接丢失或被替换时保留失败，不静默改回Data盘或修复旧cache。
+
+本机CLI为0.171.0；官方同版本源码把cache固定在Codex home的`plugins/cache`，并在目标父目录中创建staging及完成rename，[存储实现](https://github.com/openai/codex/blob/ccf9be8cc458bd6b8336fe84d68d8893f2691a5e/codex-rs/core-plugins/src/store.rs)与[配置schema](https://github.com/openai/codex/blob/ccf9be8cc458bd6b8336fe84d68d8893f2691a5e/codex-rs/core/config.schema.json)未提供独立cache路径设置。仅cache链接的方案据此实现，fake CLI只证明文件系统写入路由；真实Codex执行兼容仍为`NOT_RUN`，在下一已授权正常计划调用检查实际cache落盘及私有状态，不额外消耗模型探针。共享缓存沿已有全局单Native执行使用，不新建控制器或锁；结束单个run不能把其链接目标当作私有临时目录删除，清理共享代码须另核当前引用和租约。
+
 容量不足先由System Resource Engineer区分可再生缓存和业务状态。退休当前任务缓存需终态/租约/自有进程组及实际文件引用证明，独立副本读回后逐路径处置；活跃、未知或外部引用不按名称放行。lsof非零且有输出不能当完整无引用证明；用独立查询完成正向分类，部分失败沿同一intent和已删除清单对账。日志、会话、SQLite/WAL、预算、Skills和原产物保护，不降低准入门槛或重启整个VM。
 
 ### GitHub只读通道与原质量任务续接
