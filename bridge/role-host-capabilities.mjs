@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {isMacNative} from './role-execution-policy.mjs';
 import {callHostMcp,runHostCommand} from './role-host-mcp.mjs';
@@ -39,17 +39,20 @@ export function redactHostOutput(value){
   .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/g,'$1[REDACTED]@').slice(0,48000);
 }
 
-function commandEnv(){
- const env={...process.env,GIT_TERMINAL_PROMPT:'0',GIT_LITERAL_PATHSPECS:'1'};
+function commandEnv(binary,literalPaths){
+ const env={...process.env,GIT_TERMINAL_PROMPT:'0'};
  for(const key of Object.keys(env))if(/^GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|CONFIG|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|REPLACE_REF_BASE|SSH_COMMAND|SSH|NO_VERIFY)/.test(key)||key==='NODE_OPTIONS'||key==='PYTHONPATH'||/^(?:OPENAI|ANTHROPIC|CODEX_CONNECTORS|PAPERCLIP_API)_/.test(key))delete env[key];
+ for(const key of ['GIT_LITERAL_PATHSPECS','GIT_GLOB_PATHSPECS','GIT_NOGLOB_PATHSPECS','GIT_ICASE_PATHSPECS'])delete env[key];
+ // Only the internal Git helpers opt in; registered commands keep their own pathspec semantics.
+ if(literalPaths===true&&binary==='/usr/bin/git')env.GIT_LITERAL_PATHSPECS='1';
  return env;
 }
 
 function commandPort({runner=runHostCommand,timeoutMs=120000,signal,proxyEnvironment=hostProxyEnvironment}={}){
- return async(argv,{cwd,allowedStatuses=[0],timeout=timeoutMs,input,useHostProxy=false}={})=>{
+ return async(argv,{cwd,allowedStatuses=[0],timeout=timeoutMs,input,useHostProxy=false,literalPaths=false}={})=>{
   if(!Array.isArray(argv)||!argv.length||argv.some(x=>typeof x!=='string'||x.includes('\0')))fail('ROLE_HOST_COMMAND_INVALID');
   if(signal?.aborted)fail('ROLE_HOST_CANCELLED');
-  let result;try{result=await runner(argv[0],argv.slice(1),{cwd,encoding:'utf8',env:{...commandEnv(),...(useHostProxy?proxyEnvironment():{})},shell:false,timeout,maxBuffer:512*1024,signal,input});}
+  let result;try{result=await runner(argv[0],argv.slice(1),{cwd,encoding:'utf8',env:{...commandEnv(argv[0],literalPaths),...(useHostProxy?proxyEnvironment():{})},shell:false,timeout,maxBuffer:512*1024,signal,input});}
   catch{fail(signal?.aborted?'ROLE_HOST_CANCELLED':'ROLE_HOST_COMMAND_UNAVAILABLE');}
   if(signal?.aborted)fail('ROLE_HOST_CANCELLED');
   const details={exitCode:Number.isInteger(result?.status)?result.status:null,signal:result?.signal??null,output:redactHostOutput(result?.stdout),stderr:redactHostOutput(result?.stderr)};
@@ -109,7 +112,7 @@ async function assertWorkspace({permit,workspace,run}){
  if(!absolute(target)||!absolute(repository)||target===repository||workspace.rootTaskId!==rootOf(permit)||workspace.projectId!==context.id||!allowedWorkspace(permit,target,workspace.branch))fail('ROLE_HOST_WORKSPACE_BINDING_DENIED');
  noSymlinkAncestors(target);
  if(!fs.existsSync(target)||!fs.lstatSync(target).isDirectory())fail('ROLE_HOST_WORKSPACE_UNAVAILABLE');
- const git=async(root,args)=>(await run(['/usr/bin/git',...args],{cwd:root})).output.trim();
+ const git=async(root,args)=>(await run(['/usr/bin/git',...args],{cwd:root,literalPaths:true})).output.trim();
  const [originalCommon,common,branch,head]=await Promise.all([git(repository,['rev-parse','--path-format=absolute','--git-common-dir']),git(target,['rev-parse','--path-format=absolute','--git-common-dir']),git(target,['symbolic-ref','--short','HEAD']),git(target,['rev-parse','--verify','HEAD'])]);
  if(originalCommon!==common||branch!==workspace.branch||!shaPattern.test(head))fail('ROLE_HOST_WORKSPACE_BINDING_DENIED');
  return head;
@@ -152,13 +155,30 @@ async function managedProjectDelivery(options,permit,action,run,audit){
  const result=await run([process.execPath,entry,'--request-stdin'],{cwd:context.repository.hostPath,input:JSON.stringify(request)});
  let value;try{value=JSON.parse(result.output);}catch{fail('ROLE_HOST_DELIVERY_RESULT_INVALID');}return value;
 }
-async function ownProjectReceipt(permit,run){
+async function ownProjectReceipt(permit,run,{withEvidence=false}={}){
  const context=contextOf(permit),root=rootOf(permit),common=(await run(['/usr/bin/git','rev-parse','--path-format=absolute','--git-common-dir'],{cwd:context.repository.hostPath})).output.trim();
  if(!absolute(common))fail('ROLE_HOST_DELIVERY_RECEIPT_DENIED');
  for(const id of [root,'integration'])if(fs.existsSync(path.join(common,'leon-engineering','locks',id+'.lock')))fail('ROLE_HOST_DELIVERY_LOCKED');
  const filename=path.join(common,'leon-engineering','deliveries',root+'.json');noSymlinkAncestors(filename);if(!fs.existsSync(filename))return null;
- let receipt;try{receipt=JSON.parse(fs.readFileSync(filename,'utf8'));}catch{fail('ROLE_HOST_DELIVERY_RECEIPT_DENIED');}
- if(receipt.taskId!==root||receipt.repositoryRoot!==context.repository.hostPath||receipt.featureWorktree!==context.workspace.hostPath||receipt.featureBranch!==branchOf(permit))fail('ROLE_HOST_DELIVERY_RECEIPT_DENIED');return receipt;
+ let receipt,bytes;try{bytes=fs.readFileSync(filename);receipt=JSON.parse(bytes);}catch{fail('ROLE_HOST_DELIVERY_RECEIPT_DENIED');}
+ if(receipt.taskId!==root||receipt.repositoryRoot!==context.repository.hostPath||receipt.featureWorktree!==context.workspace.hostPath||receipt.featureBranch!==branchOf(permit))fail('ROLE_HOST_DELIVERY_RECEIPT_DENIED');
+ return withEvidence?{receipt,sourcePath:filename,sha256:createHash('sha256').update(bytes).digest('hex')}:receipt;
+}
+
+async function inspectWorkspaceEvidence({permit,context,workspace,run}){
+ const rootTaskId=rootOf(permit),stat=fs.statSync(workspace.codeHostPath),evidence=await ownProjectReceipt(permit,run,{withEvidence:true});
+ const receipt=evidence?.receipt,fields=['taskId','status','createdAt','repositoryRoot','featureWorktree','featureBranch','baseCommit','featureCommit'];
+ const deliveryReceipt=evidence?{state:'FOUND',sourcePath:evidence.sourcePath,sha256:evidence.sha256,
+  ...Object.fromEntries(fields.filter(key=>receipt[key]!==undefined).map(key=>[key,typeof receipt[key]==='string'?redactHostOutput(receipt[key]):null]))}:{state:'NOT_FOUND'};
+ const argv=context.workspace?.prepare?.argv;
+ const resolved=argv!==undefined?substitutions(argv,{rootTaskId,worktree:context.workspace.hostPath,taskBranch:branchOf(permit)}):null;
+ const registeredPrepare={configured:argv!==undefined,evidenceType:'CONFIGURATION_ONLY',callableTool:false,
+  ...(resolved?{executable:redactHostOutput(resolved[0]),argvSha256:createHash('sha256').update(JSON.stringify(resolved)).digest('hex')}:{})};
+ return {bootstrap:{kind:'bootstrap-before-model',currentRunId:permit.runId,currentTaskId:permit.taskId,rootTaskId,projectId:permit.projectId,
+  reused:workspace.reused??null,verifiedCandidateSha:workspace.candidateSha??null,
+  stageMeaning:'Task worktree verification only. Delivery status started is the normal bootstrap stage; integration candidate preparation follows implementation. Later master movement belongs to the project delivery flow. This does not grant write authority or certify checks or business acceptance.'},
+  identity:{realpath:fs.realpathSync(workspace.codeHostPath),dev:stat.dev,ino:stat.ino,uid:stat.uid},registeredPrepare,deliveryReceipt,
+  historicalRawPrepareExit:{status:'NOT_RECORDED',exitCode:null}};
 }
 
 /** Reuse the original task's isolated Git workspace; never alter the original checkout. */
@@ -246,7 +266,7 @@ export function createHostCapabilityExecutor(options={}){
   if(value.name==='host.project_publish'&&(permit.role==='qa'||context.delivery?.maximumAction==='artifact'||(!Object.values(context.delivery?.commands??{}).some(command=>Array.isArray(command?.argv)&&command.argv.length)&&context.delivery?.adapter!=='managed-project')))return false;
   return value.name!=='host.mcp_call'||selectedMcp.length>0;
  });
- const git=async(args)=>(await run(['/usr/bin/git',...args],{cwd:workspace.codeHostPath})).output;
+ const git=async(args)=>(await run(['/usr/bin/git',...args],{cwd:workspace.codeHostPath,literalPaths:true})).output;
  const requireWorkspace=()=>assertWorkspace({permit,workspace,run});
  const fields=candidateSha=>({rootTaskId:rootOf(permit),candidateSha,worktree:workspace.codeHostPath,taskBranch:workspace.branch,projectRoot:context.repository.hostPath});
  const managedDelivery=action=>managedProjectDelivery(options,permit,action,run,audit);
@@ -295,7 +315,12 @@ export function createHostCapabilityExecutor(options={}){
   if(name==='host.mcp_call')return callHostMcp({permit,serverId:args.serverId,operation:args.operation,toolName:args.toolName,arguments:args.arguments,loadServer:options.loadMcpServer,spawnProcess:options.spawnMcp,log:audit,configPath:options.mcpConfigPath,runner:options.runner,timeoutMs:options.mcpTimeoutMs,signal:options.signal});
   if(name==='host.project_inspect'&&!hasWorkspace)return {project:{id:context.id,key:context.key,name:context.name,repository:context.repository},workspace:{status:'NOT_CONFIGURED',containerPath:null},checks:[],delivery:{maximumAction:context.delivery?.maximumAction??'artifact',configured:false},hostMcpServers:selectedMcp.map(({id,tools})=>({id,tools})),hostActions:(context.hostActions??[]).filter(value=>permit.authorizedHostActions?.includes(value.id)).map(({id,capability})=>({id,capability}))};
   const candidateSha=await requireWorkspace();
-  if(name==='host.project_inspect')return {project:{id:context.id,key:context.key,name:context.name,repository:context.repository},workspace:{containerPath:'/workspace/project',branch:workspace.branch,candidateSha},status:await git(['status','--short']),checks:(context.checks??[]).map(({id,label,platform})=>({id,label,platform})),delivery:{maximumAction:context.delivery?.maximumAction??'pull_request',configured:Boolean(context.delivery?.commands)},hostMcpServers:(context.hostMcpServers??[]).map(({id,tools})=>({id,tools})),hostActions:(context.hostActions??[]).filter(value=>permit.authorizedHostActions?.includes(value.id)).map(({id,capability})=>({id,capability}))};
+  if(name==='host.project_inspect'){
+   const evidence=await inspectWorkspaceEvidence({permit,context,workspace,run}),{bootstrap,identity,...preparation}=evidence;
+   return {project:{id:context.id,key:context.key,name:context.name,repository:context.repository},
+    workspace:{containerPath:'/workspace/project',branch:workspace.branch,candidateSha,currentCandidateSha:candidateSha,bootstrap,identity},...preparation,
+    status:await git(['status','--short']),checks:(context.checks??[]).map(({id,label,platform})=>({id,label,platform})),delivery:{maximumAction:context.delivery?.maximumAction??'pull_request',configured:Boolean(context.delivery?.commands)},hostMcpServers:(context.hostMcpServers??[]).map(({id,tools})=>({id,tools})),hostActions:(context.hostActions??[]).filter(value=>permit.authorizedHostActions?.includes(value.id)).map(({id,capability})=>({id,capability}))};
+  }
   if(name==='host.project_check'){
    const check=context.checks?.find(value=>value.id===args.checkId);if(!check)fail('ROLE_HOST_CHECK_NOT_REGISTERED');
    let argv=check.argv;if(check.platform==='docker'){

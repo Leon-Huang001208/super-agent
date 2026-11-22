@@ -56,6 +56,8 @@ Native HTTPS 恢复按[专题合同](plans/native-https-recovery.md)先做无模
 
 宿主Git/check与选定MCP要有真实入口结果；网络/资源事实来自宿主。QA在干净的精确候选上独立执行，发布消费Native QA与实际检查记录；旧SHA或自签结果必须拒绝。取消包装进程时核对其后代退出；命令失败应把脱敏的退出码和定位信息返回模型。网页保存及历史保留沿前节回归。
 
+登记检查另验真实子进程Git语义：`ls-files '*.md'`能枚举、`check-ignore`接受正常路径，登记命令为Git本身时也不得被Host强加literal；同时以含方括号的文件名验证Host的模型文件操作不扩大选集。父进程四种pathspec变量须隔离且父环境保持。inspect分别呈现当前bootstrap、已绑定回执原始摘要、登记配置与未保存的历史raw exit；不得把`started`当作实施后prepared候选缺失故障、为补证重放start、输出秘密参数或认证尚未运行的业务。
+
 已登记命令的代理接线分别核对工作区准备、候选准备、PR发布/状态消费的子进程环境，确认复用现有宿主代理及本地`NO_PROXY`，不由模型参数选择任意代理。离线回归只证明环境传递，不能用GitHub只读或模型连通性替代真实GitSafety fetch。实际网络验收记录同一Root、候选、入口、退出码及回执；网络故障按既有分工交Network Engineer，未知结果沿原操作核对，未运行保持NOT_RUN。
 
 代码源输入绑定须使用真实Native形状：`paperclipWorkspace.workspaceId`而非假造顶层字段。分别验证fresh DB源目录、固定artifact投影及独立Host代码工作树；Native只读源码挂载不写入报告。错ID/project/cwd、缺Owner登记、只读catalog撤权与中途登记变化均拒绝。源码/夹具通过不等于真实Native调用、GitSafety receipt或PoC通过，现场以原Root/run/permit及实际路径另行取证。

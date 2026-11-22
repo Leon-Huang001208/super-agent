@@ -3,12 +3,21 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {randomUUID,createHash} from 'node:crypto';
 import {HOST_TOOL_DEFINITIONS,prepareRoleProjectWorkspace,createHostCapabilityExecutor} from '../bridge/role-host-capabilities.mjs';
+import {runHostCommand} from '../bridge/role-host-mcp.mjs';
 
 const sha='a'.repeat(40), rootId='11111111-1111-4111-8111-111111111111';
+const pathspecSelectors=['GIT_LITERAL_PATHSPECS','GIT_GLOB_PATHSPECS','GIT_NOGLOB_PATHSPECS','GIT_ICASE_PATHSPECS'];
 const reviewProof=(candidateSha=sha)=>({verdict:'PASS',candidateSha,rootTaskId:rootId,projectId:'project',runId:'qa-run',agentId:'quality',checks:[{id:'unit',status:'passed',candidateSha}],verification:{command:'Native QA qa-run: unit',status:'passed',durationSeconds:1}});
 function fixture(t,role='backend-engineer'){
- const dir=fs.mkdtempSync(path.join(os.tmpdir(),'role-host-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const dir=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'role-host-')),identity=fs.lstatSync(dir),marker=path.join(dir,'.fixture-owner'),owner=randomUUID();
+ fs.writeFileSync(marker,owner,{flag:'wx',mode:0o600});const markerIdentity=fs.lstatSync(marker);
+ t.after(()=>{const current=fs.lstatSync(dir),stored=fs.lstatSync(marker);assert.ok(current.isDirectory()&&!current.isSymbolicLink());assert.equal(fs.realpathSync(dir),dir);
+  for(const key of ['dev','ino','uid']){assert.equal(current[key],identity[key]);assert.equal(stored[key],markerIdentity[key]);}
+  assert.equal(current.mode&0o777,identity.mode&0o777);assert.equal(stored.mode&0o777,0o600);
+  assert.ok(stored.isFile()&&!stored.isSymbolicLink()&&stored.nlink===1);assert.equal(fs.readFileSync(marker,'utf8'),owner);fs.rmSync(dir,{recursive:true});});
  const repository=path.join(dir,'repo'),target=path.join(dir,'paperclip-worktrees',rootId);fs.mkdirSync(repository);
  const projectContext={id:'project',key:'sample',name:'Sample',repository:{hostPath:repository},workspace:{hostPath:target,containerPath:'/workspace/project'},checks:[{id:'unit',label:'Unit',platform:'macos',argv:['/tools/node','--test','tests/unit.mjs']}],delivery:{maximumAction:'pull_request',commands:{pull_request:{argv:['/tools/delivery','--candidate','{candidateSha}','--worktree','{worktree}']}}},hostMcpServers:[],hostActions:[]};
  const permit={runId:'run',taskId:rootId,rootTaskId:rootId,projectId:'project',role,projectContext,effectiveCapabilities:{hostAllowedTools:HOST_TOOL_DEFINITIONS.map(x=>x.name),capabilityIds:[role]},authorizedHostActions:[]};
@@ -31,6 +40,87 @@ function fixture(t,role='backend-engineer'){
  const options={permit,runner,log:event=>events.push(event),verifyVolume:async()=>true,platform:'darwin',controlRoot:path.join(dir,'control')};
  return {dir,repository,target,permit,calls,events,options,setDirty:value=>dirty=value,setExists:()=>{exists=true;fs.mkdirSync(target,{recursive:true});},setHead:value=>head=value};
 }
+
+async function realGitFixture(t){
+ const f=fixture(t),env={...process.env,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null'};
+ for(const key of pathspecSelectors)delete env[key];
+ const git=(args,cwd=f.repository)=>{const result=spawnSync('/usr/bin/git',args,{cwd,env,encoding:'utf8'});assert.equal(result.status,0,result.stderr);return result.stdout;};
+ git(['init']);git(['config','user.name','Isolated fixture']);git(['config','user.email','fixture@example.invalid']);
+ fs.mkdirSync(path.join(f.repository,'docs'));fs.writeFileSync(path.join(f.repository,'README.md'),'root doc\n');fs.writeFileSync(path.join(f.repository,'docs','guide.md'),'nested doc\n');
+ fs.writeFileSync(path.join(f.repository,'.gitignore'),'ignored.tmp\n');
+ for(const name of ['selected[1].txt','selected1.txt'])fs.writeFileSync(path.join(f.repository,name),'original\n');
+ git(['add','--all']);git(['commit','-m','Initial fixture']);f.options.runner=runHostCommand;
+ const workspace=await prepareRoleProjectWorkspace(f.options);return {...f,workspace,git};
+}
+
+test('registered Node checks keep nested Git glob and check-ignore semantics', {skip:!fs.existsSync('/usr/bin/git')},async t=>{
+ const f=await realGitFixture(t),script=`import {spawnSync} from 'node:child_process';
+ const files=spawnSync('/usr/bin/git',['ls-files','-z','--','*.md'],{encoding:'utf8'}),ignore=spawnSync('/usr/bin/git',['check-ignore','--','ignored.tmp'],{encoding:'utf8'});
+ console.log(JSON.stringify({selectors:Object.fromEntries(${JSON.stringify(pathspecSelectors)}.filter(key=>Object.hasOwn(process.env,key)).map(key=>[key,process.env[key]])),files:files.stdout.split('\\0').filter(Boolean),filesStatus:files.status,ignoreStatus:ignore.status,ignoreOutput:ignore.stdout.trim(),ignoreError:ignore.stderr.trim()}));`;
+ f.permit.projectContext.checks=[{id:'nested-git',label:'Real nested Git semantics',platform:'macos',argv:[process.execPath,'--input-type=module','-e',script]}];
+ const result=await createHostCapabilityExecutor({...f.options,workspace:f.workspace}).execute('host.project_check',{checkId:'nested-git'}),observed=JSON.parse(result.output);t.diagnostic(JSON.stringify(observed));
+ assert.equal(observed.filesStatus,0);assert.deepEqual(observed.files,['README.md','docs/guide.md']);
+ assert.equal(observed.ignoreStatus,0);assert.equal(observed.ignoreOutput,'ignored.tmp');assert.equal(observed.ignoreError,'');assert.deepEqual(observed.selectors,{});
+});
+
+test('registered Node scripts strip every inherited global Git pathspec selector without changing the parent',async t=>{
+ const f=fixture(t),workspace=await prepareRoleProjectWorkspace(f.options),original=Object.fromEntries(pathspecSelectors.map(key=>[key,process.env[key]]));
+ t.after(()=>{for(const key of pathspecSelectors)if(original[key]===undefined)delete process.env[key];else process.env[key]=original[key];});
+ for(const key of pathspecSelectors)process.env[key]='1';
+ const script='console.log(JSON.stringify(Object.fromEntries('+JSON.stringify(pathspecSelectors)+'.filter(key=>Object.hasOwn(process.env,key)).map(key=>[key,process.env[key]]))))';
+ f.permit.projectContext.checks=[{id:'environment',label:'Inherited selectors',platform:'macos',argv:[process.execPath,'-e',script]}];
+ const fake=f.options.runner,runner=(binary,args,options)=>binary==='/usr/bin/git'?fake(binary,args,options):runHostCommand(binary,args,options);
+ const result=await createHostCapabilityExecutor({...f.options,workspace,runner}).execute('host.project_check',{checkId:'environment'});
+ assert.deepEqual(JSON.parse(result.output),{});for(const key of pathspecSelectors)assert.equal(process.env[key],'1');
+});
+
+test('registered direct Git checks retain project glob semantics rather than Host literal mode', {skip:!fs.existsSync('/usr/bin/git')},async t=>{
+ const f=await realGitFixture(t);f.permit.projectContext.checks=[{id:'direct-git',label:'Registered Git glob',platform:'macos',argv:['/usr/bin/git','ls-files','--','*.md']}];
+ const result=await createHostCapabilityExecutor({...f.options,workspace:f.workspace}).execute('host.project_check',{checkId:'direct-git'});
+ assert.deepEqual(result.output.trim().split('\n'),['README.md','docs/guide.md']);
+});
+
+test('explicit Git file operations remain literal for wildcard-shaped user filenames', {skip:!fs.existsSync('/usr/bin/git')},async t=>{
+ const f=await realGitFixture(t);fs.writeFileSync(path.join(f.target,'selected[1].txt'),'literal changed\n');fs.writeFileSync(path.join(f.target,'selected1.txt'),'peer changed\n');
+ const executor=createHostCapabilityExecutor({...f.options,workspace:f.workspace}),diff=await executor.execute('host.project_git',{operation:'diff',paths:['selected[1].txt']});
+ assert.match(diff.output,/literal changed/);assert.doesNotMatch(diff.output,/peer changed/);
+ await executor.execute('host.project_git',{operation:'commit',message:'Commit one literal filename',paths:['selected[1].txt']});
+ assert.deepEqual(f.git(['diff-tree','--no-commit-id','--name-only','-r','HEAD'],f.target).trim().split('\n'),['selected[1].txt']);
+ assert.match(f.git(['diff','--','selected1.txt'],f.target),/peer changed/);
+});
+
+test('inspect distinguishes current bootstrap and candidate evidence from historical prepare configuration',async t=>{
+ const f=fixture(t),workspace=await prepareRoleProjectWorkspace(f.options),preparedHead=workspace.candidateSha,currentHead='b'.repeat(40);
+ f.setHead(currentHead);f.permit.projectContext.workspace.prepare={argv:['/tools/project-prepare','--task','{rootTaskId}','--worktree','{worktree}','token=fixture-inspect-secret','--api-key','fixture-separated-secret']};
+ const folder=path.join(f.repository,'.git','leon-engineering','deliveries'),receiptFile=path.join(folder,rootId+'.json');fs.mkdirSync(folder,{recursive:true});
+ const receipt={taskId:rootId,status:'started',createdAt:'2026-11-22T00:00:00.000Z',repositoryRoot:f.repository,featureWorktree:f.target,featureBranch:workspace.branch,baseCommit:sha,featureCommit:null,
+  privateToken:'fixture-receipt-secret',arbitraryNativeContext:{taskGoal:'must not expose full permit or context'}};
+ const bytes=Buffer.from(JSON.stringify(receipt)+'\n');fs.writeFileSync(receiptFile,bytes);
+ const foreign=path.join(folder,'other-root.json');fs.writeFileSync(foreign,'unrelated private state, deliberately not JSON');
+ const read=fs.readFileSync,readdir=fs.readdirSync;t.mock.method(fs,'readFileSync',(file,...args)=>{assert.notEqual(file,foreign,'must not read another root receipt');return read(file,...args);});
+ t.mock.method(fs,'readdirSync',(file,...args)=>{assert.notEqual(file,folder,'must not enumerate other root receipts');return readdir(file,...args);});
+ const result=await createHostCapabilityExecutor({...f.options,workspace:{...workspace,transportExitCode:0}}).execute('host.project_inspect',{}),stat=fs.lstatSync(f.target);
+ assert.equal(result.workspace.candidateSha,currentHead);assert.equal(result.workspace.currentCandidateSha,currentHead);
+ assert.deepEqual(result.workspace.bootstrap,{kind:'bootstrap-before-model',currentRunId:'run',currentTaskId:rootId,rootTaskId:rootId,projectId:'project',reused:false,verifiedCandidateSha:preparedHead,
+  stageMeaning:'Task worktree verification only. Delivery status started is the normal bootstrap stage; integration candidate preparation follows implementation. Later master movement belongs to the project delivery flow. This does not grant write authority or certify checks or business acceptance.'});
+ assert.deepEqual(result.workspace.identity,{realpath:fs.realpathSync(f.target),dev:stat.dev,ino:stat.ino,uid:stat.uid});
+ const registeredArgv=['/tools/project-prepare','--task',rootId,'--worktree',f.target,'token=fixture-inspect-secret','--api-key','fixture-separated-secret'];
+ assert.deepEqual(result.registeredPrepare,{configured:true,executable:'/tools/project-prepare',argvSha256:createHash('sha256').update(JSON.stringify(registeredArgv)).digest('hex'),evidenceType:'CONFIGURATION_ONLY',callableTool:false});
+ assert.equal(Object.hasOwn(result.registeredPrepare,'argv'),false);
+ const allowed=['taskId','status','createdAt','repositoryRoot','featureWorktree','featureBranch','baseCommit','featureCommit'];
+ assert.deepEqual(result.deliveryReceipt,{state:'FOUND',sourcePath:receiptFile,sha256:createHash('sha256').update(bytes).digest('hex'),...Object.fromEntries(allowed.map(key=>[key,receipt[key]]))});
+ assert.deepEqual(result.historicalRawPrepareExit,{status:'NOT_RECORDED',exitCode:null});assert.deepEqual(fs.readFileSync(receiptFile),bytes);
+ assert.ok(!JSON.stringify(result).includes('fixture-inspect-secret'));assert.ok(!JSON.stringify(result).includes('fixture-separated-secret'));assert.ok(!JSON.stringify(result).includes('fixture-receipt-secret'));assert.ok(!JSON.stringify(result).includes('must not expose'));
+ assert.equal(f.calls.some(call=>call.binary==='/tools/project-prepare'),false);
+});
+
+test('inspect marks a missing own receipt and unavailable historical raw exit without invoking prepare',async t=>{
+ const f=fixture(t),workspace=await prepareRoleProjectWorkspace(f.options),executor=createHostCapabilityExecutor({...f.options,workspace});
+ const result=await executor.execute('host.project_inspect',{});assert.equal(result.deliveryReceipt.state,'NOT_FOUND');
+ assert.equal(result.registeredPrepare.configured,false);assert.equal(result.registeredPrepare.evidenceType,'CONFIGURATION_ONLY');assert.equal(result.registeredPrepare.callableTool,false);
+ assert.deepEqual(result.historicalRawPrepareExit,{status:'NOT_RECORDED',exitCode:null});
+ assert.equal(f.calls.some(call=>call.binary!=='/usr/bin/git'),false);
+});
 
 test('prepares one task worktree, preserves a dirty original repository and reuses edited task code',async t=>{
  const f=fixture(t);fs.writeFileSync(path.join(f.repository,'original.txt'),'keep');
