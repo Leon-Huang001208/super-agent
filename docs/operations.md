@@ -2,6 +2,10 @@
 
 ## 已登记子任务的受控入口拒绝
 
+修复已有queued retry的运行源时，queued不称为空闲。限定维护须证明仅有本次原队列行和匹配预留phase、未启动物理执行且无其他写者；保持team派发关闭，直到正常App、host、飞书入口、source pin与完整Native/材料/预算保全核验完成。最后恢复team后，由同一协调器自然消费已获授权的原queued行；不重复调用retry-now，也不为继续比较旧行摘要而停止已启动模型。
+
+已绑定SDK可在明确`team.enabled=false`时建立连接，未知开关与app/owner身份变化仍拒绝启动。连接就绪不授予派发权限：入站登记、项目选择和drain继续由原`currentScope`要求team开启，暂停期间不创建任务或消费原队列。
+
 普通Native文档任务沿`projectForOperation`解析当前项目的受管产物目录，不要求旧operation具有M2目录字段。原始bootstrap失败后的首次retry若在受控入口返回、没有进入provider，可在保留其`reconciliation/null`历史的前提下核对既有第二次retry：必须具备完整Native三行关系、唯一前置返回合同及Native只读reconciliation通过，并重验原owner/输入/flow/QA代际、phase、全部进程与环境租约、零物理证据和剩余额度。只读核对使用`mixed`结果，不代写“未执行”或调用带continuation副作用的resolve入口。
 
 后续仅由已装配受控adapter的常驻App消费该既有retry；不打开全局scheduler、不重置attempt、不补写旧operation/预算/permit/transport。第一次受控恢复再失败时保存原结果，先核对同一operation，不能通过新任务或手动回退状态绕过。

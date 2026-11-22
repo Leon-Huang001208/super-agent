@@ -1,5 +1,7 @@
 # 受控真实验收手册
 
+queued retry续接须另验协调器整tick：原operation的初始wake指向attempt0，而唯一queued attempt2的`retryOfRunId`指向attempt1时，只能按Native记录的直接父行选择并消费原attempt2一次。父行缺失/错scope、非唯一或scheduled队列、DB失败均不启动；不能用纯binder测试代替队列到binder的衔接验证。
+
 ## 20次与同根开发续接验收
 
 先核普通根20、物理第20次允许和第21次拒绝、历史12次/QA专项与最多两轮返修。原根授20前后逐文件比较已用budget及操作，不能退款或换根。维护CLI需验证错误Owner/摘要、活动run、call锁及未释放租约拒绝，同操作发布后丢回执只核对不重放。
