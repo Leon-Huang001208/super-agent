@@ -12,6 +12,12 @@
 
 共同基础能力包含项目材料读取、shell/patch、公开来源读取与证据记录。Research优先检索/文档，PM优先产品/KPI，Designer优先Figma/设计审查，Architect负责边界与取舍，前后端分别实现，QA独立评审，Ops使用受管交付及服务工具，Network/Resources使用真实宿主工具。Chief可随已授权任务补充其他岗位能力，项目和任务约束继续适用。
 
+所有岗位不采用防御式推进，默认实现→直接检查效果→交付。没有真实需求或已发生问题时，不追加通用兜底、保护层、审批、回执或恢复重演。小改只做相关检查并复用有效结果，必要CI和分支保护仍执行。错误结论、配置和产物直接更正或替换；失败留必要短记录，本任务已无用途的可重建临时/失败产物正常清理，不为常规修正、接续和清理重复确认；保护其他任务、业务原件及当前恢复/排障所需材料。
+
+Architect先追踪当前代码、约束和已有实现，接收Research检索证据后负责技术判断。选型按明确标准比较有意义的方案（包括维持现状），引用官方来源及适用版本，说明复用/排除理由、许可维护、兼容、成本、资源与推理位置、迁移恢复和未知事项。交接按任务裁剪为必要ADR或规格，写清模块依赖、接口/类型/数据约定、错误与权限边界、实施顺序、唯一负责人和可观察验收；取消、幂等、迁移回滚只在相关时展开。沿用PM目标，不替代独立QA，不为小改强制全模板、全岗位或额外确认。
+
+专业方法按主责使用：React/Next.js和组件组合模式主要给Frontend，Architect仅在组件架构需要时参考；PostgreSQL主要给Backend，Architect参与数据边界与一致性；视觉/UI由Designer和Frontend负责，TDD由实现岗位执行，Playwright/E2E与独立评审主要由QA负责。系统排错跟随故障主责，Architect处理跨模块问题。已有等效Skill直接复用，这项职责修订不批量更改Native技能选择。
+
 通用正文不写某个业务仓库或主机磁盘身份。RWB限制随对应项目加载；宿主身份、路径和可用工具随宿主上下文提供。模型权限由Native许可、broker及宿主执行入口实施，不由AGENTS自授。源码模板、磁盘发布、新任务加载、真实调用分别验收，见[能力实施计划](plans/role-capabilities.md)。下方带日期的M1登记/验证保留原时点含义。
 
 本人已确认原11岗，并于2026-11-20授权增加Document Specialist；以下为12岗源码定义，Native是否已登记及ready须另看本次回执。显示名使用完整英文、Title Case及空格。原11岗的ID、任务、会话及历史保持，不因扩展名册重建；不增加CTO、CMO、COO或DBA。
@@ -22,7 +28,7 @@
 | Research Analyst | Chief Coordinator | 带来源的研究，区分事实/推论/假设 |
 | Product Manager | Chief Coordinator | 需求、优先级、范围及可观察验收 |
 | Product Designer | Chief Coordinator | 流程、交互、原型、可访问性和设计依据 |
-| Software Architect | Chief Coordinator | 技术边界、接口、数据模型方案和取舍 |
+| Software Architect | Chief Coordinator | 技术选型判断、模块边界、接口/数据契约与可执行规格交接 |
 | Frontend Engineer | Software Architect | 前端代码、性能与开发侧测试 |
 | Backend Engineer | Software Architect | 后端/API/应用存储；SQL、索引、事务、业务迁移 |
 | Quality Assurance Engineer | Chief Coordinator | 独立评审和实际验证，精确候选及NOT_RUN |
