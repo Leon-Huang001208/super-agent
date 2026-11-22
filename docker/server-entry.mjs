@@ -4,6 +4,7 @@ import { installRoleAiBindingHook } from './role-ai-binding-hook.mjs';
 export async function loadServer(directory='/opt/paperclip', {
   mountChiefWebPilot, settleChiefWebPilot, admitChiefWebCall, recoverChiefWebSkippedWake,
   chiefHookFactory=installChiefWebAppHook, aiHookFactory=installRoleAiBindingHook,
+  artifactHookFactory,
 } = {}) {
   const root=fs.realpathSync(path.join(directory,'node_modules','@paperclipai','server'));
   const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
@@ -11,7 +12,7 @@ export async function loadServer(directory='/opt/paperclip', {
   if(typeof target!=='string'||!target.startsWith('./'))throw new Error('PAPERCLIP_SERVER_EXPORT_UNSUPPORTED');
   const entry=fs.realpathSync(path.resolve(root,target)),relative=path.relative(root,entry);
   if(relative.startsWith('..'+path.sep)||path.isAbsolute(relative))throw new Error('PAPERCLIP_SERVER_ENTRY_ESCAPE');
-  let chiefHook,aiHook;
+  let chiefHook,aiHook,artifactHook;
   try {
     if (mountChiefWebPilot === undefined) {
       if (settleChiefWebPilot !== undefined || admitChiefWebCall !== undefined || recoverChiefWebSkippedWake !== undefined) throw new Error('CHIEF_WEB_APP_NOT_CONFIGURED');
@@ -26,13 +27,22 @@ export async function loadServer(directory='/opt/paperclip', {
       if(queueFile!==undefined&&queueFile!==queuePath)throw new Error('CHIEF_WEB_APP_ENTRY_ESCAPE');
       chiefHook=chiefHookFactory({appFile,conversationFile,queueFile,mountPilot:mountChiefWebPilot,settlePilot:settleChiefWebPilot,admitPilot:admitChiefWebCall,recoverSkippedWakePilot:recoverChiefWebSkippedWake});
     }
-    // Both hooks must be active before routes load their shared heartbeat/conversation dependencies.
-    if(process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED==='true')aiHook=aiHookFactory({directory});
+    // Install every hook before routes load their shared heartbeat/conversation dependencies.
+    if(process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED==='true'){
+      aiHook=aiHookFactory({directory});
+      const installArtifactHook=artifactHookFactory??(await import(
+        fs.existsSync(new URL('./role-artifact-workspace-hook.mjs',import.meta.url))?
+          new URL('./role-artifact-workspace-hook.mjs',import.meta.url).href:
+          'file:///opt/super-agent/role/docker/role-artifact-workspace-hook.mjs'
+      )).installRoleArtifactWorkspaceHook;
+      artifactHook=installArtifactHook({directory});
+    }
     const server=await import(pathToFileURL(entry).href);
     chiefHook?.verify();
     aiHook?.verify();
+    artifactHook?.verify();
     return server;
   } finally {
-    try{aiHook?.close();}finally{chiefHook?.close();}
+    try{artifactHook?.close();}finally{try{aiHook?.close();}finally{chiefHook?.close();}}
   }
 }

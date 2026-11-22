@@ -34,7 +34,7 @@ export function contextWorkspaceMetadata(project,ownerId){
 export function compatibleContextWorkspace(workspace,project,ownerId){
   const meta=workspace?.metadata?.superAgentProject;
   return workspace?.projectId===project.projectId&&workspace.cwd===project.workspaceCwd&&workspace.isPrimary===false&&
-    workspace.sourceType==='local_path'&&meta?.key===project.key&&meta.ownerId===ownerId&&meta.delivery?.maximumAction==='artifact'&&
+    ['local_path','non_git_path'].includes(workspace.sourceType)&&meta?.key===project.key&&meta.ownerId===ownerId&&meta.delivery?.maximumAction==='artifact'&&
     !meta.repository?.hostPath&&!(meta.hostActions?.length)&&!(meta.hostMcpServers?.length);
 }
 

@@ -2,6 +2,10 @@
 
 ## 真实任务驱动的迭代
 
+`bridge/role-artifact-workspace.mjs`与`docker/role-artifact-workspace-hook.mjs`按固定Native源摘要装配非Git产物目录支持；仅明确`non_git_path`、实际owner/role/run/项目/工作区/输入及artifact上界全部匹配时免除`.git`要求，其他Native工作区与代码Git保护保留。server-entry从完整role source动态装配，新建M2产物workspace使用该类型，旧local_path仅可重用，不自动获得例外。源码/真实Native函数分支测试与实机新任务分别取证，不创建假Git仓库。
+
+`bridge/native-npm-cache.mjs`在Mac启动本run前校验WorkDisk卷身份、路径、归属和权限，写私有HOME中的纯cache `.npmrc`及`NPM_CONFIG_CACHE`。共享的是可再生npm下载缓存，HOME/CODEX_HOME、认证、会话和产物继续逐run分离；无配置或卷身份不符时不静默落内盘。`tests/native-npm-cache.test.mjs`与Mac transport fixture核对多HOME复用同一cache、拒绝覆盖/符号链接和缺卷零写；配置证明不冒称包或业务通过。
+
 `bridge/host-github-read.mjs`通过`host.github_read`读取Native登记仓库的固定GET端点，复用宿主gh登录，不把凭据复制到独立任务HOME。无代码workspace也可用，原read_only上界只增加允许的只读工具名，不开放代码或写入。`tests/host-github-read.test.mjs`核对路径/方法限制、响应完整性与列表截断；实际连接及业务结论另行验证，见[连接合同](github-read.md)。
 
 `bridge/team-quality-resume.mjs`与`scripts/resume-team-quality.mjs`提供本人已授权的同目标质量续接。默认preview；apply需停派发、原Root/输入/已发送阻断回执及flow摘要匹配、累计预算足够、尚有第二轮额度。Native根行事务记录稳定resume ID，再投影原flow；同事件只对账投影，不新建Root或run。旧summary、通知、QA与调用历史保留。`tests/team-quality-resume.test.mjs`覆盖预算、scope、事务回滚不发事件和投影幂等。
