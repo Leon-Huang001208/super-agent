@@ -11,7 +11,7 @@ export function validateTeamPlan(plan,{remainingCalls}={}){
  const keys=new Set();for(const task of plan.tasks){
   if(!/^[a-z][a-z0-9-]{0,31}$/.test(task.key??'')||keys.has(task.key)||!TEAM_ROLES[task.role]||task.role==='chief'||
    typeof task.title!=='string'||!task.title.trim()||task.title.length>160||typeof task.goal!=='string'||!task.goal.trim()||task.goal.length>12000||
-   !/^[a-z][a-z0-9-]{0,79}\.(md|json)$/.test(task.outputFile??'')||!Array.isArray(task.dependsOn)||task.dependsOn.some(x=>typeof x!=='string'))fail('TEAM_PLAN_SCOPE_DENIED');keys.add(task.key);
+   !/^[a-z][a-z0-9-]{0,110}\.(md|json)$/.test(task.outputFile??'')||!Array.isArray(task.dependsOn)||task.dependsOn.some(x=>typeof x!=='string'))fail('TEAM_PLAN_SCOPE_DENIED');keys.add(task.key);
   if(task.role==='network-engineer')validateNetworkScope(task.networkScope);if(task.role==='system-resource-engineer')validateResourceScope(task.resourceScope);
   if(task.capabilities!==undefined&&(!Array.isArray(task.capabilities)||task.capabilities.some(key=>!TEAM_ROLES[key])))fail('TEAM_PLAN_CAPABILITIES_DENIED');
   if(task.hostActions!==undefined&&(!Array.isArray(task.hostActions)||task.hostActions.some(id=>typeof id!=='string'||!/^[a-z][a-z0-9-]{0,79}$/.test(id))))fail('TEAM_PLAN_HOST_ACTIONS_DENIED');
