@@ -12,9 +12,9 @@ RWB采用与直接Codex相同的项目开发授权：源码、独立worktree、�
 
 Paperclip继续拥有任务、运行、会话及正式重试。当前业务模型使用Mac原生Codex、个人订阅gpt-6.1-sol/low、无沙盒和approvalPolicy=never；Docker保留App、依赖、离线测试及按需项目执行。下方标注早期Docker基线的记录不代表当前模型执行位置。全局单执行、原调用计数和未知结果核对保留。
 
-真实工作中发现的岗位、工具和流程缺口沿[Agent迭代](agent-iteration.md)修复。普通QA NEEDS_WORK由既有Native推进流程回交同一执行任务，再由独立QA复核，不创建第二个调度器或重置根预算。默认6次、可信复杂任务12次；两轮质量修复与每run64 responses限制不变。
+真实工作中发现的岗位、工具和流程缺口沿[Agent迭代](agent-iteration.md)修复。普通QA NEEDS_WORK由既有Native推进流程回交同一执行任务，再由独立QA复核，不创建第二个调度器或重置根预算。普通原根默认20次，历史显式12次及QA专项按可信绑定保留；两轮质量修复与每run64 responses限制不变。
 
-RWB普通项目仍只交付PR。本人已授权历史有效改动按批交付时，仅任务绑定的DevOps发布能力调用原RWB GitSafety/resident流程；inspect不执行会合并的delivery status，未知副作用只核对原操作，切换需交接当前写窗口。这项例外不来自岗位描述、仓库正文或模型参数。
+RWB普通开发按项目自身持续授权及已登记的交付范围执行，通过原GitSafety、独立评审、必需检查和分支保护后可合并。本人已授权历史有效改动按批发布时，任务绑定的DevOps发布能力仍须精确登记才可调用原RWB GitSafety/resident流程；inspect不执行会合并的delivery status，未知副作用只核对原操作，服务切换需交接当前写窗口。生产发布权限不来自岗位描述、仓库正文或模型参数。
 
 Mac 原生 provider 通道采用每 run 的 loopback HTTPS、任务 CA 与原 broker 校验；CLI 与 Node MCP 各自获得对应信任，TLS 实际监听后才可消费就绪记录。原首计划已启动 CLI 但在 HTTPS-origin 检查前未发模型 response 的已结算失败，通过窄的第二次 Native retry 合同恢复，保留旧失败与原根预算；不改写 Native NoProvider 字段。见[原生 HTTPS 与首计划恢复](plans/native-https-recovery.md)。
 
@@ -101,11 +101,11 @@ flowchart LR
 
 Native内置重试队列拥有后继run。`role-native-retry.mjs`只在该run进入原Adapter执行前，按数据库的`retryOfRunId`和`scheduledRetryAttempt`绑定新的物理调用operation；不创建任务、run或另一个重试队列。父run必须已失败结束，私有host传输必须明确非unknown、未超时、未取消且stdout/stderr摘要匹配，原操作预算、输入、根/子任务、锁和已释放的Native环境租约逐项对应。证据缺失或存在其他活动执行时拒绝，不清理未知锁。
 
-首个Chief计划尚未进入provider而被参数门拒绝时，没有child flow或host传输回执，使用独立的bootstrap恢复合同。只接受Native已登记的首次retry、原根chief/plan操作、明确的`ROLE_GATE_ARGUMENTS_DENIED`且`claimed=false`与Native bootstrap/NoProvider证据；原operation、permit、输入、本人来源、项目、Admission nonce和已花的一次预算保持对应。重试先绑定再决定是否初次admit，避免缺少`roleOperationId`的Native原始context误入新目标准入。已有任务和run不重建，旧预算不退款；实际执行新attempt时按原六次上限计入第二槽。provider已启动、状态未知或已有flow不进入此分支。
+首个Chief计划尚未进入provider而被参数门拒绝时，没有child flow或host传输回执，使用独立的bootstrap恢复合同。只接受Native已登记的首次retry、原根chief/plan操作、明确的`ROLE_GATE_ARGUMENTS_DENIED`且`claimed=false`与Native bootstrap/NoProvider证据；原operation、permit、输入、本人来源、项目、Admission nonce和已花的一次预算保持对应。重试先绑定再决定是否初次admit，避免缺少`roleOperationId`的Native原始context误入新目标准入。已有任务和run不重建，旧预算不退款；实际执行新attempt时按原根可信上限计入第二槽。provider已启动、状态未知或已有flow不进入此分支。
 
 参数门同时接受受信Mac原生策略下Native adapter在model前输出bypass的合法顺序，保留原有尾部managed参数顺序。仅匹配固定model、reasoning、search、可选skip-git与唯一策略参数；不允许重复bypass、额外配置、resume或将原生bypass用于旧Docker策略。该兼容不改变角色、材料、订阅或任务范围校验。
 
-核明后先把父run的失败产物和旧call锁保存到私有只读archive，再保留原phase Admission nonce，追加新operation与flow的`attemptHistory`。原Native行、旧operation、旧预算文件和session不修改；新slot仍由`withRoleCall`实际进入时计入原根六次预算，最多接两次Native修复attempt。模型只获得一段同任务恢复上下文，不获得重试工具或队列控制权。
+核明后先把父run的失败产物和旧call锁保存到私有只读archive，再保留原phase Admission nonce，追加新operation与flow的`attemptHistory`。原Native行、旧operation、旧预算文件和session不修改；新slot仍由`withRoleCall`实际进入时计入原根可信预算，最多接两次Native修复attempt。模型只获得一段同任务恢复上下文，不获得重试工具或队列控制权。
 
 运行升级需要新派发关闭、任务及进程排空、候选身份和恢复证据。源码、运行、业务、回收四层状态分别记录。见 [运维](operations.md)、[验收](acceptance-runbook.md) 和 [当日观察](governance-status-20261104.md)。
 
@@ -115,7 +115,7 @@ Native内置重试队列拥有后继run。`role-native-retry.mjs`只在该run进
 
 `/chief <目标>` 通过唯一的既有官方 SDK 长连接进入。固定 app、tenant、本人 open ID 与 Native responsible user 共同限制准入；正文不提供权限覆盖。适配器仅调用 Native issue/heartbeat/activity 服务，消息 ID 与正文摘要在同一事务登记，重复投递复用原任务。唤醒前先持久认领；丢失回执不自动重发。本人已取消或改变版本的旧任务记录为 stale，不能阻塞后来的独立目标。登记回执与成果通知分别去重，未知投递继续保留原记录。
 
-默认关闭的运行入口只在服务主进程装配，不在 CLI 子进程创建第二个监听。Chief 按既有根六次预算规划、创建 Native 子任务及收回成果，全局执行准入继续生效。离线准入/恢复测试与真实本人消息验收分别留证；管理创建的 Native 目标和飞书出站通知不能证明飞书入站。
+默认关闭的运行入口只在服务主进程装配，不在 CLI 子进程创建第二个监听。Chief 按原根当前可信预算规划、创建 Native 子任务及收回成果，全局执行准入继续生效。离线准入/恢复测试与真实本人消息验收分别留证；管理创建的 Native 目标和飞书出站通知不能证明飞书入站。
 
 个人 M1 的旧入口和历史记录保留。M2 开关启用后仍使用同一飞书长连接和 `/chief` 命名空间，通过 Native activity 持久保存当前项目及各项目所选任务；未启用 context 时保留 M1 路径。M2 的项目/状态/记忆查询不创建模型任务。旧 RWB 日常服务、primary workspace 和回调不由此入口恢复或改写；启用前仍须核实唯一监听，不能仅据健康状态推断。
 
@@ -125,7 +125,7 @@ Native内置重试队列拥有后继run。`role-native-retry.mjs`只在该run进
 
 全局context开关不接管所有Native任务：真实M2 control与显式operation版本共同确定关联；旧flow、RWB原primary及其他Native项目保留portable执行路径，畸形M2记录不能降级。Native项目能力与catalog取交集，read_only仅artifact、无宿主代码写路径/写动作，MCP在broker按静态准入、动态岗位目录与实际只读声明共同收窄。初次公开bundle核验后generic范围随Native本人保存继承，实际指令使用本run prepared copy；项目overlay排除冻结的旧AGENTS/CAPABILITIES，只保留项目事实及公共引用。
 
-`add` 先记录本人补充，活动 run 终态明确后才应用新输入；旧 flow/产物保留原摘要。同任务恢复以全新模型 session 重建授权输入与产物上下文，同根六次额度累计，不重置 lease 或伪造 resume 身份。暂停后同版本继续复用计划；已结束的 blocked 阶段须先对账，重规划至少保留三次调用。done 根的明确新目标仅由 `followup` 建立关联新根，不使用 `parentId`，失败/UNKNOWN 不借此换预算。
+`add` 先记录本人补充，活动 run 终态明确后才应用新输入；旧 flow/产物保留原摘要。同任务恢复以全新模型 session 重建授权输入与产物上下文，同根按可信上限累计，不重置 lease 或伪造 resume 身份。暂停后同版本继续复用计划；已结束的 blocked 阶段须先对账，重规划至少保留三次调用。done 根的明确新目标仅由 `followup` 建立关联新根，不使用 `parentId`，失败/UNKNOWN 不借此换预算。
 
 新任务仅装载本项目共享和本角色私有的当前 owner-confirmed 记忆，不带其他任务对话历史。`remember`、`correct` 和跨项目 `share` 必须来自实际本人指令；历史/查询不确认新内容。旧知识按授权分区投影为 historical-reference，不能自动升级为本人确认；已有确认身份不会被截断查询外的旧值补回。每 run 只读材料快照固定身份和摘要；跨项目旧 manifest 只有显式 generic 才能复用，任务容器不见其他项目材料、宿主 HOME、Docker socket 或 App 数据库秘密。
 
