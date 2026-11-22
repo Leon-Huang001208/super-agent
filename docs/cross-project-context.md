@@ -1,5 +1,7 @@
 # 跨项目、续接与记忆 M2
 
+登记文件沿共享的4 MiB私有控制文件合同读取，其他私有配置保留原1 MiB上限及归属、权限和链接检查。已登记子任务在首次物理尝试前发生官方明确的bootstrap未启动失败时，现有Native首次重试可在原owner、输入、派发、预留phase及零物理证据全部核验后复用原context和operation；正常执行器首次创建绑定并计费。旧成功运行与原预算不改，读取或绑定证据未知时保持reconciliation与providerWorkStarted=null，不伪造传输结果或另建目标。
+
 ## 2026-11-22默认策略
 
 普通原根默认20次，补充、继续、重规划、QA和Native失败重试不重置已用次数；旧6/12证据继续可读。RWB常规开发长期登记源码workspace、隔离worktree、规则/checks和受管交付，项目catalog可按既有授权允许merge，不再另设Super Agent专属PR-only限制，未登记项目仍不从任务正文获取权限。
