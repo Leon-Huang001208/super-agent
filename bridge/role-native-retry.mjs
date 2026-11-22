@@ -26,13 +26,28 @@ export function isCompletedResumeChiefWorkspaceFailure(run){
   run.resultJson.stopReason==='adapter_failed'&&run.resultJson.timeoutFired===false&&
   run.resultJson.configFreshness?.session?.taskSessionAvailable===false&&run.resultJson.configFreshness.session.taskSessionReused===false&&
   run.stdoutExcerpt===''&&run.stderrExcerpt===''&&run.logBytes===0&&run.logSha256===digest('')&&
-  ['nativeSessionId','sessionIdBefore','sessionIdAfter','processPid','processGroupId'].every(key=>run[key]===null);
+  run.lastOutputSeq===0&&run.lastOutputAt===null&&run.lastOutputStream===null&&[null,0].includes(run.lastOutputBytes)&&
+  ['nativeSessionId','sessionIdBefore','sessionIdAfter','processPid','processGroupId','processStartedAt'].every(key=>run[key]===null);
 }
-/** The successor is an untouched Native attempt, not merely a row without private call files. */
-export function isPristineCompletedResumeChiefSuccessor(run,phase){
+/** Exact outer Native bookkeeping, before any usage receipt/provider work; task is a fresh trusted Native row. */
+function isInitialNativeAccounting(run,phase,task){
+ if(run.costAccountedAt!==null||run.accountingAttemptCount!==0||run.accountingLastAttemptAt!==null||run.accountingLastError!==null||run.accountingProjectionVersion!==null)return false;
+ if(run.usageJson===null)return run.costAccountingPending===false;
+ const usage=run.usageJson;
+ return phase==='running'&&task&&run.issueId===task.id&&run.companyId===task.companyId&&
+  usage&&typeof usage==='object'&&!Array.isArray(usage)&&
+  equal(Object.keys(usage).sort(),['accountingReceiptReady','accountingReceiptSequence','accountingReceiptSourceId','ledgerScope'])&&
+  usage.accountingReceiptReady===false&&usage.accountingReceiptSequence===0&&
+  /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(usage.accountingReceiptSourceId??'')&&
+  equal(usage.ledgerScope,{issueId:task.id,projectId:task.projectId,billingCode:task.billingCode??null})&&
+  run.costAccountingPending===true;
+}
+/** The successor contains only Native pre-dispatch metadata, never provider/session/output evidence. */
+export function isPristineCompletedResumeChiefSuccessor(run,phase,task){
  if(!run||!['queued','running'].includes(phase)||run.status!==phase||
   ['finishedAt','exitCode','signal','errorCode','error','nativeSessionId','sessionIdBefore','sessionIdAfter',
-   'processPid','processGroupId','processStartedAt','usageJson','lastOutputAt','lastOutputStream'].some(key=>run[key]!==null)||
+   'processPid','processGroupId','processStartedAt','lastOutputAt','lastOutputStream'].some(key=>run[key]!==null)||
+  !isInitialNativeAccounting(run,phase,task)||
   ![null,0].includes(run.logBytes)||![null,digest('')].includes(run.logSha256)||
   ![null,''].includes(run.stdoutExcerpt)||![null,''].includes(run.stderrExcerpt)||
   run.lastOutputSeq!==0||![null,0].includes(run.lastOutputBytes)||
@@ -43,17 +58,31 @@ export function isPristineCompletedResumeChiefSuccessor(run,phase){
   [Object.prototype,null].includes(Object.getPrototypeOf(value))&&
   (Object.keys(value).length===0||Object.keys(value).length===1&&value.conversationContinuation==='continue_conversation_v1'));
 }
+/** This one local binder return is known to precede permit/registration. Its Native null remains null. */
+export function isCompletedResumeChiefPreflightRefusal(run){
+ return run?.status==='failed'&&run.exitCode===1&&run.signal===null&&ended(run.finishedAt)&&
+  run.errorCode==='TEAM_NATIVE_RETRY_BOOTSTRAP_CHIEF_WORKSPACE_SUCCESSOR_NOT_PRISTINE'&&
+  run.error==='The controlled Native intake or retry did not admit this execution.'&&
+  run.resultJson?.executionRecovery?.kind==='reconciliation'&&run.resultJson.executionRecovery.providerWorkStarted===null&&
+  run.resultJson.stopReason==='adapter_failed'&&run.resultJson.timeoutFired===false&&
+  run.resultJson.configFreshness?.session?.taskSessionAvailable===false&&run.resultJson.configFreshness.session.taskSessionReused===false&&
+  run.stdoutExcerpt===''&&run.stderrExcerpt===''&&run.logBytes===0&&run.logSha256===digest('')&&
+  run.lastOutputSeq===0&&run.lastOutputAt===null&&run.lastOutputStream===null&&[null,0].includes(run.lastOutputBytes)&&
+  ['nativeSessionId','sessionIdBefore','sessionIdAfter','processPid','processGroupId','processStartedAt'].every(key=>run[key]===null);
+}
 /** Native context locates the same authorized resume operation before a physical call exists. */
-export function completedResumeChiefOperation(registry,parent){
- if(parent?.errorCode!=='NATIVE_ROLE_WORKSPACE_SCOPE_DENIED')return null;
- const role=registry?.agents?.filter(entry=>entry.profile?.agentId===parent.agentId);
+export function completedResumeChiefOperation(registry,parent,initialRun){
+ if(parent?.errorCode==='TEAM_NATIVE_RETRY_BOOTSTRAP_CHIEF_WORKSPACE_SUCCESSOR_NOT_PRISTINE'){
+  if(!isCompletedResumeChiefPreflightRefusal(parent)||!initialRun)chiefWorkspaceFail('NATIVE_PROOF_DENIED');
+ }else if(parent?.errorCode!=='NATIVE_ROLE_WORKSPACE_SCOPE_DENIED')return null;
+ const initial=initialRun??parent,role=registry?.agents?.filter(entry=>entry.profile?.agentId===initial.agentId);
  if(role?.length!==1||role[0].profile.role!=='chief')return null;
- if(!isCompletedResumeChiefWorkspaceFailure(parent))chiefWorkspaceFail('NATIVE_PROOF_DENIED');
- const matches=registry.operations?.filter(op=>op.id===parent.contextSnapshot?.roleOperationId)??[];
+ if(!isCompletedResumeChiefWorkspaceFailure(initial))chiefWorkspaceFail('NATIVE_PROOF_DENIED');
+ const matches=registry.operations?.filter(op=>op.id===initial.contextSnapshot?.roleOperationId)??[];
  if(matches.length!==1)chiefWorkspaceFail('OPERATION_DENIED');
  const op=matches[0];
  if(op.kind!=='run'||op.role!=='chief'||op.phase!=='plan'||op.contextVersion!==1||op.rootTaskId!==op.taskId||
-  op.taskId!==parent.issueId||op.agentId!==parent.agentId||op.artifactGeneration!==op.id||
+  op.taskId!==initial.issueId||op.agentId!==initial.agentId||op.artifactGeneration!==op.id||
   op.rootInputRevision!==undefined||op.acceptedRunId!==undefined||op.retryOfRunId!==undefined||
   op.retryOfOperationId!==undefined||op.nativeRetryAttempt!==undefined)chiefWorkspaceFail('OPERATION_DENIED');
  return op;
@@ -61,17 +90,19 @@ export function completedResumeChiefOperation(registry,parent){
 
 /** The same proof is checked before Native queue consumption and under the actual retry transaction. */
 export function completedResumeChiefRetryEvidence({root,ctx,registry:r,operation:op,task,control,parentRun:parent,run,wakeup,
- activeRuns,taskRuns,leases,flows,nativeWorkspace,workspaceCwd,verifyPhaseLease,phase='running'}){
+ initialRun,reconciledPreflightRun,activeRuns,taskRuns,leases,flows,nativeWorkspace,workspaceCwd,verifyPhaseLease,phase='running'}){
  const uuid=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
- if(!['queued','running'].includes(phase)||!isCompletedResumeChiefWorkspaceFailure(parent)||run?.status!==phase||
-  run.retryOfRunId!==parent.id||run.scheduledRetryAttempt!==1)chiefWorkspaceFail('NATIVE_PROOF_DENIED');
- if(!isPristineCompletedResumeChiefSuccessor(run,phase))chiefWorkspaceFail('SUCCESSOR_NOT_PRISTINE');
- if(r?.enabled!==true||r.team?.enabled!==true||r.context?.enabled!==true||!op||!equal(op,completedResumeChiefOperation(r,parent))||
+ const initial=initialRun??parent,chain=initialRun?[initial,parent,run]:[parent,run];
+ if(!['queued','running'].includes(phase)||!isCompletedResumeChiefWorkspaceFailure(initial)||run?.status!==phase||
+  initialRun&&(!isCompletedResumeChiefPreflightRefusal(parent)||parent.retryOfRunId!==initial.id||parent.scheduledRetryAttempt!==1||!equal(reconciledPreflightRun,parent))||
+  run.retryOfRunId!==parent.id||run.scheduledRetryAttempt!==(initialRun?2:1))chiefWorkspaceFail('NATIVE_PROOF_DENIED');
+ if(!isPristineCompletedResumeChiefSuccessor(run,phase,task))chiefWorkspaceFail('SUCCESSOR_NOT_PRISTINE');
+ if(r?.enabled!==true||r.team?.enabled!==true||r.context?.enabled!==true||!op||!equal(op,completedResumeChiefOperation(r,parent,initialRun))||
   r.team.ids?.chief!==op.agentId||!task||task.id!==op.taskId||task.parentId||task.companyId!==r.companyId||task.projectId!==op.projectId||
   task.responsibleUserId!==r.ownerId||task.createdByUserId!==r.ownerId||!['todo','in_progress'].includes(task.status)||
   task.assigneeAgentId!==op.agentId||task.assigneeUserId||task.executionRunId&&task.executionRunId!==run.id||task.checkoutRunId&&task.checkoutRunId!==run.id||
   taskInputRevision(task)!==op.inputRevision||r.taskRoots?.[task.id]!==task.id||!r.tasks?.includes(task.id)||
-  [parent,run].some(value=>value.companyId!==r.companyId||value.issueId!==task.id||value.agentId!==op.agentId||value.responsibleUserId!==r.ownerId))
+  chain.some(value=>value.companyId!==r.companyId||value.issueId!==task.id||value.agentId!==op.agentId||value.responsibleUserId!==r.ownerId))
   chiefWorkspaceFail('AUTHORITY_CHANGED');
  const approved=control?.completedResume;
  if(control?.managed!==true||control.taskId!==task.id||control.companyId!==r.companyId||control.ownerId!==r.ownerId||
@@ -79,7 +110,7 @@ export function completedResumeChiefRetryEvidence({root,ctx,registry:r,operation
   control.pauseRequested!==false||!Array.isArray(control.pendingInputs)||control.pendingInputs.length||control.plan!==null||
   control.sourceKey!=='owner-completed-resume:'+op.id||control.resumeOperationId!==op.id||
   control.resumeClaim?.operationId!==op.id||control.resumeClaim.inputRevision!==op.inputRevision||control.resumeClaim.status!=='claimed'||
-  control.resumeClaim.runId!==undefined&&control.resumeClaim.runId!==parent.id||
+  control.resumeClaim.runId!==undefined&&control.resumeClaim.runId!==initial.id||
   approved?.schemaVersion!==1||approved.resumeId!==op.id||approved.rootTaskId!==task.id||approved.companyId!==r.companyId||
   approved.ownerId!==r.ownerId||approved.approvedBy!==r.ownerId||approved.projectId!==task.projectId||approved.projectWorkspaceId!==op.projectWorkspaceId||
   approved.afterInputRevision!==op.inputRevision||!hash(approved.beforeInputRevision)||approved.beforeInputRevision===approved.afterInputRevision||
@@ -89,7 +120,7 @@ export function completedResumeChiefRetryEvidence({root,ctx,registry:r,operation
   value.flow.completedResume?.resumeId===op.id);
  if(sourceFlows?.length!==1||!equal(sourceFlows[0].flow.completedResume,approved)||sourceFlows[0].flow.inputRevision!==approved.beforeInputRevision||
   sourceFlows[0].flow.predecessor?.resumeId!==op.id||sourceFlows[0].flow.projectWorkspaceId!==op.projectWorkspaceId||
-  flows.some(value=>value.flow?.sourceOperationId===op.id||value.flow?.sourceRunId===parent.id||value.flow?.sourceRunId===run.id))
+  flows.some(value=>value.flow?.sourceOperationId===op.id||chain.some(row=>value.flow?.sourceRunId===row.id)))
   chiefWorkspaceFail('FLOW_CHANGED');
  if(nativeWorkspace?.id!==op.projectWorkspaceId||nativeWorkspace.projectId!==task.projectId||
   nativeWorkspace.companyId!==undefined&&nativeWorkspace.companyId!==r.companyId||nativeWorkspace.sourceType!=='local_path'||
@@ -99,31 +130,31 @@ export function completedResumeChiefRetryEvidence({root,ctx,registry:r,operation
   typeof nativeWorkspace.cwd!=='string'||!path.isAbsolute(nativeWorkspace.cwd)||path.normalize(nativeWorkspace.cwd)!==nativeWorkspace.cwd)
   chiefWorkspaceFail('WORKSPACE_CHANGED');
  const expected={roleOperationId:op.id,issueId:task.id,taskId:task.id,projectId:task.projectId,responsibleUserId:r.ownerId,inputRevision:op.inputRevision};
- if(ctx?.runId!==run.id||ctx.agent?.id!==op.agentId||[ctx.context,parent.contextSnapshot,run.contextSnapshot].some(value=>
+ if(ctx?.runId!==run.id||ctx.agent?.id!==op.agentId||[ctx.context,...chain.map(row=>row.contextSnapshot)].some(value=>
   Object.entries(expected).some(([key,wanted])=>value?.[key]!==wanted)||value.projectWorkspaceId!==undefined&&value.projectWorkspaceId!==op.projectWorkspaceId||
   value.forceFreshSession!==true||value.paperclipWorkspace?.workspaceId!==op.projectWorkspaceId||value.paperclipWorkspace.projectId!==task.projectId||
   value.paperclipWorkspace.cwd!==nativeWorkspace.cwd||value.paperclipWorkspace.source!=='project_primary'||value.paperclipWorkspace.mode!=='shared_workspace'))
   chiefWorkspaceFail('CONTEXT_CHANGED');
- if(wakeup?.id!==parent.wakeupRequestId||wakeup.runId!==parent.id||wakeup.companyId!==r.companyId||wakeup.agentId!==op.agentId||
+ if(wakeup?.id!==initial.wakeupRequestId||wakeup.runId!==initial.id||wakeup.companyId!==r.companyId||wakeup.agentId!==op.agentId||
   wakeup.requestedByActorType!=='agent'||wakeup.requestedByActorId!==op.agentId||wakeup.source!=='on_demand'||wakeup.reason!=='team_controlled_assignment'||
   wakeup.payload?.issueId!==task.id||Object.entries(expected).some(([key,value])=>wakeup.payload?._paperclipWakeContext?.[key]!==value))
   chiefWorkspaceFail('AUTHORITY_CHANGED');
  const sameRuns=taskRuns?.filter(value=>value.contextSnapshot?.roleOperationId===op.id);
  if(!Array.isArray(activeRuns)||activeRuns.length!==1||activeRuns[0].id!==run.id||activeRuns[0].status!==phase||
-  !Array.isArray(taskRuns)||sameRuns.length!==2||![parent,run].every(value=>sameRuns.some(other=>equal(value,other)))||
+  !Array.isArray(taskRuns)||sameRuns.length!==chain.length||new Set(chain.map(row=>row.id)).size!==chain.length||!chain.every(value=>sameRuns.some(other=>equal(value,other)))||
   taskRuns.some(value=>value.companyId!==r.companyId||value.issueId!==task.id||value.id!==run.id&&
    (!['succeeded','failed','cancelled','timed_out'].includes(value.status)||!ended(value.finishedAt)))||
-  !Array.isArray(leases)||!leases.some(value=>value.heartbeatRunId===parent.id)||
+  !Array.isArray(leases)||chain.some(row=>row.id!==run.id&&!leases.some(value=>value.heartbeatRunId===row.id))||
   leases.some(value=>value.heartbeatRunId!==run.id&&(!ended(value.releasedAt)||['active','pending_cleanup'].includes(value.status)||value.cleanupStatus==='failed')))
   chiefWorkspaceFail('EXECUTION_UNSETTLED');
  const names=teamArtifactNames({taskId:task.id,inputRevision:op.inputRevision,generationId:op.id});
- if(![op.id,task.id,parent.id,run.id].every(value=>uuid.test(value??''))||typeof root!=='string'||!path.isAbsolute(root)||path.normalize(root)!==root||fs.realpathSync(root)!==root||
+ if(![op.id,task.id,...chain.map(row=>row.id)].every(value=>uuid.test(value??''))||typeof root!=='string'||!path.isAbsolute(root)||path.normalize(root)!==root||fs.realpathSync(root)!==root||
   !path.isAbsolute(workspaceCwd??'')||path.normalize(workspaceCwd)!==workspaceCwd||op.workspaceCwd!==workspaceCwd||
   r.contextProject?.workspaceCwd!==workspaceCwd||Object.entries(names).some(([key,value])=>op[key]!==value)||
   !r.lease?.nonce||r.lease.taskId!==task.id||r.lease.projectId!==task.projectId||r.lease.operationId!==op.id||verifyPhaseLease(r.lease)!==true)
   chiefWorkspaceFail('PHASE_CHANGED');
  const present=file=>{try{fs.lstatSync(file);return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}};
- for(const value of [parent,run])for(const file of ['permits/'+value.id+'.json','claims/'+value.id+'.json','results/'+value.id+'.json','transport/'+value.id])
+ for(const value of chain)for(const file of ['permits/'+value.id+'.json','claims/'+value.id+'.json','results/'+value.id+'.json','transport/'+value.id])
   if(present(path.join(root,file)))chiefWorkspaceFail('PHYSICAL_EVIDENCE_PRESENT');
  if(['call.lock','operations/'+op.id+'.json','budget/'+task.id+'/'+op.id+'.json'].some(file=>present(path.join(root,file)))||
   [op.planFile,op.summaryFile].some(file=>present(path.join(workspaceCwd,file))))chiefWorkspaceFail('PHYSICAL_EVIDENCE_PRESENT');
@@ -134,12 +165,14 @@ export function completedResumeChiefRetryEvidence({root,ctx,registry:r,operation
   chiefWorkspaceFail('BUDGET_DENIED');
  const budgetProof=slots.map(name=>{const file=path.join(directory,name),value=readControl(file);if(value.rootTaskId!==task.id)chiefWorkspaceFail('BUDGET_DENIED');return{name,sha256:digest(fs.readFileSync(file))};});
  return{kind:'completed_resume_chief_workspace_preflight',runId:run.id,parentRunId:parent.id,operationId:op.id,taskId:task.id,inputRevision:op.inputRevision,
+  ...(initialRun?{initialRunId:initial.id,reconciledPreflightRunId:parent.id,nativeRetryAttempt:2}:{}),
   projectWorkspaceId:op.projectWorkspaceId,spentBeforeCurrent:slots.length,budgetProof};
 }
 /** Reuse the operation, phase nonce and Native successor; no registration or spent file is written. */
 export function bindUnstartedCompletedResumeChiefRetry(state){
  const proof=completedResumeChiefRetryEvidence(state);
- state.log({code:'TEAM_NATIVE_RETRY_BOOTSTRAP_CHIEF_WORKSPACE_VALIDATED',runId:proof.runId,parentRunId:proof.parentRunId,operationId:proof.operationId,taskId:proof.taskId,spentBeforeCurrent:proof.spentBeforeCurrent});
+ state.log({code:'TEAM_NATIVE_RETRY_BOOTSTRAP_CHIEF_WORKSPACE_VALIDATED',runId:proof.runId,parentRunId:proof.parentRunId,operationId:proof.operationId,taskId:proof.taskId,spentBeforeCurrent:proof.spentBeforeCurrent,
+  ...(proof.initialRunId?{initialRunId:proof.initialRunId,reconciledPreflightRunId:proof.reconciledPreflightRunId,nativeRetryAttempt:proof.nativeRetryAttempt}:{})});
  return state.ctx;
 }
 

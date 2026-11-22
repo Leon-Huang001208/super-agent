@@ -1,7 +1,7 @@
 import {taskInputRevision} from './task-input.mjs';
 import {isInitialChiefPlan,isUnclaimedChiefGateFailure} from './chief-bootstrap-retry.mjs';
 import {isChiefTransportPlanRetry} from './chief-transport-retry.mjs';
-import {isCompletedResumeChiefWorkspaceFailure,isPristineCompletedResumeChiefSuccessor} from './role-native-retry.mjs';
+import {isCompletedResumeChiefWorkspaceFailure,isCompletedResumeChiefPreflightRefusal,isPristineCompletedResumeChiefSuccessor} from './role-native-retry.mjs';
 
 /** Selection only: Native remains the sole queue owner and execution consumer. */
 export function selectQueuedNativeRoleRetry({registry:r,activeRuns,parentRun:parent,tasks,chiefTransportEvidence,chiefWorkspaceEvidence}){
@@ -10,8 +10,11 @@ export function selectQueuedNativeRoleRetry({registry:r,activeRuns,parentRun:par
  const initialChief=isInitialChiefPlan(op)&&isUnclaimedChiefGateFailure(parent)&&run.scheduledRetryAttempt===1&&op.acceptedRunId===parent.id;
  const transportChief=isChiefTransportPlanRetry(op,parent)&&run.scheduledRetryAttempt===2&&chiefTransportEvidence?.kind==='chief_https_no_response'&&
   chiefTransportEvidence.parentRunId===parent.id&&chiefTransportEvidence.operationId===op.id&&chiefTransportEvidence.taskId===op.taskId&&chiefTransportEvidence.inputRevision===op.inputRevision;
- const workspaceChief=isCompletedResumeChiefWorkspaceFailure(parent)&&isPristineCompletedResumeChiefSuccessor(run,'queued')&&op?.role==='chief'&&op.phase==='plan'&&op.contextVersion===1&&
-  op.artifactGeneration===op.id&&run.scheduledRetryAttempt===1&&chiefWorkspaceEvidence?.kind==='completed_resume_chief_workspace_preflight'&&
+ const workspaceParent=isCompletedResumeChiefWorkspaceFailure(parent)&&run.scheduledRetryAttempt===1||
+  isCompletedResumeChiefPreflightRefusal(parent)&&run.scheduledRetryAttempt===2&&chiefWorkspaceEvidence?.initialRunId===parent.retryOfRunId&&
+  chiefWorkspaceEvidence.reconciledPreflightRunId===parent.id&&chiefWorkspaceEvidence.nativeRetryAttempt===2;
+ const workspaceChief=workspaceParent&&isPristineCompletedResumeChiefSuccessor(run,'queued')&&op?.role==='chief'&&op.phase==='plan'&&op.contextVersion===1&&
+  op.artifactGeneration===op.id&&chiefWorkspaceEvidence?.kind==='completed_resume_chief_workspace_preflight'&&
   chiefWorkspaceEvidence.runId===run.id&&chiefWorkspaceEvidence.parentRunId===parent.id&&chiefWorkspaceEvidence.operationId===op.id&&
   chiefWorkspaceEvidence.taskId===op.taskId&&chiefWorkspaceEvidence.inputRevision===op.inputRevision&&chiefWorkspaceEvidence.projectWorkspaceId===op.projectWorkspaceId;
  if(run.status!=='queued'||!run.retryOfRunId||!Number.isInteger(run.scheduledRetryAttempt)||run.scheduledRetryAttempt<1||run.scheduledRetryAttempt>2||
