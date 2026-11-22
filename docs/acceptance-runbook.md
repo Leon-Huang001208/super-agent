@@ -56,6 +56,10 @@ Native HTTPS 恢复按[专题合同](plans/native-https-recovery.md)先做无模
 
 已登记命令的代理接线分别核对工作区准备、候选准备、PR发布/状态消费的子进程环境，确认复用现有宿主代理及本地`NO_PROXY`，不由模型参数选择任意代理。离线回归只证明环境传递，不能用GitHub只读或模型连通性替代真实GitSafety fetch。实际网络验收记录同一Root、候选、入口、退出码及回执；网络故障按既有分工交Network Engineer，未知结果沿原操作核对，未运行保持NOT_RUN。
 
+代码源输入绑定须使用真实Native形状：`paperclipWorkspace.workspaceId`而非假造顶层字段。分别验证fresh DB源目录、固定artifact投影及独立Host代码工作树；Native只读源码挂载不写入报告。错ID/project/cwd、缺Owner登记、只读catalog撤权与中途登记变化均拒绝。源码/夹具通过不等于真实Native调用、GitSafety receipt或PoC通过，现场以原Root/run/permit及实际路径另行取证。
+
+补验Native local realization的最高cwd优先级：copy/in_place使用原installed execute和假CLI，核真实进程cwd及`PAPERCLIP_WORKSPACE_CWD`均为固定artifact；保留源绑定、环境/lease身份，foreign root、非空alias/restore、remote/isolated不得被投影放行。不运行模型或连接生产数据的合同仍不是业务验收。
+
 Native全局scheduler保持原受控关闭状态。恢复既有scheduled retry时用官方retry-now，记录同一run变为queued；现有team tick仅在当前登记work-step和全局唯一queued匹配时调用Native消费者。scheduled、其他任务、其他active行与陈旧输入不得触发消费；claim返回仅证明Native已认领并安排执行，不能当provider/业务成功。执行前仍须通过retry binder，不重置锁、预算或会话，不另起wake/run。
 
 ## 角色指令网页保存
@@ -165,6 +169,8 @@ Native全局scheduler保持原受控关闭状态。恢复既有scheduled retry�
 ## Native内置重试验收
 
 父角色run失败后，先只读核对Native已存在的`scheduled_retry`、父run、attempt序号和原子任务。不得另发manual wake或新建root。本人认证的`POST /issues/:id/scheduled-retry/retry-now`只推进原有run；Agent pause会取消scheduled retry，不能把pause/resume当作原attempt的无损暂停。
+
+Owner completed-resume Chief的workspace前置拒绝另验同一原操作、首次Native successor、官方providerfalse、零日志/会话/进程/permit/claim/transport/预算新增；fresh Native workspace与nested字段、原恢复control/claim、输入、旧累计及phase nonce必须闭合。以真实parent经过queue selector和生产binder后才可推进已有successor；缺证据、第二次attempt、任意Chief失败或旧行被改写均拒绝。维护仅证明没有live provider时须明确保留scheduled行和phase，不误称全局空闲、不删除lease。
 
 首Root Chief plan的bootstrap恢复单列：父run明确Gate arguments拒绝、未claim且provider未启动，原根仅保留首次失败及其Native首次retry，没有flow、host claim/transport或未知结果。核对原owner wake、输入版本、operation/permit、Admission nonce和原预算槽；计划后暂停的`reviewBeforeDispatch`允许先产生首计划，但本人pause或待应用补充仍阻止执行。原1/6预算保留，新物理attempt正常成为2/6，不新建目标、wake或session来换额度。全局scheduler关闭时，等待到期不会自行推进；只有修复候选装配完毕后，才通过Native的原Issue retry接口推进已存在的run，并由常驻原消费者执行。保存计划产物、模型/进程组结束、Native终态及飞书结果，再进入本人补充阶段。源码回归不能替代这一实机证据。
 
