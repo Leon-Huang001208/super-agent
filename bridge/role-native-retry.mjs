@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {isDeepStrictEqual as equal} from 'node:util';
 import {taskInputRevision} from './task-input.mjs';
 import {rootCallLimit} from './task-call-policy.mjs';
+import {qaRepairStep} from './team-qa-repair.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const digest=value=>createHash('sha256').update(value).digest('hex');
@@ -11,6 +12,62 @@ const hash=value=>/^[a-f0-9]{64}$/.test(value??'');
 const ended=value=>Number.isFinite(Date.parse(value));
 export const NATIVE_RETRY_CONTEXT='Resuming the same Native task after a settled failed attempt; preserve earlier failure evidence. Current tool availability and approval configuration can differ from the prior attempt; use this run’s actual tool results, keep the original goal/scope and root budget.';
 export function rebindNativeRetryContext(ctx,operation){return {...ctx,context:{...ctx.context,roleOperationId:operation.id}};}
+
+const childBootstrapFail=code=>fail('TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_'+code);
+export const childBootstrapEvidenceCode=error=>/^TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_[A-Z_]+$/.test(error?.code??'')?
+ error.code:'TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_EVIDENCE_UNAVAILABLE';
+/** Native context locates the original operation before any physical binding exists. */
+export function childBootstrapOperation(registry,parent){
+ if(parent?.errorCode!=='NATIVE_ROLE_PRIVATE_FILE_DENIED')return null;
+ const roles=registry?.agents?.filter(entry=>entry.profile?.agentId===parent.agentId);
+ if(roles?.length!==1)childBootstrapFail('OPERATION_DENIED');
+ const role=roles[0].profile;if(role.role==='chief')return null;
+ const matches=registry.operations?.filter(op=>op.id===parent.contextSnapshot?.roleOperationId)??[];
+ if(matches.length!==1||matches[0].kind!=='run'||matches[0].phase!=='work'||matches[0].role!==role.role||matches[0].taskId!==parent.issueId||matches[0].agentId!==parent.agentId)childBootstrapFail('OPERATION_DENIED');
+ return matches[0];
+}
+
+/** No permit, claim, transport, spent slot or replacement operation is synthesized. */
+export function bindUnstartedChildRetry({root,ctx,registry:r,operation:op,rootTask,task,flow,parentRun:parent,run,wakeup,activeRuns,taskRuns,leases,verifyPhaseLease,log}){
+ if(!parent||parent.status!=='failed'||parent.exitCode!==1||parent.errorCode!=='NATIVE_ROLE_PRIVATE_FILE_DENIED'||!ended(parent.finishedAt)||parent.retryOfRunId||
+  (parent.scheduledRetryAttempt??0)!==0||parent.resultJson?.executionRecovery?.kind!=='bootstrap'||parent.resultJson.executionRecovery.providerWorkStarted!==false||
+  run?.status!=='running'||run.retryOfRunId!==parent.id||run.scheduledRetryAttempt!==1||run.finishedAt)childBootstrapFail('NATIVE_PROOF_DENIED');
+ if(r?.enabled!==true||r.team?.enabled!==true||!op||!equal(op,childBootstrapOperation(r,parent))||op.retryOfRunId!==undefined||op.retryOfOperationId!==undefined||op.nativeRetryAttempt!==undefined||
+  op.acceptedRunId!==undefined||!rootTask||!task||task.id!==op.taskId||rootTask.id!==op.rootTaskId||task.parentId!==rootTask.id||
+  [task,rootTask].some(value=>value.companyId!==r.companyId||value.projectId!==op.projectId||value.responsibleUserId!==r.ownerId)||
+  rootTask.status!=='in_review'||rootTask.assigneeUserId!==r.ownerId||rootTask.assigneeAgentId||rootTask.executionRunId||rootTask.checkoutRunId||
+  !['todo','in_progress'].includes(task.status)||task.assigneeAgentId!==op.agentId||task.assigneeUserId||task.executionRunId&&task.executionRunId!==run.id||task.checkoutRunId&&task.checkoutRunId!==run.id||
+  r.team.ids?.[op.role]!==op.agentId||r.taskRoots?.[task.id]!==rootTask.id||!r.tasks?.includes(task.id)||!r.tasks.includes(rootTask.id)||
+  taskInputRevision(task)!==op.inputRevision||taskInputRevision(rootTask)!==op.rootInputRevision||flow?.inputRevision!==op.rootInputRevision||
+  [run,parent].some(value=>value.companyId!==r.companyId||value.issueId!==task.id||value.agentId!==op.agentId||value.responsibleUserId!==r.ownerId)||
+  ctx.runId!==run.id||ctx.agent?.id!==op.agentId||
+  wakeup?.id!==parent.wakeupRequestId||wakeup.runId!==parent.id||wakeup.companyId!==r.companyId||wakeup.agentId!==op.agentId||wakeup.requestedByActorType!=='agent'||wakeup.requestedByActorId!==r.team.ids.chief||wakeup.payload?.issueId!==task.id)childBootstrapFail('AUTHORITY_CHANGED');
+ if(r.operations.some(value=>value.id!==op.id&&(value.acceptedRunId===run.id||value.retryOfRunId===parent.id||value.retryOfOperationId===op.id)))childBootstrapFail('OPERATION_DENIED');
+ const entry=flow.taskEntries?.find(value=>value.id===task.id),dispatch=entry&&flow.dispatches?.[entry.key];
+ const context={roleOperationId:op.id,issueId:task.id,taskId:task.id,projectId:task.projectId,responsibleUserId:r.ownerId,inputRevision:op.inputRevision};
+ if([ctx.context,run.contextSnapshot,parent.contextSnapshot].some(value=>Object.entries(context).some(([key,expected])=>value?.[key]!==expected)))childBootstrapFail('AUTHORITY_CHANGED');
+ if(!entry||entry.role!==op.role||entry.agentId!==op.agentId||flow.rootTaskId!==rootTask.id||flow.projectId!==task.projectId||flow.summaryRunId||flow.artifacts?.[entry.key]||
+  dispatch?.operationId!==op.id||dispatch.taskId!==task.id||dispatch.inputRevision!==op.inputRevision||
+  !r.lease?.nonce||r.lease.taskId!==task.id||r.lease.projectId!==task.projectId||r.lease.operationId!==op.id||r.lease.nonce!==dispatch.leaseNonce||verifyPhaseLease(r.lease)!==true)childBootstrapFail('FLOW_OR_PHASE_CHANGED');
+ if(op.qualityRepair){const repair=qaRepairStep(flow,entry);
+  if(flow.qaRepair?.nativePrepared!==true||flow.qaRepair.stage!==(op.qualityRepair.phase==='fix'?'fix':'review')||repair?.operationId!==op.id||repair.outputFile!==op.outputFile||!equal(repair.qualityRepair,op.qualityRepair))childBootstrapFail('FLOW_OR_PHASE_CHANGED');
+ }
+ const sameOperationRuns=taskRuns?.filter(value=>value.contextSnapshot?.roleOperationId===op.id);
+ if(!Array.isArray(activeRuns)||activeRuns.length!==1||activeRuns[0].id!==run.id||activeRuns[0].status!=='running'||
+  !Array.isArray(taskRuns)||sameOperationRuns.length!==2||!sameOperationRuns.some(value=>value.id===parent.id)||!sameOperationRuns.some(value=>value.id===run.id)||
+  taskRuns.some(value=>value.companyId!==r.companyId||value.issueId!==task.id||value.id!==run.id&&(!['succeeded','failed','cancelled','timed_out'].includes(value.status)||!ended(value.finishedAt)))||
+  !Array.isArray(leases)||taskRuns.some(value=>value.id!==run.id&&!leases.some(lease=>lease.heartbeatRunId===value.id))||
+  leases.some(value=>value.heartbeatRunId!==run.id&&(!ended(value.releasedAt)||['active','pending_cleanup'].includes(value.status)||value.cleanupStatus==='failed')))childBootstrapFail('EXECUTION_UNSETTLED');
+ const uuid=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
+ if(![op.id,rootTask.id,parent.id,run.id].every(value=>uuid.test(value??''))||!path.isAbsolute(root)||path.normalize(root)!==root||fs.realpathSync(root)!==root||
+  !path.isAbsolute(op.workspaceCwd??'')||path.normalize(op.workspaceCwd)!==op.workspaceCwd||!/^[a-z][a-z0-9-]{0,110}\.(md|json)$/.test(op.outputFile??''))childBootstrapFail('EVIDENCE_UNAVAILABLE');
+ const present=file=>{try{fs.lstatSync(file);return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}};
+ for(const id of [parent.id,run.id])for(const name of ['permits/'+id+'.json','claims/'+id+'.json','results/'+id+'.json','transport/'+id])if(present(path.join(root,name)))childBootstrapFail('PHYSICAL_EVIDENCE_PRESENT');
+ if(['call.lock','operations/'+op.id+'.json','budget/'+rootTask.id+'/'+op.id+'.json'].some(file=>present(path.join(root,file)))||present(path.join(op.workspaceCwd,op.outputFile)))childBootstrapFail('PHYSICAL_EVIDENCE_PRESENT');
+ const slots=fs.readdirSync(path.join(root,'budget',rootTask.id));if(!slots.length||slots.some(name=>!/^[a-f0-9-]{36}\.json$/.test(name))||slots.length>=rootCallLimit(r,rootTask.id))childBootstrapFail('BUDGET_DENIED');
+ log({code:'TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_VALIDATED',runId:run.id,parentRunId:parent.id,operationId:op.id,taskId:task.id,rootTaskId:rootTask.id,spentBeforeCurrent:slots.length});
+ return ctx;
+}
 
 /** Only Native DB columns establish a retry. Caller/model context grants no retry authority. */
 export function validateNativeRoleRetry(f,{settleOnly=false}={}){
