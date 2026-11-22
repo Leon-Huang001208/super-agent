@@ -22,6 +22,8 @@ import {readControl} from './role-control-store.mjs';
 import {assertRolePermitSize} from './role-permit-contract.mjs';
 import {validateTeamCodeCandidate} from './team-plan.mjs';
 import {roleInstructions} from './team-roles.mjs';
+import {getRoleRuntimeProfile} from './role-runtime-profiles.mjs';
+import {validateTaskRuntimeRoute} from './task-runtime-routing.mjs';
 import {renderRoleCapabilitiesMarkdown} from './role-capabilities.mjs';
 import {prepareTeamRoleExecution,teamRoleAdmissionFailure} from './chief-bootstrap-retry.mjs';
 
@@ -31,7 +33,7 @@ const hashReview=value=>/^[a-f0-9]{64}$/.test(value??'');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 /** Only called after the execution wrapper proves it has not entered the provider. */
 export function nativeRolePreflightFailure(error){
- const code=/^(?:NATIVE_ROLE|ROLE_PROJECT|ROLE_CAPABILITY|ROLE_INSTRUCTION|ROLE_MATERIAL|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
+ const code=/^(?:NATIVE_ROLE|TASK_RUNTIME|ROLE_PROJECT|ROLE_CAPABILITY|ROLE_INSTRUCTION|ROLE_MATERIAL|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
  return {exitCode:1,signal:null,timedOut:false,errorCode:code,errorMessage:code,
   resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
 }
@@ -63,6 +65,49 @@ function write(file,value) {
 const log=event=>{
   fs.appendFileSync(ROOT+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});
 };
+export function nativeRoleSafeMeta(meta){
+ const {prompt,context,...safe}=meta??{};
+ const ids={};for(const key of ['issueId','taskId','projectId','responsibleUserId','roleOperationId'])if(typeof context?.[key]==='string')ids[key]=context[key];
+ return{...safe,...(typeof prompt==='string'?{promptSha256:sha(prompt)}:{}),context:ids};
+}
+/** Re-read Native and host receipts: model prose cannot establish a safe handoff. */
+export async function assertNativeTaskRuntimeRoute({registry,role,task,operation,readRun,root=ROOT,
+ readPrivate=json,readBytes=file=>fs.readFileSync(file),artifactRoot}){
+ const current=getRoleRuntimeProfile(role.profile.role,registry.runtimeAssignments);
+ if(registry.runtimeRouting!==undefined&&(registry.runtimeRouting.schemaVersion!==1||registry.runtimeRouting.mode!=='task'))fail('NATIVE_ROLE_TASK_ROUTE_REQUIRED');
+ if(registry.runtimeRouting?.mode!=='task'){
+  if(current.runtime!=='codex')fail('NATIVE_ROLE_TASK_ROUTE_REQUIRED');
+  return current;
+ }
+ if(!operation||!task)fail('NATIVE_ROLE_TASK_ROUTE_REQUIRED');
+ const route=operation.taskRuntimeRoute;
+ const selected=validateTaskRuntimeRoute(route,{taskId:task.id,rootTaskId:operation.rootTaskId??task.id,
+  agentId:role.profile.agentId,role:role.profile.role,operationId:operation.id,inputRevision:taskInputRevision(task)});
+ if(current.id!==selected.id||!(registry.taskRuntimeRoutes??[]).some(item=>item.id===route.id&&JSON.stringify(item)===JSON.stringify(route)))fail('NATIVE_ROLE_TASK_ROUTE_CHANGED');
+ if(!route.handoff)return selected;
+ const handoff=route.handoff,previous=(registry.taskRuntimeRoutes??[]).find(item=>item.id===handoff.previousRouteId);
+ const fromAgentId=handoff.fromAgentId??route.agentId,fromRole=handoff.fromRole??route.role;
+ const sourceRole=registry.agents.find(entry=>entry.profile.agentId===fromAgentId&&entry.profile.role===fromRole);
+ const sourceOperation=registry.operations?.find(item=>item.id===previous?.operationId&&item.taskId===task.id&&item.agentId===fromAgentId&&item.role===fromRole);
+ if(!previous||!sourceRole||previous.profileId!==handoff.fromProfileId||previous.taskId!==task.id||previous.rootTaskId!==route.rootTaskId||previous.agentId!==fromAgentId||previous.role!==fromRole||
+  !sourceOperation||(sourceOperation.projectId??sourceRole.profile.projectId)!==task.projectId||handoff.handoffKind==='role-transfer'&&task.assigneeAgentId!==route.agentId)fail('NATIVE_ROLE_HANDOFF_BINDING_DENIED');
+ const run=await readRun(handoff.fromRunId),record=readPrivate(root+'/operations/'+previous.operationId+'.json');
+ if(!run||run.id!==handoff.fromRunId||run.issueId!==task.id||run.agentId!==fromAgentId||run.companyId!==registry.companyId||run.status!=='succeeded'||!run.finishedAt||record.runId!==run.id||record.taskId!==task.id||record.agentId!==fromAgentId)fail('NATIVE_ROLE_HANDOFF_RESULT_UNKNOWN');
+ const directory=root+'/transport/'+run.id,transport=readPrivate(directory+'/result.json');
+ if(transport.runId!==run.id||transport.exitCode!==0||transport.signal!==null||transport.timedOut||transport.cancelled||transport.outputUnknown)fail('NATIVE_ROLE_HANDOFF_RESULT_UNKNOWN');
+ for(const name of ['process-cleanup.json','broker-process-cleanup.json'])if(readPrivate(directory+'/'+name).status!=='terminated')fail('NATIVE_ROLE_HANDOFF_EXECUTION_OPEN');
+ for(const stream of ['stdout','stderr'])if(sha(readBytes(directory+'/'+stream))!==transport[stream+'Sha256'])fail('NATIVE_ROLE_HANDOFF_EVIDENCE_CHANGED');
+ const budgetDirectory=root+'/budget/'+route.rootTaskId,budget=fs.readdirSync(budgetDirectory);
+ if(budget.length<handoff.budgetUsedBefore||!budget.includes(previous.operationId+'.json'))fail('NATIVE_ROLE_HANDOFF_BUDGET_CHANGED');
+ const cwd=artifactRoot??'/paperclip/instances/default/projects/'+registry.companyId+'/'+role.profile.projectId+'/_default';
+ for(const ref of [...handoff.artifacts,handoff.material]){
+  const filename=path.join(cwd,ref.file);let cursor=cwd;
+  for(const component of ref.file.split('/')){cursor=path.join(cursor,component);const stat=fs.lstatSync(cursor);if(stat.isSymbolicLink()||cursor!==filename&&!stat.isDirectory())fail('NATIVE_ROLE_HANDOFF_EVIDENCE_CHANGED');}
+  const stat=fs.lstatSync(filename);
+  if(!stat.isFile()||stat.nlink!==1||stat.size>1048576||sha(readBytes(filename))!==ref.sha256)fail('NATIVE_ROLE_HANDOFF_EVIDENCE_CHANGED');
+ }
+ return selected;
+}
 /** Optional root/readiness ports are management tests, never adapter context fields. */
 export function registered(agentId,{root=ROOT,assertInstructionsReady=assertRoleInstructionsReady}={}) {
   let registry;
@@ -73,8 +118,9 @@ export function registered(agentId,{root=ROOT,assertInstructionsReady=assertRole
   assertInstructionsReady({companyId:registry.companyId,agentId});
   return {registry,role};
 }
-let connection;
+let connection,managementDatabase;
 export async function database() {
+  if(managementDatabase)return managementDatabase();
   if(connection)return connection;
   const password=fs.readFileSync('/paperclip/secrets/postgres-password','utf8').trim();
   const schema=await import(PKG+'/@paperclipai/db/dist/index.js');
@@ -244,12 +290,21 @@ export async function assertNativeRoleStart({registry,binding,operation,task,roo
     audit({code:'NATIVE_ROLE_START_GUARD_PASSED',taskId:binding.taskId,rootTaskId:rootTask.id,runId:binding.runId});
   }catch(error){const code=/^NATIVE_ROLE_START_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_START_CONTROL_DENIED';audit({code,taskId:binding?.taskId,runId:binding?.runId});fail(code);}
 }
-export async function installNativeRoles() {
+/** Management-only ports let an isolated Native database exercise this exact adapter path. */
+export async function installNativeRoles({database:databasePort,admissionFile='/paperclip/control/admission.sqlite'}={}) {
   if(process.env.SUPER_AGENT_ROLE_RUNTIME_ENABLED!=='true')return;
+  if(databasePort!==undefined&&typeof databasePort!=='function'||!path.isAbsolute(admissionFile))fail('NATIVE_ROLE_CONFIGURATION_INVALID');
+  const previousDatabase=managementDatabase;if(databasePort)managementDatabase=databasePort;
   const registry=await import(PKG+'/@paperclipai/server/dist/adapters/index.js');
   const utils=await import(PKG+'/@paperclipai/adapter-utils/dist/server-utils.js');
-  const original=registry.getServerAdapter('codex_local');
+  const originals=[];
+  const configured=fs.existsSync(ROOT+'/registry.json')?json(ROOT+'/registry.json'):null;
+  if(configured?.runtimeAssignments!==undefined)getRoleRuntimeProfile('chief',configured.runtimeAssignments);
+  const types=['codex_local',...(configured?.runtimeAssignments!==undefined?['opencode_local','claude_local']:[])];
+  for(const adapterType of types){
+  const original=registry.getServerAdapter(adapterType);
   if(!original?.execute||!original.testEnvironment)fail('NATIVE_ROLE_ADAPTER_UNAVAILABLE');
+  originals.push(original);
   registry.registerServerAdapter({...original,
     async execute(ctx) {
       if(ctx.config?.env?.SUPER_AGENT_ROLE_ENABLED!=='true')return original.execute(ctx);
@@ -282,12 +337,14 @@ export async function installNativeRoles() {
         if(role.profile.role==='qa'&&operation?.reviewedArtifacts){
           for(const ref of operation.reviewedArtifacts){const[reviewed]=await db.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,ref.runId));if(!reviewed||reviewed.status!=='succeeded'||reviewed.agentId===ctx.agent.id||reviewed.companyId!==r.companyId||reviewed.issueId!==ref.taskId)fail('NATIVE_ROLE_INDEPENDENT_REVIEW_DENIED');}
         }
+        await assertNativeTaskRuntimeRoute({registry:r,role,task:issue,operation,
+          readRun:async id=>(await db.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,id)))[0]});
         const active=await db.select({id:s.heartbeatRuns.id}).from(s.heartbeatRuns)
           .where(o.inArray(s.heartbeatRuns.status,['running','queued','scheduled_retry']));
         if(!operation||active.some(x=>x.id!==ctx.runId)||!issue||!run||!agent||!r.tasks.includes(issue.id)||issue.companyId!==r.companyId||
            issue.projectId!==(operation.projectId??role.profile.projectId)||
            issue.responsibleUserId!==r.ownerId||issue.assigneeAgentId!==agent.id||run.agentId!==agent.id||run.companyId!==r.companyId||
-           run.responsibleUserId!==r.ownerId||run.issueId!==issue.id||run.status!=='running'||agent.adapterType!=='codex_local')fail('NATIVE_ROLE_DATABASE_BINDING_DENIED');
+           run.responsibleUserId!==r.ownerId||run.issueId!==issue.id||run.status!=='running'||agent.adapterType!==getRoleRuntimeProfile(role.profile.role,r.runtimeAssignments).adapterType||agent.adapterType!==adapterType)fail('NATIVE_ROLE_DATABASE_BINDING_DENIED');
         let material={materialRoot:ROOT+'/materials',manifest:role.manifest};
         if(originalRegistration.role.materialRoot){
           const[workingCopy]=await db.select().from(s.agentInstructionWorkingCopies).where(o.and(o.eq(s.agentInstructionWorkingCopies.companyId,r.companyId),o.eq(s.agentInstructionWorkingCopies.runId,ctx.runId)));
@@ -324,7 +381,10 @@ export async function installNativeRoles() {
         const {effectiveCapabilities,authorizedHostActions}=restrictNativeRoleAuthority({registry:r,task:issue,projectContext,
           effectiveCapabilities:resolveRoleCapabilities({role:role.profile.role,additionalCapabilities:capabilityRequests,projectContext,toolCatalog:catalog?.result?.tools??[],agent,companySkills,companySkillVersions}),
           authorizedHostActions:operation.authorizedHostActions??[],toolCatalog:catalog?.result?.tools??[],log});
-        return {binding:{companyId:r.companyId,projectId:issue.projectId,taskId:issue.id,agentId:agent.id,runId:run.id,
+        const runtimeProfile=getRoleRuntimeProfile(role.profile.role,r.runtimeAssignments);
+        const apiCredentialRef=runtimeProfile.runtime!=='codex'?agent.adapterConfig?.env?.SUPER_AGENT_ROLE_PROVIDER_API_KEY:undefined;
+        if(runtimeProfile.runtime!=='codex'&&(apiCredentialRef?.type!=='secret_ref'||!/^[-a-f0-9]{36}$/.test(apiCredentialRef.secretId??'')))fail('NATIVE_ROLE_API_CREDENTIAL_REF_DENIED');
+        return {runtimeAssignments:r.runtimeAssignments,taskRuntimeRoute:operation.taskRuntimeRoute,apiCredentialRef,binding:{companyId:r.companyId,projectId:issue.projectId,taskId:issue.id,agentId:agent.id,runId:run.id,
           ...roleProjectWorkspaceBinding({task:issue,projectContext,contextVersion:resolved.contextVersion}),
           ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:{...role.profile,projectId:issue.projectId,projectKey:resolved.contextVersion===1?role.profile.projectKey:projectContext.key},...material,
           projectContext,capabilityRequests,effectiveCapabilities,authorizedHostActions,networkScope:operation.networkScope,resourceScope:operation.resourceScope,codeCandidate:operation.codeCandidate,codeReview:operation.codeReview,
@@ -340,7 +400,7 @@ export async function installNativeRoles() {
         const [issue]=await db.select().from(s.issues).where(o.eq(s.issues.id,r.binding.taskId));
         return {...r.binding,revision:sha(JSON.stringify({updatedAt:issue.updatedAt,description:issue.description})),
           projectKey:r.profile.projectKey,role:r.profile.role,runState:'authorized',sessionId:ctx.runtime?.sessionId??null,
-          dispatchMode:'controlled',model:ctx.config.model,reasoningEffort:ctx.config.modelReasoningEffort};
+          dispatchMode:'controlled',model:ctx.config.model,reasoningEffort:ctx.config.modelReasoningEffort??null};
       };
       const prepareRole=createRolePreparation({readContext,readKnowledge:async request=>{const current=await readRegistration();
         if(current.contextVersion!==1)return json(ROOT+'/knowledge.json').records;
@@ -350,7 +410,7 @@ export async function installNativeRoles() {
       const knownUnstarted=result=>{
         if(result?.signal||result?.timedOut||result?.exitCode===0||fs.existsSync(ROOT+'/claims/'+ctx.runId+'.json'))return false;
         return String(gateStderr||result?.stderr||result?.resultJson?.stderr||'').split('\n').some(line=>{
-          try{const e=JSON.parse(line);return /^ROLE_GATE_[A-Z_]+$/.test(e.code??'')&&e.claimed===false;}catch{return false;}
+          try{const e=JSON.parse(line);return /^ROLE_(?:(?:OPENCODE|CLAUDE)_)?GATE_[A-Z_]+$/.test(e.code??'')&&e.claimed===false;}catch{return false;}
         });
       };
       const wrapped=createNativeRoleAdapter({readRegistration,prepareRole,log,basePromptTemplate:utils.DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
@@ -358,7 +418,8 @@ export async function installNativeRoles() {
           const r=await readRegistration(),file=checked.config.instructionsFilePath;
           const execution=nativeRoleArtifactExecution(checked,r,{log}),executionCwd=execution.config.cwd;
           fs.mkdirSync(executionCwd,{recursive:true});
-          const grantId=grantFor(checked.config.env?.CODEX_HOME,r.binding.companyId);
+          const runtimeProfile=getRoleRuntimeProfile(r.profile.role,r.runtimeAssignments),api=runtimeProfile.runtime!=='codex';
+          const grantId=api&&!checked.config.env?.CODEX_HOME?randomUUID():grantFor(checked.config.env?.CODEX_HOME,r.binding.companyId);
           if(r.contextVersion===1){
             const currentRegistry=registered(ctx.agent.id).registry;
             const currentOperation=currentRegistry.operations.find(x=>x.id===ctx.context.roleOperationId&&x.kind==='run'&&x.taskId===r.binding.taskId&&x.agentId===r.binding.agentId);
@@ -375,8 +436,12 @@ export async function installNativeRoles() {
           const required=r.manifest.files.find(x=>path.join(r.materialRoot,x.path)===file);
           if(!required||sha(fs.readFileSync(file))!==required.sha256)fail('NATIVE_ROLE_MATERIAL_CHANGED');
           const approvedOperation=registered(ctx.agent.id).registry.operations.find(x=>x.id===ctx.context.roleOperationId);
+          let apiSecretFile;
           const permit=assertRolePermitSize({schemaVersion:1,...r.binding,credentialGrantId:grantId,role:r.profile.role,
-            model:'gpt-6.1-sol',reasoningEffort:'low',apiFallback:false,expiresAt:Date.now()+300000,cwd:executionCwd,
+            model:runtimeProfile.model,reasoningEffort:runtimeProfile.reasoningEffort,apiFallback:false,
+            ...(r.runtimeAssignments!==undefined?{runtimeProfileId:runtimeProfile.id,credentialKind:runtimeProfile.credentialKind}:{}),
+            ...(r.taskRuntimeRoute?{taskRuntimeRouteId:r.taskRuntimeRoute.id}:{}),
+            expiresAt:Date.now()+300000,cwd:executionCwd,
             ...(r.profile.executionPolicy?{executionPolicy:r.profile.executionPolicy}:{}),
             instructionsFilePath:file,materialSha256:required.sha256,materialRoot:r.materialRoot,materialFiles:r.manifest.files,
             rootTaskId:r.rootTaskId,projectContext:r.projectContext,additionalCapabilities:r.capabilityRequests,effectiveCapabilities:r.effectiveCapabilities,
@@ -392,8 +457,18 @@ export async function installNativeRoles() {
           }else write(operationFile,{operationId:ctx.context.roleOperationId,runId:ctx.runId,taskId:r.binding.taskId,agentId:r.binding.agentId});
           write(ROOT+'/permits/'+ctx.runId+'.json',permit);
           const operation=registered(ctx.agent.id).registry.operations.find(x=>x.kind==='run'&&x.role===r.profile.role&&x.id===ctx.context.roleOperationId&&x.taskId===r.binding.taskId&&x.agentId===r.binding.agentId);
-          return withRoleCall({registry:registered(ctx.agent.id).registry,operation,log,
-            perform:async()=>{nativeEntered=true;const result=await original.execute({...execution,onLog:async(stream,chunk)=>{
+          try{
+            if(api){
+              const apiKey=checked.config.env?.SUPER_AGENT_ROLE_PROVIDER_API_KEY;
+              if(typeof apiKey!=='string'||!apiKey.trim())fail('NATIVE_ROLE_API_CREDENTIAL_REQUIRED');
+              fs.mkdirSync(ROOT+'/runtime-secrets',{recursive:true,mode:0o700});
+              const filename=ROOT+'/runtime-secrets/'+ctx.runId+'.json';
+              write(filename,{runId:ctx.runId,runtimeProfileId:runtimeProfile.id,apiKey});apiSecretFile=filename;
+              const {SUPER_AGENT_ROLE_PROVIDER_API_KEY:_privateKey,OPENCODE_CONFIG:_authMarker,CLAUDE_CONFIG_DIR:_claudeMarker,...safeEnvironment}=execution.config.env??{};
+              execution.config={...execution.config,env:safeEnvironment};
+            }
+            return await withRoleCall({registry:registered(ctx.agent.id).registry,operation,log,
+            perform:async()=>{nativeEntered=true;const result=await original.execute({...execution,onMeta:async meta=>checked.onMeta?.(nativeRoleSafeMeta(meta)),onLog:async(stream,chunk)=>{
                 if(stream==='stderr'&&gateStderr.length<8192)gateStderr+=String(chunk).slice(0,8192-gateStderr.length);
                 return checked.onLog(stream,chunk);
               }});
@@ -410,7 +485,8 @@ export async function installNativeRoles() {
                 });
               }});
             },
-            completed:result=>(result?.exitCode===0&&!result.signal&&!result.timedOut&&!result.errorCode)||knownUnstarted(result)});
+            completed:result=>(result?.exitCode===0&&!result.signal&&!result.timedOut&&!result.errorCode)||knownUnstarted(result)},{root:ROOT,admissionFile});
+          }finally{if(apiSecretFile&&fs.existsSync(apiSecretFile))fs.unlinkSync(apiSecretFile);}
         }});
       try{return await wrapped(ctx);}
       catch(error){
@@ -422,7 +498,17 @@ export async function installNativeRoles() {
       const agentId=input.config?.env?.SUPER_AGENT_ROLE_AGENT_ID;
       if(input.config?.env?.SUPER_AGENT_ROLE_ENABLED!=='true'||!agentId)return original.testEnvironment(input);
       const {role,registry:r}=registered(agentId);
-      if(input.companyId!==r.companyId||input.config.model!=='gpt-6.1-sol'||role.profile.agentId!==agentId)fail('NATIVE_ROLE_PROBE_SCOPE_DENIED');
+      const runtimeProfile=getRoleRuntimeProfile(role.profile.role,r.runtimeAssignments);
+      if(input.companyId!==r.companyId||input.config.model!==runtimeProfile.model||role.profile.agentId!==agentId)fail('NATIVE_ROLE_PROBE_SCOPE_DENIED');
+      if(runtimeProfile.runtime!=='codex'){
+        const catalog=json(ROOT+'/host-runtime-catalog.json');
+        if(catalog.hostPlatform!=='darwin'||catalog.expiresAt<=Date.now())fail('NATIVE_ROLE_PROBE_SCOPE_DENIED');
+        const observed=runtimeProfile.runtime==='claude'?catalog.claude:catalog.opencode;
+        if(!observed?.version)fail('NATIVE_ROLE_PROBE_SCOPE_DENIED');
+        return {adapterType:runtimeProfile.adapterType,status:'warn',testedAt:new Date().toISOString(),checks:[
+          {level:'info',code:'ROLE_HOST_CLI_OBSERVED',message:runtimeProfile.runtime+' host CLI '+observed.version+' observed'},
+          {level:'warn',code:'ROLE_NATIVE_TASK_REQUIRED',message:'Real model/tool readiness is established only by the separately authorized Native task acceptance.'}]};
+      }
       if(input.config.modelReasoningEffort!=='low')fail('NATIVE_ROLE_PROBE_SCOPE_DENIED');
       const operation=r.operations?.find(x=>x.kind==='probe'&&x.agentId===agentId);
       if(!operation)fail('NATIVE_ROLE_PROBE_OPERATION_DENIED');
@@ -439,4 +525,8 @@ export async function installNativeRoles() {
         }});
 
     }});
+  }
+  return ()=>{for(const original of originals)registry.registerServerAdapter(original);managementDatabase=previousDatabase;};
 }
+
+export const installNativeRoleRuntime=installNativeRoles;

@@ -1,5 +1,15 @@
 # 运行维护与恢复
 
+## 多 Runtime 候选的操作边界
+
+本轮仅准备[任务级模型隔离候选](plans/task-runtime-routing.md)。使用独立Native测试数据库、company/project、控制根、材料和产物，不往现生产公司追加测试Agent，不重跑生产team初始化，也不启用第二个调度器或飞书监听。生产共享写窗口仍归当前负责人；源码、离线检查及隔离模型回执均不能授权生产部署。
+
+API Key原件与临时控制侧工作副本须留本机内盘受限控制区或受控容器内存，目录/文件分别0700/0600；不写Git、模型提示或普通日志。Native使用`secret_ref`，`SUPER_AGENT_ROLE_PROVIDER_API_KEY`仅供控制侧读取并在调用stock OpenCode前剥离。Agent固定的`OPENCODE_CONFIG` marker不含真实Key，只解决Native凭据优先级；真正Host配置按run生成，客户端仅得到opaque key、loopback HTTPS和本run CA。沿原预算及结束证明退休工作副本，未知结果先核对原操作，不换Key/模型重跑。
+
+可信Chief/Controller在task开始或明确handoff边界绑定唯一执行负责人及模型/Runtime，普通任务无需用户手动切换。handoff需前run succeeded、transport成功、实际模型与broker进程组闭合；保全旧版本产物和预算字节，保持同task/root、新operation/run和fresh session。取消、超时、未知执行、身份/输入/产物/计数漂移均拒绝切换。生产仍固定旧12岗源码；自动调度M2/UI/Cloud Apps、完整13岗业务与登录恢复不得据候选配置称已上线。
+
+新增Full Stack Engineer的13岗[候选迁移](plans/full-stack-engineer.md)须保留原12 Agent/职责/汇报，完整登记新角色、company desiredSkills/currentVersion、Managed材料/CAS、registry/catalog及对应执行器。旧12岗五次成功模型证据留原source；不为新源码重跑旧成功步骤，不自动将其加入新pool。不在生产旧12执行器下先添加paused占位，也不使用首次team-configure/bootstrap代替保留式迁移。本轮源模板/无模型测试与实际Native迁移、业务验收分别留证。
+
 ## 已登记子任务的受控入口拒绝
 
 修复已有queued retry的运行源时，queued不称为空闲。限定维护须证明仅有本次原队列行和匹配预留phase、未启动物理执行且无其他写者；保持team派发关闭，直到正常App、host、飞书入口、source pin与完整Native/材料/预算保全核验完成。最后恢复team后，由同一协调器自然消费已获授权的原queued行；不重复调用retry-now，也不为继续比较旧行摘要而停止已启动模型。

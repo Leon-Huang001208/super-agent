@@ -1,5 +1,13 @@
 # Team roles
 
+## 任务级模型候选，不改变组织身份
+
+本轮按用户最新决定形成下列13岗候选：新增Full Stack Engineer，原12岗身份、职责及汇报保持，不重建生产Agent。生产仍固定旧12岗源码，第13岗须与新执行器、公司Skills、资料和Native名册同批迁移，不能在旧12岗执行器下先放paused占位。Chief Coordinator、Product Manager、Software Architect和独立Quality Assurance Engineer优先保留Codex会员，本切片固定Codex；执行岗位按本任务复杂度、风险和用途选择，不永久绑定某个模型。
+
+复杂、高风险或未知任务保守用Codex；routine且low-risk的执行默认MiniMax，合适的research/cross-check默认DeepSeek。策略由可信Controller或经验证的Chief结构化计划调用，显式冲突拒绝，不自动fallback。`runtimeAssignments`只描述当前绑定快照，初始全Codex不表示执行岗永久偏好；新任务材料使用`roleInstructions(...,{taskRuntimeRouting:true})`描述任务绑定，不把model名写成岗位永久职责。
+
+切换限任务开始或原run已知成功且执行闭合后的明确handoff，保留同task/root、原产物、累计预算、检查和fresh session。模型选择不变更Skills、权限或危险操作授权。详见[候选合同](plans/task-runtime-routing.md)。原12岗首批五次成功Native运行及CSV证据保留原源码归属，不能自动证明13岗候选；本轮生产激活及完整13岗业务仍未验证。
+
 ## 当前质量与预算合同
 
 12岗在真实任务中按[持续迭代](agent-iteration.md)完善。普通原根默认20次，历史显式12次及QA专项按可信绑定保留；Owner可受管登记原根20次，已用计数不重置，每run64 responses与最多两轮质量返修保留。普通成功QA的NEEDS_WORK回同一执行子任务，修复后独立QA重验新候选；原QA历史不可覆写。下方2026-11-19及早期M1的固定六次/Docker描述仅保留该批证据范围，当前业务模型位置以Mac原生执行策略为准。
@@ -10,11 +18,13 @@
 
 现役材料的岗位修订以`assets/role-profiles/<role>/AGENTS.md`和`CAPABILITIES.md`为可审查模板，专业Skill通过带摘要的方法包提供。各岗说明完整列出输入、职责、协作、步骤、工具触发、交付物和完成/失败标准；Tool即工具，Skill是方法，Apps/插件提供连接与能力。
 
+候选岗位的公共执行合同要求：长资料按所需范围分段读完整，输出截断本身不是可用资料的阻塞；在已有授权和原预算内持续到本岗done条件或可定位真实blocker，不以“本轮未完成”自然退出。交接分别列实际完成、待做和具体阻塞，有限PoC/合成测试不能提升为全局完成。默认与task-routing材料都适用，不新增模型授权、不扩预算或隐式重试未知操作；旧run材料SHA和生产在途配置保持原样，新run按实际材料字节重新绑定。
+
 共同基础能力包含项目材料读取、shell/patch、公开来源读取与证据记录。Research优先检索/文档，PM优先产品/KPI，Designer优先Figma/设计审查，Architect负责边界与取舍，前后端分别实现，QA独立评审，Ops使用受管交付及服务工具，Network/Resources使用真实宿主工具。Chief可随已授权任务补充其他岗位能力，项目和任务约束继续适用。
 
 通用正文不写某个业务仓库或主机磁盘身份。RWB限制随对应项目加载；宿主身份、路径和可用工具随宿主上下文提供。模型权限由Native许可、broker及宿主执行入口实施，不由AGENTS自授。源码模板、磁盘发布、新任务加载、真实调用分别验收，见[能力实施计划](plans/role-capabilities.md)。下方带日期的M1登记/验证保留原时点含义。
 
-本人已确认原11岗，并于2026-11-20授权增加Document Specialist；以下为12岗源码定义，Native是否已登记及ready须另看本次回执。显示名使用完整英文、Title Case及空格。原11岗的ID、任务、会话及历史保持，不因扩展名册重建；不增加CTO、CMO、COO或DBA。
+本人先确认原11岗、于2026-11-20授权增加Document Specialist，并于2026-11-22明确新增Full Stack Engineer；以下为13岗候选源码定义。Native登记及ready须另看本次回执；显示名使用完整英文、Title Case及空格。原12岗的ID、任务、会话及历史保持，不因扩展名册重建；不增加CTO、CMO、COO或DBA。
 
 | Display name | Reports to | Deliverable |
 |---|---|---|
@@ -30,6 +40,9 @@
 | Network Engineer | Chief Coordinator | 网络、设备、网关、DNS/TLS、Tailscale/UpNet/ShadowRocket |
 | System Resource Engineer | Chief Coordinator | 内盘/两个外盘、卷身份/容量、RAM/Swap、CPU/I/O及资源预算 |
 | Document Specialist | Chief Coordinator | 常见文本/数据交换/标记文档、LaTeX/BibTeX及Office/PDF制作与转换、结构/编译/渲染验证、文件和交接清单 |
+| Full Stack Engineer | Software Architect | 有界小功能、简单前后端联动、Bug修复与测试，端到端代码、实际检查和独立QA交接 |
+
+Chief先选全栈或专业岗位的唯一执行负责人，再分别选择已验收模型与Runtime；不对同一页面/API范围重复派全栈与前后端。Full Stack Engineer默认优先承担routine且low-risk的小功能、联动和Bug+tests，MiniMax优先、DeepSeek按需；复杂、高风险或未知时由可信Controller使用Codex或明确交专业岗，沿同task/root保留原产物、预算和证据。该岗仅组合本岗/Frontend/Backend开发测试能力，无DevOps发布、网络/资源或root新权限，仍交独立QA；完整Skills、资料及迁移合同见[全栈候选](plans/full-stack-engineer.md)。
 
 Document Specialist接收任务指定的源文件、内容和交付要求，覆盖TXT/LOG、CSV/TSV、JSON/JSONL、YAML/YML、XML、TOML/INI、Markdown/reST/HTML文档、LaTeX/BibTeX及既有Excel/Word/PPT/PDF。默认保留原件并输出新版本；格式允许时保留编码、BOM、换行、类型、键顺序、注释和元数据，转换差异明确交接，不静默丢失数据。这是代表格式，实际工具和文件可解析性仍须核对。语法/schema有效、内容正确、LaTeX实际编译、公式重算和渲染分别提供证据；依赖缺失写明NOT_RUN并交付可编辑源文件。
 
@@ -41,7 +54,7 @@ Research→Product Manager是成果交接，不是上下级关系。跨职责对
 
 代码清单定义在bridge/team-roles.mjs、bridge/role-labels.mjs；Native实际记录、材料、执行配置和reportsTo必须另行核验。源码和组织图均不能代替角色真实运行、Chief分派、交接或飞书通知。当前Native登记/启用和业务闭环仍在实施，最终按实际回执更新。
 
-取消每日新任务数量硬上限，同时保留全局单任务执行、固定订阅、模型调用/修复预算及未知结果核对。前端和后端分开，向架构岗位汇报；独立质量岗位直接向Chief汇报。
+取消每日新任务数量硬上限，同时保留全局单任务执行、会员与受信任务绑定、模型调用/修复预算及未知结果核对。前端和后端专业岗保持分开，全栈承担有界联动，三者向Architect汇报；独立质量岗位直接向Chief汇报。
 
 ## Native登记及环境验证，2026-11-19
 

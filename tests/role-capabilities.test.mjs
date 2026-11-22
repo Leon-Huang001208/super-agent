@@ -148,6 +148,10 @@ test('catalog discovery cannot certify connection, action or business acceptance
 test('RWB release is a DevOps candidate and is never inherited through role composition',()=>{
  assert.ok(resolveRoleCapabilities({role:'devops'}).hostAllowedTools.includes('host.rwb_release'));
  for(const role of ROLE_KEYS.filter(role=>role!=='devops')){
+  if(role==='full-stack-engineer'){
+   assert.throws(()=>resolveRoleCapabilities({role,additionalCapabilities:['devops'],toolCatalog:[{name:'host.rwb_release'}]}),/ROLE_CAPABILITY_SCOPE_DENIED/);
+   continue;
+  }
   const result=resolveRoleCapabilities({role,additionalCapabilities:['devops'],toolCatalog:[{name:'host.rwb_release'}]});
   assert.ok(!result.hostAllowedTools.includes('host.rwb_release'),role);
   assert.ok(!result.evidence.tools.some(tool=>tool.name==='host.rwb_release'),role);

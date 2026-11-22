@@ -1,5 +1,11 @@
 # 文档治理与自动检查
 
+## 任务级多 Runtime 候选同步
+
+固定profile、任务选型与同任务handoff、Native/OpenCode适配及provider broker、隔离验收runner同步[候选合同](plans/task-runtime-routing.md)、项目规则、架构、开发地图、岗位、运维和验收手册。治理清单为这些路径增加专题映射，保留原通用/基线映射，不用nonCode或历史快照绕过更新要求。
+
+文档必须区分现有绑定快照、任务选择策略、离线回归、真实隔离模型与生产部署。原12岗五次成功Native运行及CSV证据保留原source；新增[Full Stack Engineer](plans/full-stack-engineer.md)后的13岗源码、严格roster、职责/Skills/权限、原12身份保持、同批Native迁移与新业务验收分别记录，旧PASS不自动升级新组合池。根任务填精确回执仍不得推导自动调度M2/UI/Cloud Apps或13岗业务全部通过。其它历史章节按原时点读取。
+
 Native HTTPS 与首计划恢复同时同步[专题合同](plans/native-https-recovery.md)、架构、开发地图、运维与验收说明。TLS 信任/ready、第二次 Native Chief retry、旧失败归档观察和实际剩余预算提示是同一恢复链的不同证据；未完成真实验收时保留 NOT_RUN，不能从无模型 TLS 或 CI 通过推定已恢复计划。
 
 本轮文档岗仅更新当前角色定义与接入合同，不批量改写历史11岗日期快照；真实Native登记、模型环境验证、工具文件验证分别留证。原中文字体导出失败及后续修复保留，避免只凭包安装宣称可用。

@@ -1,5 +1,15 @@
 # 受控真实验收手册
 
+## 任务级多 Runtime：仅隔离candidate
+
+本轮验收按[候选合同](plans/task-runtime-routing.md)及[13岗全栈合同](plans/full-stack-engineer.md)，保持生产旧12岗固定源码、身份、权限、资料和调度不动。先验证可信任务策略：Chief先选全栈或专业岗位的唯一执行范围，再选模型/Runtime；核心Chief/PM/Architect/独立QA固定Codex，复杂/高风险/unknown保守Codex，低风险routine执行可选MiniMax，合适research/cross-check可选DeepSeek。显式profile冲突拒绝，current-binding snapshot不构成新任务选型授权。
+
+真实验收必须进入实际安装的Native任务/run与adapter，再由Mac原生CLI执行；独立CLI小样、固定文档模拟、环境检测或退出0不能替代该证据。计划限定routine Backend/MiniMax、同一个Backend task中显式handoff到Codex、Research/DeepSeek、PM/Codex及独立QA/Codex。保全Native/task/root/operation/run、provider/model、真实工具/产物/测试与usage；未报告费用或子工具退出码保持未知，不伪造数值。
+
+handoff前须已知成功并确认模型与broker执行闭合，版本化旧产物和累计预算，后run使用fresh session，保持同task/root且不重置计数。负例覆盖core/risk冲突、unknown、跨task/root/Agent、活动或超时/未知执行、产物/计数漂移、错误token/模型/path/CA、取消和响应上限；不为验收故意破坏生产产品。
+
+原12岗五次成功Native模型及CSV结果保留原源码证据，最终读回/收尾仅由根任务按原精确回执填写，不重跑成功模型。新增Full Stack Engineer后，新13源码与Native名册/公司Skills/材料/registry/catalog必须同批迁移；原12 Agent身份及历史摘要保持，旧PASS不自动授权新源码组合池。新全栈真实小功能/前后端流或Bug+tests、独立QA及复杂升档/专业岗责任交接须另验，保持同task/root、原产物和累计预算。生产配置、自动调度M2/UI/Cloud Apps、13岗完整业务、重启恢复和生产切换仍未验证。
+
 queued retry续接须另验协调器整tick：原operation的初始wake指向attempt0，而唯一queued attempt2的`retryOfRunId`指向attempt1时，只能按Native记录的直接父行选择并消费原attempt2一次。父行缺失/错scope、非唯一或scheduled队列、DB失败均不启动；不能用纯binder测试代替队列到binder的衔接验证。
 
 ## 20次与同根开发续接验收

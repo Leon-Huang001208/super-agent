@@ -5,6 +5,7 @@ import{CHIEF_DISPATCH_PROTOCOL}from'./team-plan.mjs';
 import {validateRootCallBudget} from './native-role-budget.mjs';
 import {rwbReleaseTimeoutPolicy} from './rwb-release.mjs';
 import {nativeRoleArtifactTarget} from './role-project-context.mjs';
+import {getRoleRuntimeProfile} from './role-runtime-profiles.mjs';
 
 export const NATIVE_ROLE_MANAGED_ARGS = Object.freeze(['--sandbox', 'workspace-write']);
 export const NATIVE_ROLE_EXTRA_ARGS = Object.freeze(['--sandbox', 'workspace-write',
@@ -25,7 +26,7 @@ If any required acceptance evidence is missing or a required check failed, use N
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 
 /**
- * Wrap the existing Paperclip codex_local execute function.
+ * Wrap the existing Paperclip execute function for the registered runtime.
  * The caller resolves the profile from trusted project/Agent registration.
  * Native owns run creation, subscription resolution and session persistence.
  */
@@ -42,6 +43,32 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
       const { binding, profile } = registration ?? {};
       const config = original.config;
       const native=isMacNative(profile),managedArgs=roleAdapterArgs(profile);
+      let runtimeProfile;
+      try{runtimeProfile=getRoleRuntimeProfile(profile?.role,registration?.runtimeAssignments);}
+      catch(error){if(/^ROLE_RUNTIME_[A-Z_]+$/.test(error?.code??''))fail('NATIVE_ROLE_SCOPE_DENIED');throw error;}
+      const opencode=runtimeProfile.runtime==='opencode';
+      const claude=runtimeProfile.runtime==='claude',api=opencode||claude;
+      // Legacy callers keep their existing Codex preparation contract. Explicit runtime registration binds both sides.
+      const profileBound=profile?.engine===runtimeProfile.adapterType&&
+        (registration.runtimeAssignments===undefined&&!api||profile?.model===runtimeProfile.model&&
+          (runtimeProfile.reasoningEffort===null?profile?.reasoningEffort==null:profile?.reasoningEffort===runtimeProfile.reasoningEffort));
+      const effortBound=runtimeProfile.reasoningEffort===null?config?.modelReasoningEffort==null:config?.modelReasoningEffort===runtimeProfile.reasoningEffort;
+      const argumentsBound=api?isDeepStrictEqual(config?.extraArgs,[])&&
+        (config?.args===undefined||isDeepStrictEqual(config.args,[]))&&
+        (config?.variant===undefined||config.variant==='')&&
+        (!claude||config?.maxTurnsPerRun===64&&!config?.chrome&&(config?.effort===undefined||config.effort==='')):isDeepStrictEqual(config?.extraArgs,managedArgs);
+      const executionBound=api?native&&profile?.dangerouslySkipPermissions===native&&profile?.sandbox==='none'&&
+        config?.dangerouslySkipPermissions===native&&!config?.dangerouslyBypassApprovalsAndSandbox&&
+        !config?.dangerouslyBypassSandbox&&!config?.search:
+        config?.dangerouslyBypassApprovalsAndSandbox===native&&config?.dangerouslyBypassSandbox===native&&config?.search===true;
+      // Native auth precedence uses this controller marker; the host executor supplies the actual private client config later.
+      const marker=opencode?config?.env?.OPENCODE_CONFIG:claude?config?.env?.CLAUDE_CONFIG_DIR:undefined;
+      const markerBound=!api||marker===undefined||typeof binding?.agentId==='string'&&/^[a-z0-9-]+$/i.test(binding.agentId)&&
+        marker==='/paperclip/control/research-pm/'+(opencode?'opencode-clients/':'claude-clients/')+binding.agentId+(opencode?'/config.json':'/config');
+      const forbiddenEnvironment=['OPENAI_API_KEY','CODEX_API_KEY','OPENAI_BASE_URL',...(api?
+        ['DEEPSEEK_API_KEY','DEEPSEEK_BASE_URL','MINIMAX_API_KEY','MINIMAX_BASE_URL','ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','ANTHROPIC_BASE_URL',
+          'ANTHROPIC_CUSTOM_HEADERS','CLAUDE_CODE_OAUTH_TOKEN','CLAUDE_CODE_OAUTH_REFRESH_TOKEN',
+          'OPENCODE_CONFIG_CONTENT','OPENCODE_CONFIG_DIR','OPENCODE_PERMISSION',...(claude?['OPENCODE_CONFIG']:['CLAUDE_CONFIG_DIR'])]:[])];
       const scoped=registration?.contextVersion===1;
       const workspaceBound=scoped||Boolean(registration.projectContext?.nativeSourceWorkspace);
       const artifactCwd='/paperclip/instances/default/projects/'+binding?.companyId+'/'+binding?.projectId+'/_default';
@@ -71,19 +98,16 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
       if (!binding || !config || (original.executionTarget && original.executionTarget.kind !== 'local') || original.executionTransport?.remoteExecution || binding.runId !== ctx.runId || binding.agentId !== ctx.agent?.id ||
           binding.companyId !== ctx.agent?.companyId || binding.taskId !== ctx.context?.issueId ||
           binding.projectId !== ctx.context?.projectId || binding.ownerId !== ctx.context?.responsibleUserId ||
-          binding.inputRevision !== ctx.context?.inputRevision || profile?.engine !== 'codex_local' ||
-          config.engine !== 'cli' || config.command !== '/opt/super-agent/bin/codex' ||
-          config.model !== 'gpt-6.1-sol' || config.modelReasoningEffort !== 'low' ||
-          config.dangerouslyBypassApprovalsAndSandbox !== native || config.dangerouslyBypassSandbox !== native ||
-          !isDeepStrictEqual(config.extraArgs, managedArgs) ||
-          config.search !== true || ctx.runtime?.sessionId ||
+          binding.inputRevision !== ctx.context?.inputRevision || !profileBound ||
+          config.engine !== 'cli' || config.command !== '/opt/super-agent/bin/'+runtimeProfile.runtime ||
+          config.model !== runtimeProfile.model || !effortBound || !executionBound || !argumentsBound || !markerBound || ctx.runtime?.sessionId ||
           ctx.runtime?.sessionParams?.sessionId ||
-          ['OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'].some(key => config.env?.[key])) {
+          forbiddenEnvironment.some(key => config.env?.[key])) {
         log({code:'NATIVE_ROLE_SCOPE_CHECK',runId:ctx?.runId,
           checks:{targetLocal:!original.executionTarget||original.executionTarget.kind==='local',
             noRemoteTransport:!original.executionTransport?.remoteExecution,engine:config?.engine==='cli',
-            model:config?.model==='gpt-6.1-sol',effort:config?.modelReasoningEffort==='low',
-            arguments:isDeepStrictEqual(config?.extraArgs,managedArgs),fresh:!ctx?.runtime?.sessionId&&!ctx?.runtime?.sessionParams?.sessionId}});
+            model:config?.model===runtimeProfile.model,effort:effortBound,
+            arguments:argumentsBound,fresh:!ctx?.runtime?.sessionId&&!ctx?.runtime?.sessionParams?.sessionId}});
         fail('NATIVE_ROLE_SCOPE_DENIED');
       }
       const prepared = await prepareRole(registration);
@@ -91,7 +115,10 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
           (!scoped&&prepared.config.instructionsFilePath !== config.instructionsFilePath) ||
           (registration.sourceInstructionsFilePath&&prepared.config.instructionsFilePath!==config.instructionsFilePath)||
           (scoped&&(prepared.contextVersion!==1||prepared.workspaceCwd!==registration.workspaceCwd))||
-          prepared.config.dangerouslyBypassApprovalsAndSandbox !== native) {
+          (api?prepared.adapterType!==runtimeProfile.adapterType||prepared.config.model!==runtimeProfile.model||
+            prepared.config.reasoningEffort!==null||prepared.config.dangerouslySkipPermissions!==native||
+            Boolean(prepared.config.dangerouslyBypassApprovalsAndSandbox||prepared.config.dangerouslyBypassSandbox):
+            prepared.config.dangerouslyBypassApprovalsAndSandbox!==native)) {
         fail('NATIVE_ROLE_PREPARATION_UNCONFIRMED');
       }
       if (!Array.isArray(prepared.knowledge) || prepared.knowledge.length > 1000) fail('NATIVE_ROLE_PREPARATION_UNCONFIRMED');

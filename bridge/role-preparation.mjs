@@ -3,6 +3,7 @@ import { loadRoleMaterials, selectRoleKnowledge } from './role-materials.mjs';
 import {isMacNative,roleExecutionPolicy} from './role-execution-policy.mjs';
 import {TEAM_ROLES} from './team-roles.mjs';
 import {createHash} from 'node:crypto';
+import {getRoleRuntimeProfile} from './role-runtime-profiles.mjs';
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
@@ -11,21 +12,31 @@ const hash = /^[a-f0-9]{64}$/;
 /** Offline preparation port. Native dispatch must independently authorize and claim this run. */
 export function createRolePreparation({ readContext, readKnowledge, log }) {
   if (![readContext, readKnowledge, log].every(f => typeof f === 'function')) fail('ROLE_PREPARE_CONFIG_INVALID');
-  return async function prepare({ binding, profile, materialRoot, manifest, projectMaterials, contextVersion, workspaceCwd, knowledgeQuery='' }) {
+  return async function prepare({ binding, profile, materialRoot, manifest, projectMaterials, contextVersion, workspaceCwd, knowledgeQuery='', runtimeAssignments }) {
     try {
       binding = structuredClone(binding);
       profile = structuredClone(profile);
+      runtimeAssignments = structuredClone(runtimeAssignments);
       const native=isMacNative(profile),executionPolicy=roleExecutionPolicy(profile);
+      let runtimeProfile;
+      try{runtimeProfile=getRoleRuntimeProfile(profile?.role,runtimeAssignments);}
+      catch(error){if(/^ROLE_RUNTIME_[A-Z_]+$/.test(error?.code??''))fail('ROLE_PREPARE_SCOPE_DENIED');throw error;}
+      const api=['opencode','claude'].includes(runtimeProfile.runtime);
+      const runtimeBound=profile?.engine===runtimeProfile.adapterType&&profile?.model===runtimeProfile.model&&
+        (runtimeProfile.reasoningEffort===null?profile?.reasoningEffort==null:profile?.reasoningEffort===runtimeProfile.reasoningEffort);
+      const executionBound=api?native&&profile?.dangerouslySkipPermissions===native&&
+        !profile?.dangerouslyBypassApprovalsAndSandbox&&!profile?.dangerouslyBypassSandbox:profile?.dangerouslyBypassApprovalsAndSandbox===native;
       const initial = structuredClone(await readContext(binding?.taskId));
       if (!binding || !['companyId', 'projectId', 'taskId', 'agentId', 'runId'].every(key => uuid.test(binding[key] ?? '')) ||
           !hash.test(binding.inputRevision ?? '') || typeof binding.ownerId !== 'string' || !binding.ownerId.trim() ||
           !profile || profile.agentId !== binding.agentId || profile.projectId !== binding.projectId ||
-          !TEAM_ROLES[profile.role] || profile.engine !== 'codex_local' ||
-          profile.model !== 'gpt-6.1-sol' || profile.reasoningEffort !== 'low' ||
-          profile.dangerouslyBypassApprovalsAndSandbox !== native || !(native?profile.sandbox==='none':['read-only', 'workspace-write'].includes(profile.sandbox)) ||
+          !TEAM_ROLES[profile.role] || !runtimeBound || !executionBound ||
+          !(native?profile.sandbox==='none':['read-only', 'workspace-write'].includes(profile.sandbox)) ||
           !Array.isArray(profile.tools) || profile.tools.some(tool => !['read_materials', 'read_sources', 'shell', 'apply_patch', 'apps', 'plugins'].includes(tool))) {
         fail('ROLE_PREPARE_SCOPE_DENIED');
       }
+      // API runtimes have no Codex reasoning-effort setting. Native context uses canonical null.
+      profile.reasoningEffort=runtimeProfile.reasoningEffort;
       const validate = value => {
         if (!value || value.projectKey !== profile.projectKey || value.role !== profile.role || !['companyId', 'projectId', 'taskId', 'agentId', 'runId', 'ownerId', 'inputRevision'].every(key => value[key] === binding[key]) ||
             (contextVersion===1&&(value.projectWorkspaceId??null)!==(binding.projectWorkspaceId??null))||
@@ -53,7 +64,7 @@ export function createRolePreparation({ readContext, readKnowledge, log }) {
         binding: structuredClone(binding), nativeRevision: final.revision,
         adapterType: profile.engine, sessionMode: 'new',
         config: { model: profile.model, reasoningEffort: profile.reasoningEffort,
-          dangerouslyBypassApprovalsAndSandbox: native, sandbox: profile.sandbox,
+          ...(api?{dangerouslySkipPermissions:native}:{dangerouslyBypassApprovalsAndSandbox:native}), sandbox: profile.sandbox,
           ...(profile.executionPolicy?{executionPolicy}:{}),
           instructionsFilePath: materials.instructionsFilePath },
         materials: materials.files, knowledge, requestedTools: [...profile.tools],

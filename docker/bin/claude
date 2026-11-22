@@ -1,5 +1,8 @@
 #!/bin/sh
 set -eu
+if [ "${SUPER_AGENT_ROLE_ENABLED:-}" = "true" ]; then
+  exec node /opt/super-agent/role/docker/role-claude-gate.mjs "$@"
+fi
 case "${1:-}" in
   setup-token|auth|--version|-v|--help|-h|help)
     exec /opt/paperclip/node_modules/.bin/claude "$@"
