@@ -28,6 +28,8 @@ GitHub连接须区分宿主认证可用与Native任务内可用。匿名403/额�
 
 同Root质量续接另验：旧5次等实际调用文件字节不变，complex12记录不退款；同一resume ID只记录一次Native恢复事件，提交失败无提前发布，文件投影丢失只对账。下一轮仍使用原Research/开发及QA子任务、新operation/run/session和独有输出，旧NEEDS_WORK及通知保持；第三轮、未知传输、输入变化、未释放租约均拒绝。源码夹具不替代真实原任务续接结果。
 
+上下文恢复须覆盖真实Native repository与事务整链：受控Chief A→P→S直接重试且S有唯一绑定成功调用时，P可进入既有settled历史集合，原null/预算字节不改；断链、错身份/操作/输入、无成功绑定或失败方存在执行残留仍拒绝。本人原continue因unknown被拒后，按Native持久intent及JSONB还原来源校验，teamfalse下复用原kernel写result/control，再由原coordinator应用pending输入并认领原resume；在fake adapter边界停下，不调用模型。另验先应用pending再对账旧请求会拒绝、重复管理/历史SDK消息不多写effect或ACK、后来的项目/任务选择不被回退、错误Owner与任何live/未知执行不被放行。夹具通过与线上同根真实进展分别取证。
+
 RWB每个有效工作项沿原Issue/NativeTask/分支/PR推进，重复或已覆盖项以实际包含/替代证据对账，不盲目全部合并。以当前候选的适用检查、独立QA、PR/CI、按依赖批次部署及业务结果分别验收；其他聊天持有的部署窗口先交接。FinGPT保持已定顺序及其独立provider费用预算，Codex根调用分档不替代该预算。
 
 至少一个实际可修复的QA问题需证明：同Root和原开发/QA子Task、原输入hash不变，原NEEDS_WORK/产物仍在，新增fix与独立reQA操作/run/session，当前reviewedArtifacts排除旧QA，PASS绑定新候选。不得为验收故意破坏现有产品；使用真实发现或离线故障夹具验证故障分支。离线驱动通过不等于真实任务已跑。

@@ -11,6 +11,7 @@ import { taskInputRevision } from './task-input.mjs';
 import { ROLE_ROOT as ROOT, readControl } from './role-control-store.mjs';
 import {readArchivedChiefTransportFailure} from './chief-transport-retry.mjs';
 import {rootCallLimit} from './task-call-policy.mjs';
+import {isCompletedResumeChiefWorkspaceFailure,isCompletedResumeChiefPreflightRefusal,completedResumeChiefOperation} from './role-native-retry.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -92,6 +93,24 @@ export function observeContextCallEvidence({task,ids,runs,root=ROOT}){
     return fileHash(lockFile)===receipt.lockSha256&&fileHash(path.join(transport,'stdout'))===result.stdoutSha256&&fileHash(path.join(transport,'stderr'))===result.stderrSha256;
   }
   for(let attempt=0;attempt<2;attempt++)for(const slot of slots)if(settledFailure(slot))settled.add(slot.run.id);
+  // A bound successful retry settles the logical operation, without rewriting the historical Native null.
+  for(const parent of runs){
+    if(!registry||!isCompletedResumeChiefPreflightRefusal(parent))continue;
+    const initial=byRun.get(parent.retryOfRunId);if(!isCompletedResumeChiefWorkspaceFailure(initial))continue;
+    let op;try{op=completedResumeChiefOperation(registry,parent,initial);}catch{continue;}
+    if(!op||op.taskId!==task.id||op.rootTaskId!==task.id||op.projectId!==task.projectId||registry.companyId!==task.companyId||
+       registry.ownerId!==task.responsibleUserId||op.agentId!==registry.team?.ids?.chief||
+       parent.scheduledRetryAttempt!==1||slots.some(slot=>slot.run.id===parent.id||slot.run.id===initial.id))continue;
+    const bound=slots.filter(({call,run})=>call.id===op.id&&call.kind==='run'&&call.role==='chief'&&call.phase==='plan'&&
+      call.taskId===op.taskId&&call.rootTaskId===task.id&&call.projectId===op.projectId&&call.agentId===op.agentId&&call.inputRevision===op.inputRevision&&
+      run.status==='succeeded'&&run.exitCode===0&&run.signal===null&&Number.isFinite(Date.parse(run.finishedAt))&&run.retryOfRunId===parent.id&&run.scheduledRetryAttempt===2);
+    if(bound.length!==1)continue;
+    const chain=[initial,parent,bound[0].run];
+    if(chain.some(run=>run.companyId!==task.companyId||run.issueId!==task.id||run.agentId!==op.agentId||run.responsibleUserId!==registry.ownerId||
+       run.contextSnapshot?.projectId!==op.projectId||run.contextSnapshot?.roleOperationId!==op.id||run.contextSnapshot?.inputRevision!==op.inputRevision)||
+       [initial,parent].some(run=>['permits/'+run.id+'.json','claims/'+run.id+'.json','results/'+run.id+'.json','transport/'+run.id].some(file=>exists(path.join(root,file)))))continue;
+    settled.add(parent.id);
+  }
   if(slots.some(({run})=>!activeStates.includes(run.status)&&run.status!=='succeeded'&&!noProvider(run)&&!settled.has(run.id)))unknown=true;
   const lock=path.join(root,'call.lock');
   if(exists(lock)){
@@ -166,6 +185,12 @@ export async function createChiefContextPaperclipRepository({database,binding,ca
     }
     const port={
       readState,
+      async readOwnerContinueIntent(){
+        const rows=await activities(tx,'intent',sourceCondition(key)),row=rows[0];
+        if(rows.length!==1||row.companyId!==companyId||row.actorType!=='user'||row.actorId!==ownerId||
+           row.details.sourceKey!==key||row.details.kind!=='continue')fail('CHIEF_CONTEXT_OWNER_CONTINUE_INTENT_REQUIRED');
+        return copy(row.details);
+      },
       async append(kind,record){
         await put(kind,record);
       },
@@ -439,7 +464,7 @@ export async function createChiefContextRuntime({database}){
     const acknowledge=await createContextOwnerSender(binding);
     const controller=createChiefContextController({binding,catalog,repository,knowledgeStore,acknowledge,log:runtimeLog,
       registerNewGoal:async()=>fail('CHIEF_CONTEXT_INTAKE_REQUIRED')});
-    return Object.freeze({syncTask:controller.syncTask,checkpoint:controller.checkpoint});
+    return Object.freeze({syncTask:controller.syncTask,checkpoint:controller.checkpoint,reconcileOwnerContinue:controller.reconcileOwnerContinue});
   })();
   runtimes.set(database,promise);
   try{return await promise;}catch(error){runtimes.delete(database);runtimeLog({code:error?.code??'CHIEF_CONTEXT_RUNTIME_FAILED'});throw error;}

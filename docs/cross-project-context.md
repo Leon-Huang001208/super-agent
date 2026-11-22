@@ -61,6 +61,10 @@ add先持久保存pending输入。在途run未明确终态前不改其绑定输�
 
 同任务继续使用全新模型session，从原Native授权输入和已绑定产物重建上下文，不伪造provider/session/lease身份。普通暂停且同版本仍有计划时不多起一次计划调用；已收尾的blocked阶段收到未消费continue时，先对账原操作，仅明确无在途/未知结果且至少剩余三次调用才新规划。额度不足明确停住，不花最后槽或重发旧summary。done旧根及其原调用账本保留，followup新根不冒充旧根子任务。
 
+历史中间run的reconciliation/null不自动等于当前仍未知：只有已支持的Chief前置失败三段直接谱系、同一历史scope/input及唯一成功后继的实际预算/操作映射均闭合、失败方没有执行记录时，才作为已闭合历史观察。缺文件本身、无关后续成功或调用槽都不能单独构成证明，Native旧字段不变。
+
+已保存且尚未产生effect/result的本人continue，核对门修复后可在排空、关闭派发的窗口按[Owner管理入口](operations.md#已保存继续请求的原意图对账)复用同一Native intent和事务。它只核对原sourceKey/操作、固定来源schema与fingerprint、原输入/control版本，不接收新文本或消息身份，也不重发先前失败ACK或回退后来的项目/任务选择。已应用result仅作幂等读回；补充已先改变输入、身份漂移或仍有未知执行时继续拒绝，不能据管理入口跳过原约束。
+
 ## 项目绑定与执行材料
 
 部署配置为`registry.context={schemaVersion:1,enabled:true,catalog,materials,legacyKnowledge}`。catalog把key/别名映射到已存在的company/owner/project、规范workspace和可选`projectWorkspaceId`；配置ID时Native task必须严格匹配。个人项目原本没有workspace行时保留implicit默认方式。flow/operation/child/permit均保存同一项目绑定，不改Agent全局ID或`registry.team.projectId`。
