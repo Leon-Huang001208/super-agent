@@ -20,6 +20,8 @@ RWB普通开发按项目自身持续授权及已登记的交付范围执行，�
 
 代码任务区分三个位置：Native登记的只读源码输入目录、固定`/paperclip/.../_default`产物目录，以及宿主原GitSafety创建的隔离`codeHostPath`。输入目录由fresh Native DB工作区和Owner登记共同绑定，按实际`paperclipWorkspace.workspaceId/projectId/cwd`核验；不能直接用请求cwd作为许可，也不把源码目录的Git校验当作产物目录验收。产物执行投影、permit和Host cwd继续固定，`/workspace/project`单独映射代码工作树。
 
+计划中的产物basename沿执行器、采集和归档的同一合同：stem最多111字符，扩展名仅md/json，无路径。代际前缀`team-<rootUUID>-<generationUUID>-`共79字符，可容纳最长32字符task key。Native收存仍按可信outputPrefix检查代际，文件名长度通过不产生跨Root或跨代权限；已成功的模型计划可由原控制器复读，不为格式合同修复重跑模型。
+
 Native本地target的`workspaceRealization.authoritativeRoot`优先于配置cwd，产物投影因此同时核验该字段。只支持已绑定shared/project_primary的copy/in_place、空路径别名及restore集合，源或固定产物根之外的值、remote及isolated均拒绝；保留本地环境/lease身份。完整installed Native执行器的无模型假CLI合同核对实际cwd和工作区环境，而非只验证stub参数。
 
 Mac 原生 provider 通道采用每 run 的 loopback HTTPS、任务 CA 与原 broker 校验；CLI 与 Node MCP 各自获得对应信任，TLS 实际监听后才可消费就绪记录。原首计划已启动 CLI 但在 HTTPS-origin 检查前未发模型 response 的已结算失败，通过窄的第二次 Native retry 合同恢复，保留旧失败与原根预算；不改写 Native NoProvider 字段。见[原生 HTTPS 与首计划恢复](plans/native-https-recovery.md)。

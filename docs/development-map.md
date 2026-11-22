@@ -18,6 +18,8 @@ Chief的`roleInstructions`与DevOps的`renderRoleCapabilitiesMarkdown`同步说�
 
 ## 真实任务驱动的迭代
 
+`team-plan.validateTeamPlan`的outputFile stem上界与原Native output/collector/archive统一为111，保留角色、key、hostActions、DAG、QA及预算限制。`team-plan`回归核对真实UUID代际前缀和111/112边界；Native collection合同另验证可信prefix防串代、成功source原plan重复收存幂等、旧phase正常释放及首child由原AdmissionMeter取新阶段。仅长度合同修复，不创造collection lease或修改成功产物/模型调用记录。
+
 `native-role-runtime.registered`通过现有`readControl`读取registry，统一使用4 MiB控制文件上限，保留owner、私有mode、常规文件、symlink及hardlink检查；其它私有JSON仍沿原1 MiB读取器，不扩大凭据文件限制。`native-role-runtime-context`回归执行真实registered函数及instruction readiness，复现并验证大于1 MiB的合法registry，同时拒绝超4 MiB、宽权限和链接文件，不用截断旧operations或修改历史来通过。
 
 `role-native-retry`的首个已登记子任务bootstrap路径只验证官方Native明确的未启动provider失败及原自动retry关系，在原flow、owner/input、Chief wake、预留phase nonce、预算余量和零物理证据全部成立时返回原context/operation。缺失permit、budget或transport不是单独的未执行证明；未知证据仍返回reconciliation，不伪造文件、改nonce或生成替代operation。后续正常producer绑定原operation到该Native successor并首次计费；既有queued consumer及普通已执行失败重试合同保持。
