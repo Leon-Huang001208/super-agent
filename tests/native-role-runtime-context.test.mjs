@@ -101,6 +101,18 @@ test('read-only Native projects retain only the registered GitHub reader without
  assert.equal(result.projectContext.repository.fullName,'owner/repo');assert.equal(result.projectContext.repository.hostPath,null);
  assert.equal(result.projectContext.delivery.maximumAction,'artifact');assert.deepEqual(result.effectiveCapabilities.hostAllowedTools,['host.github_read']);
 });
+test('owner registered merge authority reaches Native runs without exceeding either project ceiling',t=>{
+ const f=fixture(t),project=f.registry.context.catalog.projects.find(value=>value.projectId===f.b);
+ project.maximumAction='merge';
+ const context={id:f.b,key:'beta',repository:{hostPath:'/source'},workspace:{hostPath:'/worktree'},delivery:{maximumAction:'merge'},rules:[],checks:[]};
+ const capabilities={hostAllowedTools:['host.project_git','host.project_publish'],mcpAllowedTools:[]};
+ const bind=()=>api('restrictNativeRoleAuthority')({registry:f.registry,task:f.task,projectContext:context,effectiveCapabilities:capabilities,log});
+ assert.equal(bind().projectContext.delivery.maximumAction,'merge');
+ assert.deepEqual(bind().effectiveCapabilities.hostAllowedTools,capabilities.hostAllowedTools);
+ context.delivery.maximumAction='deploy';assert.equal(bind().projectContext.delivery.maximumAction,'merge');
+ context.delivery.maximumAction='pull_request';assert.equal(bind().projectContext.delivery.maximumAction,'pull_request');
+ context.delivery.maximumAction='merge';project.maximumAction='pull_request';assert.equal(bind().projectContext.delivery.maximumAction,'pull_request');
+});
 test('runtime knowledge reads only the Native-authorized partitions and marks legacy as historical',async t=>{
  const f=fixture(t);fs.mkdirSync(f.root+'/context',{mode:0o700});
  const scope={companyId:f.companyId,ownerId:f.ownerId,projectId:f.b,projectKey:'beta'};

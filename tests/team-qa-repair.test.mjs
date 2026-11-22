@@ -58,13 +58,20 @@ test('collection uses the exact flow operation instead of a later operation from
 
 test('reserve one fix, independent recheck, remaining roles and summary without resetting spent calls',()=>{
  const f=fixture();assert.equal(planQaRepair({...f,used:3,newId:f.newId}).kind,'repair');
- for(const used of [4,5,6])assert.equal(planQaRepair({...f,used,newId:f.newId}).code,'TEAM_QA_REPAIR_BUDGET_EXHAUSTED');
+ for(const used of [4,5,6])assert.equal(planQaRepair({...f,used,maximum:6,newId:f.newId}).code,'TEAM_QA_REPAIR_BUDGET_EXHAUSTED');
  assert.equal(planQaRepair({...f,used:7,maximum:12,newId:f.newId}).kind,'repair');
  f.flow.taskEntries.push({key:'publish',role:'devops',dependsOn:['quality']});
- assert.equal(planQaRepair({...f,used:3,newId:f.newId}).code,'TEAM_QA_REPAIR_BUDGET_EXHAUSTED');
+ assert.equal(planQaRepair({...f,used:3,maximum:6,newId:f.newId}).code,'TEAM_QA_REPAIR_BUDGET_EXHAUSTED');
  assert.equal(planQaRepair({...f,used:7,maximum:12,newId:f.newId}).kind,'repair');
  f.operations.push({rootTaskId:f.flow.rootTaskId,qualityRepair:{round:2}});
  assert.equal(planQaRepair({...f,used:7,maximum:12,newId:f.newId}).code,'TEAM_QA_REPAIR_LIMIT');
+});
+test('twenty-call roots still reserve a fix, independent QA and summary and never permit a third QA repair',()=>{
+ const f=fixture();assert.equal(planQaRepair({...f,used:17,newId:f.newId}).kind,'repair');
+ for(const used of [18,19,20])assert.equal(planQaRepair({...f,used,newId:f.newId}).code,'TEAM_QA_REPAIR_BUDGET_EXHAUSTED');
+ f.operations.push({rootTaskId:f.flow.rootTaskId,qualityRepair:{round:2}});
+ assert.equal(planQaRepair({...f,used:4,maximum:20,newId:f.newId}).code,'TEAM_QA_REPAIR_LIMIT');
+ assert.throws(()=>planQaRepair({...f,used:4,maximum:20,maxFixRounds:3,newId:f.newId}),/TEAM_QA_REPAIR_BUDGET_INVALID/);
 });
 
 test('unknown/current Native bindings and unsettled runs never reopen or manufacture a retry',()=>{

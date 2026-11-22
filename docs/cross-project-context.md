@@ -1,12 +1,18 @@
 # 跨项目、续接与记忆 M2
 
+## 2026-11-22默认策略
+
+普通原根默认20次，补充、继续、重规划、QA和Native失败重试不重置已用次数；旧6/12证据继续可读。RWB常规开发长期登记源码workspace、隔离worktree、规则/checks和受管交付，项目catalog可按既有授权允许merge，不再另设Super Agent专属PR-only限制，未登记项目仍不从任务正文获取权限。
+
+普通unmanaged或done根的`add/continue`仍不自动接管。本人明确要求继续一个总体未完成的已结清原根时，用[运维入口](operations.md#20次预算及已完成原根续接)校验、归档原代并建立合法M2控制，新代保留原root和budget。历史普通UI任务不会因全局开关自动变成M2任务。
+
 新的只读产物workspace明确采用`non_git_path`。Native配置中有workspace ID不等于目录必须是产品Git checkout；运行例外仅由固定版本hook及当前Native与受管绑定判定，不能由任务或Skill文字声明。M2原workspace ID/项目/输入约束保留；旧local_path可保留历史并经Owner在安全节点明确改类型，不自动删除或重建旧workspace。
 
 `host.github_read`只读Native登记的repository.fullName，可在hostPath为空时使用；read_only项目保留该只读工具，代码路径、发布和服务动作继续收窄。原任务质量预算阻断后的显式owner续接见[运维入口](operations.md#github只读通道与原质量任务续接)，不改变输入版本、项目边界或原累计调用。
 
-原任务调用分档沿`task-call-policy.mjs`统一计算：默认6次，已授权且可信控制面登记的复杂原任务12次。补充、继续、重规划、QA返修和Native失败重试均保留原预算文件；提示或输入正文不能改变上限。`scripts/task-call-budget.mjs --task-id <原root> --approval-source <已有授权来源>`默认只预览，`--apply`要求现有Owner会话、关闭派发且无在途run/call锁；不新建目标、不运行模型、不退款。原有第七次QA专项仍独立绑定其历史证据，不转为普遍额度。
+原任务调用上限沿`task-call-policy.mjs`统一计算：普通原根默认20次，合法历史12次档与专属QA例外保留。补充、继续、重规划、QA返修和Native失败重试均保留原预算文件；提示或输入正文不能改变上限。`scripts/task-call-budget.mjs --task-id <原root> --approval-source <已有授权来源>`默认只预览，`--apply`要求现有Owner会话、关闭派发且无在途run/call锁；不新建目标、不运行模型、不退款。原有第七次QA专项仍独立绑定其历史证据，不转为普遍额度。
 
-Mac原生与公司Skill的当次运行快照见[当前合同](plans/native-skills-20261120.md)。项目stack/services及domains用于按需选择已分配技能；它们只描述技术或业务领域，不能授予额外操作权限。旧项目catalog的动作上界和历史任务保持原约束。
+Mac原生与公司Skill的当次运行快照见[当前合同](plans/native-skills-20261120.md)。项目stack/services及domains用于按需选择已分配技能；它们只描述技术或业务领域，不能授予额外操作权限。项目catalog按Owner长期开发登记更新动作范围，历史任务及旧运行证据保持。
 
 ## 范围与当前证据
 

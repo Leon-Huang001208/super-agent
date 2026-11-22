@@ -59,7 +59,7 @@ test('M2 retry selects the original project and exact generation without capturi
 test('missing or uncertain Native, transport, authority, lease and budget proof refuses a rebind',()=>{
  const cases=[f=>{f.run.retryOfRunId=null;f.run.contextSnapshot={retryOfRunId:f.parentRun.id};},f=>{f.run.status='scheduled_retry';},f=>{f.run.scheduledRetryAttempt=3;},f=>{f.parentRun.status='running';},f=>{f.parentRun.finishedAt=null;},
   f=>{f.transportResult.outputUnknown=true;},f=>{f.transportResult.cancelled=true;},f=>{f.transportResult.timedOut=true;},f=>{f.stdoutSha256='d'.repeat(64);},f=>{f.transportResult.runId=id('5');},
-  f=>{f.callLock.operationId=id('5');},f=>{f.registry.lease.taskId=id('5');},f=>{f.budgetRecord.id=id('5');},f=>{f.budgetCount=6;},
+  f=>{f.callLock.operationId=id('5');},f=>{f.registry.lease.taskId=id('5');},f=>{f.budgetRecord.id=id('5');},f=>{f.budgetCount=20;},
   f=>{f.rootTask.status='blocked';},f=>{f.rootTask.responsibleUserId='other';},f=>{f.task.description='changed';},f=>{f.flow.dispatches.backend.operationId=id('5');},
   f=>{f.activeRuns.push({id:id('5'),status:'queued'});},f=>{f.leases[0].releasedAt=null;},f=>{f.flow.artifacts.backend={runId:f.parentRun.id};}];
  for(const mutate of cases){const f=fixture();mutate(f);assert.throws(()=>validateNativeRoleRetry(f),/^Error: TEAM_NATIVE_RETRY_/);}
@@ -73,7 +73,7 @@ test('a replay of the same Native successor preserves its attempt history',()=>{
  f.flow=flow;assert.equal(validateNativeRoleRetry(f).replay,true);
  f.existingOperation={...operation,projectId:id('5')};assert.throws(()=>validateNativeRoleRetry(f),/FLOW_CHANGED/);
 });
-test('the second Native repair remains in the same six-slot root and a third is refused',()=>{
+test('the second Native repair remains in the same twenty-slot root and a third is refused',()=>{
  const f=fixture();f.parentRun.scheduledRetryAttempt=1;f.run.scheduledRetryAttempt=2;f.flow.attemptHistory={backend:[{runId:id('6')}]};f.budgetCount=3;
  assert.equal(validateNativeRoleRetry(f).attempt,2);
  f.run.scheduledRetryAttempt=3;f.parentRun.scheduledRetryAttempt=2;assert.throws(()=>validateNativeRoleRetry(f),/RUN_DENIED/);
@@ -143,11 +143,11 @@ test('owner pause or pending settles a proved failure without a new operation, f
  assert.equal(canReleaseSettledNativeRetryPhase({runs:[f.parentRun,noProvider],evidence:{...evidence,unknown:true}}),false);
  control.pendingInputs=[];control.pauseRequested=false;assert.equal(nativeRetryControlMode({registry:f.registry,rootTask:f.rootTask,flow:f.flow,control}),'execute');
 });
-test('settle-only refuses unknown physical evidence and can conclude a proved sixth failed call without adding a seventh',t=>{
+test('settle-only refuses unknown physical evidence and can conclude a proved twentieth failed call without adding a twenty-first',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'native-retry-limit-'));t.after(()=>fs.rmSync(root,{recursive:true}));const f=fixture();
  fs.writeFileSync(root+'/call.lock',JSON.stringify(f.callLock)+'\n',{mode:0o600});f.transportResult.outputUnknown=true;
  assert.throws(()=>settleNativeRetryWithoutProvider({...f,root,reason:'owner_control',log(){}}),/TRANSPORT_UNSETTLED/);assert.equal(fs.existsSync(root+'/call.lock'),true);
- f.transportResult.outputUnknown=false;f.budgetCount=6;
+ f.transportResult.outputUnknown=false;f.budgetCount=20;
  assert.throws(()=>validateNativeRoleRetry(f),/BUDGET_DENIED/);
  assert.equal(settleNativeRetryWithoutProvider({...f,root,reason:'budget_exhausted',log(){}}).errorCode,'TEAM_NATIVE_RETRY_SETTLED_NO_PROVIDER');
  assert.equal(fs.existsSync(root+'/call.lock'),false);

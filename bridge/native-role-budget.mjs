@@ -5,7 +5,7 @@ import {rootCallLimit} from './task-call-policy.mjs';
 const fail=()=>{throw Object.assign(Error('NATIVE_ROLE_BUDGET_DENIED'),{code:'NATIVE_ROLE_BUDGET_DENIED'});};
 const uuid=value=>/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(value??'');
 export function validateRootCallBudget(value){
- if(!value||![6,12].includes(value.maximum)||!Number.isInteger(value.usedBeforeCurrent)||value.usedBeforeCurrent<0||value.usedBeforeCurrent>=value.maximum||
+ if(!value||![6,12,20].includes(value.maximum)||!Number.isInteger(value.usedBeforeCurrent)||value.usedBeforeCurrent<0||value.usedBeforeCurrent>=value.maximum||
   value.currentCallNumber!==value.usedBeforeCurrent+1||value.remainingAfterCurrent!==value.maximum-value.currentCallNumber||
   value.maxPlanTasks!==Math.min(4,Math.max(0,value.remainingAfterCurrent-1)))fail();
  return value;

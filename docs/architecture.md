@@ -1,5 +1,13 @@
 # Paperclip 集成架构
 
+## 2026-11-22：20次原根预算与开发接线
+
+普通原任务的Chief、执行、QA及续接共享20次外层调用；可信历史12次和第七次QA专项继续可读，显式Owner授额可提高原根而不改写已花调用。业务交付和预算登记是不同事实，运行切换与实际续接另取现场证据。
+
+RWB采用与直接Codex相同的项目开发授权：源码、独立worktree、规则、检查及受管Git入口登记在Native workspace，项目catalog明确动作范围，不再以Agent身份额外截断为PR。自动合并仍需项目本身的独立评审、检查和分支保护；生产部署不由普通开发登记自动授予。
+
+`team-dispatch-control`提供已认证Owner的暂停/恢复管理；`register-rwb-development`建立保留式代码workspace登记；`resume-completed-team`仅对本人明确确认原目标未完成、已结清的done原根建立新输入代际。旧flow、QA、summary、通知和预算保持原字节，新代由原coordinator消费，不创建替代根、不重放旧调用。
+
 ## 当前执行合同
 
 Paperclip继续拥有任务、运行、会话及正式重试。当前业务模型使用Mac原生Codex、个人订阅gpt-6.1-sol/low、无沙盒和approvalPolicy=never；Docker保留App、依赖、离线测试及按需项目执行。下方标注早期Docker基线的记录不代表当前模型执行位置。全局单执行、原调用计数和未知结果核对保留。

@@ -358,15 +358,17 @@ export function createHostCapabilityExecutor(options={}){
   }
   if(name==='host.project_publish'){
    const levels=['artifact','pull_request','merge','deploy'],action=args.action??'pull_request',delivery=context.delivery??{},maximum=delivery.maximumAction??'pull_request';
-   const rwb=/research[-_ ]?workbench/i.test(context.key+' '+(context.repository?.fullName??'')+' '+(context.repository?.hostPath??''));
-   if(permit.role==='qa'||!levels.includes(action)||action==='artifact'||!levels.includes(maximum)||levels.indexOf(action)>levels.indexOf(maximum)||(rwb&&action!=='pull_request'))fail('ROLE_HOST_DELIVERY_ACTION_DENIED');
+   if(permit.role==='qa'||!levels.includes(action)||action==='artifact'||!levels.includes(maximum)||levels.indexOf(action)>levels.indexOf(maximum))fail('ROLE_HOST_DELIVERY_ACTION_DENIED');
    const command=delivery.commands?.[action],generic=!command?.argv&&delivery.adapter==='managed-project'&&action==='pull_request'&&!fs.existsSync(path.join(context.repository.hostPath,'scripts','project-runtime.mjs'));
    if(!command?.argv&&!generic)fail('ROLE_HOST_DELIVERY_UNAVAILABLE');
-   const argv=command?.argv?substitutions(command.argv,fields(candidateSha)):['managed-project','pull_request'];
+   const verification=permit.codeReview?.verification,validVerification=verification?.status==='passed'&&typeof verification.command==='string'&&verification.command.trim()&&Number.isInteger(verification.durationSeconds)&&verification.durationSeconds>=0;
+   // Preview may describe pending proof; only the trusted Native QA receipt supplies executed values.
+   const deliveryFields={...fields(candidateSha),verificationCommand:validVerification?verification.command:'{verificationCommand}',verificationDurationSeconds:validVerification?String(verification.durationSeconds):'{verificationDurationSeconds}'};
+   const argv=command?.argv?substitutions(command.argv,deliveryFields):['managed-project','pull_request'];
    if(args.preview===true)return {status:'preview',action,candidateSha,registeredEntrypoint:path.basename(argv[0]),argv:redactHostOutput(JSON.stringify(argv))};
    const review=permit.codeReview,checks=review?.checks;if(review?.verdict!=='PASS'||review.candidateSha!==candidateSha||review.rootTaskId!==rootOf(permit)||review.projectId!==context.id||
     !Array.isArray(checks)||!checks.length||checks.some(check=>check.status!=='passed'||check.candidateSha!==candidateSha)||
-    (context.checks??[]).some(check=>!checks.some(actual=>actual.id===check.id))||review.verification?.status!=='passed')fail('ROLE_HOST_REVIEW_REQUIRED');
+    (context.checks??[]).some(check=>!checks.some(actual=>actual.id===check.id))||!validVerification)fail('ROLE_HOST_REVIEW_REQUIRED');
    if((await git(['status','--porcelain=v1','-z','--untracked-files=all'])).trim())fail('ROLE_HOST_DELIVERY_WORKTREE_DIRTY');
    await volumeCheck([workspace.codeHostPath,context.repository.hostPath,options.controlRoot],options,run);
    return {action,candidateSha,...(generic?await managedDelivery('pull_request'):await run(argv,{cwd:workspace.codeHostPath}))};
