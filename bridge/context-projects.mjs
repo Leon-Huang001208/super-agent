@@ -6,7 +6,7 @@ const key = /^[a-z][a-z0-9-]{0,47}$/;
 const opaque = /^[A-Za-z0-9_-]{1,256}$/;
 const alias = /^[\p{L}\p{N}_-]{1,64}$/u;
 const adapterKeys = new Set(['native-docs', 'rwb-docs']);
-const actions = new Set(['read_only', 'pull_request']);
+const actions = new Set(['read_only', 'pull_request', 'merge']);
 const projectFields = new Set(['key', 'aliases', 'companyId', 'projectId', 'ownerId',
   'adapterKey', 'allowedRoles', 'maximumAction', 'workspaceCwd', 'projectWorkspaceId']);
 const fail = code => { throw Object.assign(new Error(code), {code}); };

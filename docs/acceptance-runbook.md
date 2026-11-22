@@ -1,5 +1,13 @@
 # 受控真实验收手册
 
+## 20次与同根开发续接验收
+
+先核普通根20、物理第20次允许和第21次拒绝、历史12次/QA专项与最多两轮返修。原根授20前后逐文件比较已用budget及操作，不能退款或换根。维护CLI需验证错误Owner/摘要、活动run、call锁及未释放租约拒绝，同操作发布后丢回执只核对不重放。
+
+对已完成但总体未完成的原根，保存原summary/QA/通知和flow摘要；授权接入源码后通过显式Owner续接形成新代，原4次等累计不变，旧sent不阻挡新代，也不重复发送旧通知。wrong workspace/input/flow、cancelled、unknown及Native事务失败均拒绝；事务失败不得发布活动或唤醒。真实新run必须绑定原root及新workspace，静态QA通过不能冒充PoC或整体目标通过。
+
+RWB开发接线另验App内Git可读、宿主worktree隔离、真实规则/checks、Native QA精确候选、PR及项目规则允许的合并。缺注册入口或检查/评审时仍拒绝发布，不因移除PR-only身份限制放宽项目门。
+
 ## 真实交付中的持续迭代
 
 非Git任务另验Native真实校验目录与模型最终cwd，不能用旧Git pilot通过校验后改写cwd来证明产物目录本身正确。正式non_git_path例外只消除对应缺Git分支；已装Native函数的其他错误与代码仓库Git检查必须继续拒绝。运行时新任务应固定实际projectWorkspace/executionWorkspace/Native run和角色许可，源码hook通过不等于已执行任务。
@@ -14,13 +22,13 @@ RWB每个有效工作项沿原Issue/NativeTask/分支/PR推进，重复或已覆
 
 至少一个实际可修复的QA问题需证明：同Root和原开发/QA子Task、原输入hash不变，原NEEDS_WORK/产物仍在，新增fix与独立reQA操作/run/session，当前reviewedArtifacts排除旧QA，PASS绑定新候选。不得为验收故意破坏现有产品；使用真实发现或离线故障夹具验证故障分支。离线驱动通过不等于真实任务已跑。
 
-默认6次/可信复杂任务12次原累计调用、最多两轮质量返修。额度不足留可恢复阻断，不新建Root绕过；unknown保持原call/host操作证据。角色AGENTS/CAPABILITIES发布、新run实际加载、具体工具动作、业务结果逐项取证。未参与岗位、未测格式和未连工具保持NOT_RUN；ready/idle不当作12岗业务通过。
+普通原根默认20次，历史可信12次和QA专项继续按原证据核验，最多两轮质量返修。额度不足留可恢复阻断，不新建Root绕过；unknown保持原call/host操作证据。角色AGENTS/CAPABILITIES发布、新run实际加载、具体工具动作、业务结果逐项取证。未参与岗位、未测格式和未连工具保持NOT_RUN；ready/idle不当作12岗业务通过。
 
 Native HTTPS 恢复按[专题合同](plans/native-https-recovery.md)先做无模型验证：正确 CA/loopback SAN 成功，错误 CA/主机名失败，Node stdio MCP 继承本 run CA，TLS 监听后才 ready。恢复既有 Chief attempt2 时保全原两槽与旧失败，核明确切 HTTPS-origin 错误、零模型 response、完整进程/环境租约收尾及匹配锁；实际调用后以原剩余额度验证计划，并核计划后暂停和真实通知。不将 mock TLS、CLI session、预算槽或队列状态当作模型成功。
 
 ## 文档岗
 
-先验证原11身份/配置/技能/知识不变，以及新岗9项完整版本与Managed文件。合成输入的xlsx/docx/pptx/md/pdf文件结构、真实公式重算、中文PDF和栅格化、原件哈希分别核验，使用task专属输出与Office profile。该工具链证据不计为Agent模型实跑。新岗ready只能来自正式单岗生命周期验证；不得伪造或跳过真实环境测试。控制计划仍最多四子任务/根六次，Doc正式交付须有独立QA，二进制文件通过md/json清单及摘要交接。
+先验证原11身份/配置/技能/知识不变，以及新岗9项完整版本与Managed文件。合成输入的xlsx/docx/pptx/md/pdf文件结构、真实公式重算、中文PDF和栅格化、原件哈希分别核验，使用task专属输出与Office profile。该工具链证据不计为Agent模型实跑。新岗ready只能来自正式单岗生命周期验证；不得伪造或跳过真实环境测试。控制计划仍最多四子任务，普通原根20次；Doc正式交付须有独立QA，二进制文件通过md/json清单及摘要交接。
 
 ## Mac原生和公司Skill验收
 

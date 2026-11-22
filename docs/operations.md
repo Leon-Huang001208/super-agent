@@ -1,5 +1,17 @@
 # 运行维护与恢复
 
+## 20次预算及已完成原根续接
+
+2026-11-22起普通原根默认20次，Chief/执行/QA/续接共用累计；历史12次与专属QA记录保持，Owner可明确升至20。`scripts/task-call-budget.mjs --task-id <原root> --maximum 20 --approval-source <本人授权来源>`默认preview，`--apply`仍需本人会话、停派发和真实排空；已登记done根可仅修正额度，不因此重开或唤醒。
+
+维护派发使用`node scripts/team-dispatch-control.mjs --action status|pause|resume`。pause/resume默认preview；apply还需稳定operation ID、preview给出的`--expected-registry-sha256`及`--approval-source`。它仅改派发布尔值，保留旧值和意图，拒绝活动run/call锁/未结清租约；同操作丢回执只按精确已发布状态对账。
+
+长期RWB开发接线用`node scripts/register-rwb-development.mjs --request <私有JSON> [--apply]`。新建代码workspace并更新项目执行策略与catalog指向，保留旧workspace，不逐任务重复授权。真实源码只读挂给App；代码写入仍在宿主独立worktree，准备/发布/合并使用RWB原GitSafety及Native QA证明，不用通用Git旁路。
+
+`node scripts/resume-completed-team.mjs --request <私有JSON> [--apply]`只处理本人明确确认原目标未完成的已结清done根。请求绑定原task、输入/flow/新workspace摘要、已用次数、稳定resume ID及continuation；apply先保全旧产物，Native事务记录Owner恢复事件，再投影新控制代际。旧根/调用/QA/summary/通知不重写，不新建Task或模型run；恢复派发后由原coordinator继续。
+
+运行源更新须同时核对App只读挂载、宿主transport source/cwd和登录恢复脚本的source pin。保留原Compose、源码、启动恢复及预算指纹；没有真实排空不重启App或transport，不重启Docker Desktop。源码/CI通过不等于现场已改为20或已开始新代。
+
 ## Agent迭代发布
 
 ### 大型role permit的采集合同

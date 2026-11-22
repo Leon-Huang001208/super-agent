@@ -1,5 +1,11 @@
 # 开发地图
 
+## 20次预算与原任务开发续接
+
+`task-call-policy`默认20，`native-role-budget`、`chief-context-native`及QA返修共同接受可信20次证据；旧6/12回执和历史QA专项保持其原合同。`task-call-budget --maximum 20`只修改Owner绑定额度，不修改旧budget文件或唤醒模型。相关budget/context/retry回归验证第20/21次边界及原计数保留。
+
+`team-dispatch-control`纯规划与Owner CLI通过精确registry摘要、空执行面和CAS维护派发布尔值；`completed-team-resume`校验原flow、输入、已发通知、原件与workspace，归档旧代后写Native控制与同根恢复信封；`rwb-development-registration`通过Native API登记长期开发workspace、既有规则/检查和原GitSafety命令。对应测试分别为`team-dispatch-control`、`completed-team-resume`和`rwb-development-registration`，实际CLI、源切换、授额和新run仍需现场回执。
+
 ## 真实任务驱动的迭代
 
 `bridge/role-permit-contract.mjs`统一公司Skill snapshot原8 MiB上限及完整role permit的12 MiB序列化上限；Native生产端在写operation binding/permit前拒绝超限。`role-control-store.readRolePermit`及Gate、宿主/容器transport、resident、原bootstrap/transport retry和验收/产物采集都使用专用permit上限，普通`readControl`保持4 MiB，其他证据限额不变。`tests/role-permit-contract.test.mjs`以实际公司Skill解析器生成大于4 MiB的合法snapshot，覆盖UTF-8边界、权限与链接拒绝；两种Chief retry回归核对大permit的原字节摘要与原预算保持，不重跑已成功任务。`native-role-adapter`回归验证真实超限错误`NATIVE_ROLE_PERMIT_TOO_LARGE`沿原错误白名单及runtime未进入provider的失败映射保留，日志不携带permit内容。
@@ -14,7 +20,7 @@
 
 `bridge/team-quality-resume.mjs`与`scripts/resume-team-quality.mjs`提供本人已授权的同目标质量续接。默认preview；apply需停派发、原Root/输入/已发送阻断回执及flow摘要匹配、累计预算足够、尚有第二轮额度。Native根行事务记录稳定resume ID，再投影原flow；同事件只对账投影，不新建Root或run。旧summary、通知、QA与调用历史保留。`tests/team-quality-resume.test.mjs`覆盖预算、scope、事务回滚不发事件和投影幂等。
 
-`bridge/task-call-policy.mjs`统一原根默认6/可信复杂任务12次上限，`scripts/task-call-budget.mjs`只在关闭派发且排空后登记已授权的原任务复杂档；不改写任何旧预算文件。物理调用、Chief提示、续接、Native失败重试与普通QA返修共用同一上限。`tests/task-call-policy.test.mjs`与原budget/retry/context测试验证累计计数、伪造上限拒绝和原记录保持。
+`bridge/task-call-policy.mjs`统一普通原根默认20次与历史可信12次/QA专项兼容；`scripts/task-call-budget.mjs`只在关闭派发且排空后显式授予原根20次，不改写任何旧预算文件。物理调用、Chief提示、续接、Native失败重试与普通QA返修共用同一上限。`tests/task-call-policy.test.mjs`与原budget/retry/context测试验证累计计数、伪造上限拒绝和原记录保持。
 
 `bridge/team-qa-repair.mjs`和`team-native-runtime.mjs`把普通成功QA的NEEDS_WORK回交原执行子任务，最多两轮；每轮使用新operation/run/session和独有输出，原开发、QA及失败历史不覆写。采集绑定当前dispatch操作，旧QA不进入新reviewedArtifacts。预算不足、需要多项衍生重建或修复负责人不明确时保留可恢复阻断，不冒充Native失败重试。相关驱动与边界见`tests/team-qa-repair.test.mjs`。
 

@@ -91,10 +91,20 @@ test('registration validates keys, aliases and the actual Native workspace rathe
   }
 });
 
+test('owner registered merge ceiling is retained without changing role identity or accepting deployment',()=>{
+ const f=fixture();f.registry.projects[1].maximumAction='merge';
+ const catalog=createProjectCatalog(f.input),project=catalog.resolve({...f.actor,projectKeyOrAlias:'rwb'});
+ assert.equal(project.maximumAction,'merge');
+ const original=roleRecord(f,'research'),bound=catalog.roleBinding(original,project);
+ assert.equal(bound.profile.agentId,original.profile.agentId);
+ assert.deepEqual(bound.profile.tools,original.profile.tools);
+ const tampered=structuredClone(project);tampered.maximumAction='deploy';
+ assert.throws(()=>catalog.roleBinding(original,tampered),/CONTEXT_PROJECT_BINDING_DENIED/);
+});
+
 test('project bindings accept only registered role identities and nondeployment adapter/action ceilings',()=>{
   for(const change of [
     f=>{f.registry.projects[0].adapterKey='old-rwb-executor';},
-    f=>{f.registry.projects[0].maximumAction='merge';},
     f=>{f.registry.projects[0].maximumAction='deploy';},
     f=>{f.registry.projects[0].allowedRoles=['admin'];},
     f=>{f.registry.projects[0].allowedRoles=['designer'];},

@@ -34,8 +34,8 @@ export function qaRepairOutputFile(entry,round){
 }
 
 /** This is a quality loop after a successful QA run, never a Native failed-run retry. */
-export function planQaRepair({flow,operations,used,maximum=6,maxFixRounds=2,newId=randomUUID}){
- if(!Number.isSafeInteger(used)||used<0||![6,12].includes(maximum)||maxFixRounds!==2)fail('TEAM_QA_REPAIR_BUDGET_INVALID');
+export function planQaRepair({flow,operations,used,maximum=20,maxFixRounds=2,newId=randomUUID}){
+ if(!Number.isSafeInteger(used)||used<0||![6,12,20].includes(maximum)||maxFixRounds!==2)fail('TEAM_QA_REPAIR_BUDGET_INVALID');
  const qa=flow.taskEntries.find(entry=>entry.role==='qa'),review=qa&&flow.artifacts[qa.key];
  if(!qa||!review||review.verdict!=='NEEDS_WORK')return {kind:'none'};
  if(!ref(review))fail('TEAM_QA_REPAIR_EVIDENCE_CHANGED');
