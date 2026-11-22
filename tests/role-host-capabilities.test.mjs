@@ -58,6 +58,57 @@ test('registered managed workspace preparation is used before generic git worktr
  assert.ok(!f.calls.some(x=>x.args[0]==='worktree'&&x.args[1]==='add'));
 });
 
+test('registered workspace preparation receives the existing host proxy without proxying local checks or Git probes',async t=>{
+ const f=fixture(t),base=f.options.runner,proxy={HTTPS_PROXY:'http://127.0.0.1:19091',NO_PROXY:'localhost,127.0.0.1',NODE_USE_ENV_PROXY:'1'};
+ let selections=0;f.options.proxyEnvironment=()=>{selections++;return proxy;};
+ f.permit.projectContext.workspace.prepare={argv:['/tools/project-prepare','--task','{rootTaskId}']};
+ f.options.runner=(binary,args,options)=>{
+  if(binary==='/tools/project-prepare'){f.calls.push({binary,args,options});f.setExists();return {status:0,stdout:'prepared',stderr:''};}
+  return base(binary,args,options);
+ };
+ const originalEnvironment={...process.env},workspace=await prepareRoleProjectWorkspace(f.options);
+ const command=f.calls.find(call=>call.binary==='/tools/project-prepare');
+ assert.deepEqual(command.args,['--task',rootId]);assert.equal(command.options.env.HTTPS_PROXY,proxy.HTTPS_PROXY);
+ assert.equal(command.options.env.NO_PROXY,proxy.NO_PROXY);assert.equal(command.options.env.NODE_USE_ENV_PROXY,'1');assert.equal(selections,1);
+ const executor=createHostCapabilityExecutor({...f.options,workspace});
+ await executor.execute('host.project_git',{operation:'status'});await executor.execute('host.project_check',{checkId:'unit'});
+ assert.equal(selections,1);assert.deepEqual({...process.env},originalEnvironment);
+});
+
+test('registered candidate preparation receives the host proxy and preserves the actual RWB result keys',async t=>{
+ const f=fixture(t),workspace=await prepareRoleProjectWorkspace(f.options),integration=f.target+'-integration',base=f.options.runner;
+ let selections=0;const proxy={HTTPS_PROXY:'http://127.0.0.1:19092',NO_PROXY:'localhost,127.0.0.1'};
+ f.permit.projectContext.delivery.prepareCandidate={argv:['/tools/project-candidate','--task','{rootTaskId}','--candidate','{candidateSha}']};
+ const runner=(binary,args,options)=>{
+  if(binary==='/tools/project-candidate'){
+   f.calls.push({binary,args,options});fs.mkdirSync(integration);
+   return {status:0,stdout:JSON.stringify({integrationWorktree:integration,integrationBranch:`codex/integrate-${rootId}`,integrationCommit:sha}),stderr:''};
+  }
+  if(binary==='/usr/bin/git'&&options.cwd===integration&&args[0]==='symbolic-ref')return {status:0,stdout:`codex/integrate-${rootId}`,stderr:''};
+  return base(binary,args,options);
+ };
+ const result=await createHostCapabilityExecutor({...f.options,workspace,runner,proxyEnvironment:()=>{selections++;return proxy;},projectDelivery:()=>{throw Error('registered candidate must not use the generic manager');}}).execute('host.project_git',{operation:'prepare'});
+ const command=f.calls.find(call=>call.binary==='/tools/project-candidate');
+ assert.deepEqual(command.args,['--task',rootId,'--candidate',sha]);assert.equal(command.options.env.HTTPS_PROXY,proxy.HTTPS_PROXY);
+ assert.equal(command.options.env.NO_PROXY,proxy.NO_PROXY);assert.equal(selections,1);
+ assert.equal(result.hostPath,integration);assert.equal(result.candidateSha,sha);
+});
+
+test('registered publish and merge use the host proxy only after preview and Native QA gates',async t=>{
+ const f=fixture(t,'devops'),workspace=await prepareRoleProjectWorkspace(f.options),proxy={HTTPS_PROXY:'http://127.0.0.1:19093',NO_PROXY:'localhost,127.0.0.1'};
+ f.permit.projectContext.delivery.maximumAction='merge';f.permit.projectContext.delivery.commands.merge={argv:['/tools/project-merge','--reviewed-commit','{candidateSha}']};
+ let selections=0;const options={...f.options,workspace,proxyEnvironment:()=>{selections++;return proxy;}};
+ let executor=createHostCapabilityExecutor(options);
+ assert.equal((await executor.execute('host.project_publish',{action:'pull_request',preview:true})).status,'preview');
+ await assert.rejects(executor.execute('host.project_publish',{action:'pull_request'}),/ROLE_HOST_REVIEW_REQUIRED/);
+ assert.equal(selections,0);assert.ok(!f.calls.some(call=>call.binary==='/tools/delivery'||call.binary==='/tools/project-merge'));
+ f.permit.codeReview=reviewProof();executor=createHostCapabilityExecutor(options);
+ for(const action of ['pull_request','merge'])assert.equal((await executor.execute('host.project_publish',{action})).exitCode,0);
+ const commands=f.calls.filter(call=>call.binary==='/tools/delivery'||call.binary==='/tools/project-merge');
+ assert.equal(commands.length,2);assert.equal(selections,2);
+ for(const command of commands){assert.equal(command.options.env.HTTPS_PROXY,proxy.HTTPS_PROXY);assert.equal(command.options.env.NO_PROXY,proxy.NO_PROXY);}
+});
+
 test('check executes only registered argv in the code workspace and reports failed output safely',async t=>{
  const f=fixture(t),workspace=await prepareRoleProjectWorkspace(f.options);let failed=false;
  const base=f.options.runner;const executor=createHostCapabilityExecutor({...f.options,workspace,runner:(...args)=>failed?{status:7,stdout:'Bearer abcdefghijklmnop',stderr:'token=top-secret'}:base(...args)});
