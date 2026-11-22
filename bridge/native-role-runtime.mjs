@@ -48,11 +48,14 @@ function write(file,value) {
 const log=event=>{
   fs.appendFileSync(ROOT+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});
 };
-function registered(agentId) {
-  const registry=json(ROOT+'/registry.json');
+/** Optional root/readiness ports are management tests, never adapter context fields. */
+export function registered(agentId,{root=ROOT,assertInstructionsReady=assertRoleInstructionsReady}={}) {
+  let registry;
+  try{registry=readControl(root+'/registry.json');}
+  catch(error){if(error.message==='TEAM_CONTROL_FILE_DENIED')fail('NATIVE_ROLE_PRIVATE_FILE_DENIED');throw error;}
   const role=registry.agents.find(x=>x.profile.agentId===agentId);
   if(registry.enabled!==true||!role)fail('NATIVE_ROLE_NOT_REGISTERED');
-  assertRoleInstructionsReady({companyId:registry.companyId,agentId});
+  assertInstructionsReady({companyId:registry.companyId,agentId});
   return {registry,role};
 }
 let connection;

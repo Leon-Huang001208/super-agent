@@ -8,6 +8,10 @@
 
 ## 真实任务驱动的迭代
 
+`native-role-runtime.registered`通过现有`readControl`读取registry，统一使用4 MiB控制文件上限，保留owner、私有mode、常规文件、symlink及hardlink检查；其它私有JSON仍沿原1 MiB读取器，不扩大凭据文件限制。`native-role-runtime-context`回归执行真实registered函数及instruction readiness，复现并验证大于1 MiB的合法registry，同时拒绝超4 MiB、宽权限和链接文件，不用截断旧operations或修改历史来通过。
+
+`role-native-retry`的首个已登记子任务bootstrap路径只验证官方Native明确的未启动provider失败及原自动retry关系，在原flow、owner/input、Chief wake、预留phase nonce、预算余量和零物理证据全部成立时返回原context/operation。缺失permit、budget或transport不是单独的未执行证明；未知证据仍返回reconciliation，不伪造文件、改nonce或生成替代operation。后续正常producer绑定原operation到该Native successor并首次计费；既有queued consumer及普通已执行失败重试合同保持。
+
 `bridge/role-permit-contract.mjs`统一公司Skill snapshot原8 MiB上限及完整role permit的12 MiB序列化上限；Native生产端在写operation binding/permit前拒绝超限。`role-control-store.readRolePermit`及Gate、宿主/容器transport、resident、原bootstrap/transport retry和验收/产物采集都使用专用permit上限，普通`readControl`保持4 MiB，其他证据限额不变。`tests/role-permit-contract.test.mjs`以实际公司Skill解析器生成大于4 MiB的合法snapshot，覆盖UTF-8边界、权限与链接拒绝；两种Chief retry回归核对大permit的原字节摘要与原预算保持，不重跑已成功任务。`native-role-adapter`回归验证真实超限错误`NATIVE_ROLE_PERMIT_TOO_LARGE`沿原错误白名单及runtime未进入provider的失败映射保留，日志不携带permit内容。
 
 `bridge/role-artifact-workspace.mjs`与`docker/role-artifact-workspace-hook.mjs`按固定Native源摘要装配非Git产物目录支持；仅明确`non_git_path`、实际owner/role/run/项目/工作区/输入及artifact上界全部匹配时免除`.git`要求，其他Native工作区与代码Git保护保留。`role-preload`在instruction hook有效期间先加载、验证artifact补丁，再启动协调器和飞书服务；server-entry复用同一模块已验证的初始化结果，未知ESM缓存仍拒绝启动。`tests/role-preload-order.test.mjs`以fresh process覆盖飞书提前导入heartbeat、维护模式及未知缓存拒绝。新建M2产物workspace使用该类型，旧local_path仅可重用，不自动获得例外。源码/真实Native函数分支测试与实机新任务分别取证，不创建假Git仓库。

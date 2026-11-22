@@ -14,6 +14,12 @@
 
 ## Agent迭代发布
 
+### registry读取与零物理尝试续接
+
+Native角色注册读取和控制层统一采用4 MiB的registry合同；其它私有JSON的1 MiB限制保持。合法registry因旧单点上限拒绝时，修复读取端并保留原operations、任务和预算，不通过清历史或缩写旧输入过门。实际registered路径及材料ready检查都需要回归，不能仅证明通用读取器可读取大文件。
+
+已登记的非Chief子任务若在首次物理执行前失败，只有官方Native已保存`bootstrap/providerWorkStarted=false`、精确失败类型及首个自动retry关系，且原agent/Chief wake、root/input/flow、预留phase nonce均匹配，同时不存在permit/claim/transport/opbinding/budget/call.lock等物理证据，才可沿原operation继续。保留原失败和已有调用，不新建operation、root或wake；正常producer第一次为原operation写successor绑定并计费。未知或矛盾证据保持reconciliation，不把文件缺失当作未调用模型。全局scheduler关闭时由Owner仅推进已存在的单Issue重试；预留phase lease必须保全，不能为了普通空闲检查删除或退款。
+
 ### 大型role permit的采集合同
 
 公司Skill snapshot继续最多8 MiB，完整role permit包括该快照和运行材料元数据，统一最多12 MiB（序列化JSON含结尾换行的UTF-8字节）。生产端在持久化operation binding/permit前检查同一上限；所有正式permit读取路径使用该专用合同。普通控制文件仍最多4 MiB，私有mode、owner、常规文件、symlink及hardlink检查保持，不通过全局放大控制文件上限解决单个permit问题。

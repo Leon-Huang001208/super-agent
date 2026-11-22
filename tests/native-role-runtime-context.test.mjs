@@ -8,8 +8,27 @@ import * as runtime from '../bridge/native-role-runtime.mjs';
 import {createProjectKnowledgeStore} from '../bridge/project-knowledge-store.mjs';
 import {roleInstructions} from '../bridge/team-roles.mjs';
 import {renderRoleCapabilitiesMarkdown} from '../bridge/role-capabilities.mjs';
+import {createRoleInstructionStore} from '../bridge/role-instruction-store.mjs';
 const sha=x=>createHash('sha256').update(x).digest('hex'),log=()=>{};
 const api=name=>{assert.equal(typeof runtime[name],'function',name+' is required');return runtime[name];};
+test('the actual registered path accepts a legal private registry above 1 MiB and retains instruction readiness checks',{skip:process.getuid()!==0},t=>{
+ const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'native-registry-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const agentId=randomUUID(),registry={enabled:true,companyId:randomUUID(),agents:[{profile:{agentId,role:'document-specialist'}}],padding:''};
+ registry.padding='x'.repeat(1067439-Buffer.byteLength(JSON.stringify(registry)+'\n'));const bytes=JSON.stringify(registry)+'\n',file=root+'/registry.json';
+ assert.equal(Buffer.byteLength(bytes),1067439);fs.writeFileSync(file,bytes,{mode:0o600});
+ const store=createRoleInstructionStore({root}),result=api('registered')(agentId,{root,assertInstructionsReady:store.assertReady});
+ assert.equal(result.role.profile.agentId,agentId);assert.equal(result.registry.padding.length,registry.padding.length);assert.equal(fs.readFileSync(file,'utf8'),bytes);
+ registry.agents[0].instructionMutation={id:'pending'};fs.writeFileSync(file,JSON.stringify(registry));
+ assert.throws(()=>api('registered')(agentId,{root,assertInstructionsReady:store.assertReady}),/ROLE_INSTRUCTION_PENDING/);
+});
+test('registered keeps the shared 4 MiB registry boundary and original private file checks',{skip:process.getuid()!==0},t=>{
+ const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'native-registry-denied-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const agentId=randomUUID(),file=root+'/registry.json',registry={enabled:true,companyId:randomUUID(),agents:[{profile:{agentId,role:'document-specialist'}}],padding:'x'.repeat(4*1024*1024)},options={root,assertInstructionsReady(){assert.fail('invalid file cannot reach readiness');}};
+ fs.writeFileSync(file,JSON.stringify(registry),{mode:0o600});assert.throws(()=>api('registered')(agentId,options),{code:'NATIVE_ROLE_PRIVATE_FILE_DENIED'});
+ registry.padding='small';fs.writeFileSync(file,JSON.stringify(registry));fs.chmodSync(file,0o644);assert.throws(()=>api('registered')(agentId,options),{code:'NATIVE_ROLE_PRIVATE_FILE_DENIED'});fs.chmodSync(file,0o600);
+ fs.linkSync(file,root+'/hardlink');assert.throws(()=>api('registered')(agentId,options),{code:'NATIVE_ROLE_PRIVATE_FILE_DENIED'});fs.unlinkSync(root+'/hardlink');
+ fs.renameSync(file,root+'/saved');fs.symlinkSync(root+'/saved',file);assert.throws(()=>api('registered')(agentId,options),{code:'NATIVE_ROLE_PRIVATE_FILE_DENIED'});
+});
 function fixture(t){
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'native-role-context-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const companyId=randomUUID(),ownerId='owner-1',a=randomUUID(),b=randomUUID(),agentId=randomUUID();
