@@ -7,7 +7,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {renderTeamResultNotification,sendTeamResult} from '../bridge/team-result-notification.mjs';
 
 const R='/paperclip/control/research-pm';
-const task={id:'5436f00e-75e6-49ce-821c-dbaff45798f3',identifier:'LEO-51',companyId:'company',responsibleUserId:'owner'};
+const task={id:'5436f00e-75e6-49ce-821c-dbaff45798f3',identifier:'LEO-51',title:'RWB成熟工具复用验证',companyId:'company',responsibleUserId:'owner'};
 const summary={sha256:'5c9b12feabb0c464afbcd497c1d47429adab5f5a4e4e9137cc862ffdf36c97b2',text:'Quality review requires work.\nReason: TEAM_QA_REPAIR_DEPENDENT_REBUILD_REQUIRED\nRoot task: '+task.id+'\nQA run: 7c622126-3ab3-4e09-b67c-cbb3d1e54123\nQA artifact SHA256: '+ 'f'.repeat(64)};
 const sourceRunId=randomUUID(),registry={companyId:task.companyId,ownerId:task.responsibleUserId};
 const createdAt='2026-11-21T18:30:00.000Z';
@@ -21,6 +21,44 @@ test('readable QA result explains dependency rebuilding without dumping internal
  assert.match(text,/8\s*\/\s*20/);assert.match(text,/通知日期：2026-11-22/);
  for(const raw of [task.id,sourceRunId,summary.sha256,'TEAM_QA_REPAIR','Quality review','Native ID','版本：'])assert.equal(text.includes(raw),false,raw);
  assert.match(text,/Paperclip.*LEO-51/);
+});
+
+test('readable results lead with the actual task title and show known current-stage progress',()=>{
+ const text=render({kind:'quality-blocked',reasonCode:'TEAM_QA_REPAIR_DEPENDENT_REBUILD_REQUIRED',budget:{used:8,maximum:20}});
+ assert.ok(text.startsWith(task.title+'（LEO-51）｜'));
+ const progress=text.split('\n').find(line=>line.startsWith('当前进度：'));
+ assert.match(progress,/质量复核.*未通过/);assert.match(progress,/后续.*暂停/);
+ assert.doesNotMatch(progress,/%|8\s*\/\s*20|100|已完成.*步骤/);
+ assert.match(text,/本任务已用调用：8 \/ 20 次/);
+});
+
+test('task titles normalize whitespace and preserve meaningful words without inventing a description',()=>{
+ const title='  RWB资料验证\n  2.0 https://example.org/topic/42  ';
+ const text=renderTeamResultNotification({task:{...task,title},summary,createdAt,presentation:{kind:'quality-blocked'}});
+ assert.ok(text.startsWith('RWB资料验证 2.0 https://example.org/topic/42（LEO-51）｜'));
+ for(const missing of [undefined,null,0,'',' \n ']){
+  const result=renderTeamResultNotification({task:{...task,title:missing,description:'internal source '+task.id},summary:{...summary,text:'本轮记录'},createdAt,presentation:{kind:'result'}});
+  assert.match(result,/任务标题未提供（LEO-51）/);
+  assert.equal(result.includes('internal source'),false);assert.equal(result.includes(task.id),false);
+ }
+});
+
+test('long task titles have a readable Unicode-safe bound',()=>{
+ const title='研'.repeat(118)+'🧭✅结束';
+ const text=renderTeamResultNotification({task:{...task,title},summary,createdAt,presentation:{kind:'quality-blocked'}});
+ assert.ok(text.startsWith('研'.repeat(118)+'🧭✅…（LEO-51）｜'));
+ assert.equal(text.includes('�'),false);
+ assert.equal(text.includes('结束'),false);
+});
+
+test('normal and missing stage metadata do not imply whole-goal completion or fabricated progress',()=>{
+ const value={task,summary:{...summary,text:'已提交本轮资料核对结果'},createdAt};
+ const text=renderTeamResultNotification({...value,presentation:{kind:'result'}});
+ assert.match(text,/当前进度：本轮结果已汇总/);assert.match(text,/执行与验收状态/);
+ assert.doesNotMatch(text,/100%|全部任务已完成|独立质检通过|S0|S1/);
+ const unknown=renderTeamResultNotification(value);
+ assert.match(unknown,/当前进度：未提供可信阶段信息/);
+ assert.doesNotMatch(unknown,/100%|全部任务已完成|独立质检通过/);
 });
 
 for(const [code,reason] of [
