@@ -495,15 +495,15 @@ async function resumeWaiting(p,r,context){
   const runId=await wakeRole(p,scoped,task,{role:'chief'},{rootTaskId:task.id,phase:'plan',context:localContext});if(!runId)return false;fs.renameSync(file,file+'.resumed');return true;
  }return false;
 }
-export function startTeamCoordinator({database,contextRuntime}){
+export function startTeamCoordinator({database,contextRuntime,nativePorts=ports}){
  dirs();let busy=false,lastError='',contextPort;
  const contextFor=async(r,p)=>{if(!teamContextEnabled(r))return null;if(!contextPort)contextPort=await(contextRuntime??(await import('./chief-context-native.mjs')).createChiefContextRuntime({database}));return createTeamContextCoordinator({...contextPort,archiveFlow:args=>archiveContextFlow({...args,native:p}),log});};
  const activeRuns=p=>p.db.select({id:p.schema.heartbeatRuns.id}).from(p.schema.heartbeatRuns).where(p.orm.inArray(p.schema.heartbeatRuns.status,['queued','running','scheduled_retry']));
- const tick=async()=>{if(busy)return;busy=true;try{let r=readControl(R+'/registry.json');if(r.team?.enabled!==true)return;const p=await ports(database);
+ const tick=async()=>{if(busy)return;busy=true;try{let r=readControl(R+'/registry.json');if(r.team?.enabled!==true)return;const p=await nativePorts(database);
   const queued=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.inArray(p.schema.heartbeatRuns.status,['queued','running','scheduled_retry']));
   if(queued.length===1&&queued[0].status==='queued'){
    const op=r.operations.find(value=>value.id===r.lease?.operationId),tasks=[];let parentRun=null;
-   if(op){parentRun=await getRunForOp(p,op);for(const id of [op.taskId,op.rootTaskId])tasks.push(await p.issue.getById(id));}
+   if(op){if(queued[0].retryOfRunId)[parentRun]=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.eq(p.schema.heartbeatRuns.id,queued[0].retryOfRunId));for(const id of [op.taskId,op.rootTaskId])tasks.push(await p.issue.getById(id));}
    const chiefTransportEvidence=isChiefTransportPlanRetry(op,parentRun)?readChiefTransportFailureEvidence({root:R,operation:op,parentRun}):undefined;
    if(await consumeQueuedNativeRoleRetry({registry:r,activeRuns:queued,parentRun,tasks,chiefTransportEvidence,resume:(companyId,agentId)=>p.heartbeat.resumeQueuedRunsForAgent(companyId,agentId),log}))return;
   }

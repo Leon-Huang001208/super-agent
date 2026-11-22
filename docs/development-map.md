@@ -146,6 +146,8 @@ Apps使用Codex专用opaque连接变量经同一broker访问原账号MCP，避�
 
 ## Chief Native控制器
 
+既有queued Native重试的协调器入口按该run的`retryOfRunId`读取真实父行，再交给原`selectQueuedNativeRoleRetry`和Native消费者。operation最初wake对应的run可能是更早的祖先，不能替代第二次retry的直接父行；父行缺失、错误scope、非唯一队列及数据库读取失败均不派发。整tick回归覆盖该差异，正式执行仍由原retry binder逐项核验，不创建替代wake或run。
+
 `bridge/team-native-runtime.mjs`将本人Native输入、结构化Chief计划、角色派发、收回、独立质检及通知接到现有Native服务。`team-plan.mjs`校验根预算、DAG和质量依赖；`role-control-store.mjs`仅保存控制映射/意图/回执。`task-input.mjs`统一title及description输入版本。父子调用共用`role-call-budget.mjs`根预算。
 
 PR30的Native内置retry只绑定已存在的后继run。M2绑定先按原operation/Native task派生局部项目，精确选择同输入/同代际dispatch所属flow；旧flow和其他代际保留。原项目artifact与meter使用该局部绑定，Native control的暂停/pending/输入/计划确认仍在原根事务核对，provider启动守卫继续生效；不增加wake、root或重置原根累计预算。`tests/role-native-retry.test.mjs`覆盖RWB专用workspace、全局默认个人项目不变、旧portable flow及暂停/版本负例，真实重试另行留证。
