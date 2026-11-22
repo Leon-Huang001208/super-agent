@@ -1,5 +1,11 @@
 # 运行维护与恢复
 
+## 已登记子任务的受控入口拒绝
+
+普通Native文档任务沿`projectForOperation`解析当前项目的受管产物目录，不要求旧operation具有M2目录字段。原始bootstrap失败后的首次retry若在受控入口返回、没有进入provider，可在保留其`reconciliation/null`历史的前提下核对既有第二次retry：必须具备完整Native三行关系、唯一前置返回合同及Native只读reconciliation通过，并重验原owner/输入/flow/QA代际、phase、全部进程与环境租约、零物理证据和剩余额度。只读核对使用`mixed`结果，不代写“未执行”或调用带continuation副作用的resolve入口。
+
+后续仅由已装配受控adapter的常驻App消费该既有retry；不打开全局scheduler、不重置attempt、不补写旧operation/预算/permit/transport。第一次受控恢复再失败时保存原结果，先核对同一operation，不能通过新任务或手动回退状态绕过。
+
 ## 20次预算及已完成原根续接
 
 2026-11-22起普通原根默认20次，Chief/执行/QA/续接共用累计；历史12次与专属QA记录保持，Owner可明确升至20。`scripts/task-call-budget.mjs --task-id <原root> --maximum 20 --approval-source <本人授权来源>`默认preview，`--apply`仍需本人会话、停派发和真实排空；已登记done根可仅修正额度，不因此重开或唤醒。
@@ -46,7 +52,7 @@ Native Codex插件代码缓存使用`/Volumes/WorkDisk/Caches/SuperAgent/codex-n
 
 连接按[GitHub只读合同](github-read.md)配置。Native workspace远端身份经Owner接口登记，保留metadata原有内容、无代码hostPath及artifact上界；不因接通读通道开放GitHub写入。先修实际工具缺口，取得原操作的可核验证据，再在安全节点恢复原质量任务，避免继续花调用等待同一外部条件。
 
-质量任务因预算不足阻断后，既有本人分档授权可经`task-call-budget.mjs`把同一原Root登记为complex12；旧budget文件不动。`resume-team-quality.mjs --task-id <原root>`只读返回flow SHA；`--apply`另需稳定`--resume-id <UUID>`和同一`--expected-flow-sha256 <SHA256>`。要求team派发关闭、无活动run/未释放环境租约/call锁、原owner/输入/阻断摘要匹配、至少3次剩余额度、尚未完成两轮。未知模型或传输失败不走这个入口。
+质量任务因预算不足阻断后，既有本人分档授权可经`task-call-budget.mjs`以`--maximum 20`显式授予同一原Root额度；合法历史12次档与旧budget文件保持。`resume-team-quality.mjs --task-id <原root>`只读返回flow SHA；`--apply`另需稳定`--resume-id <UUID>`和同一`--expected-flow-sha256 <SHA256>`。要求team派发关闭、无活动run/未释放环境租约/call锁、原owner/输入/阻断摘要匹配、至少3次剩余额度、尚未完成两轮。未知模型或传输失败不走这个入口。
 
 应用先在Native根行事务记录owner恢复事件与in_review状态，提交后发布Native通知，再保存原flow投影；若文件保存前中断，同一resume ID按已提交事件只对账投影，不重复Native转换。旧质量阻断、summary和已发送通知存入同一flow历史及不可覆盖归档，旧run/session/产物/预算保持。该入口不唤醒模型；恢复原派发后仍由既有coordinator沿原执行/QA子任务进入下一质量轮，不重规划成替代任务或提高最多两轮限制。
 
@@ -54,9 +60,9 @@ Native Codex插件代码缓存使用`/Volumes/WorkDisk/Caches/SuperAgent/codex-n
 
 角色材料用`publish-role-profiles.mjs`经Native Owner/CAS保存。升级可通过`--baseline-profiles <私有JSON>`提供上一现役源码生成的24份文本（键为`<role>/AGENTS.md`或`<role>/CAPABILITIES.md`）。当前文本既不等于目标也不等于旧生成基线时保留整岗材料并报告`custom_content_preserved`；不把人工定制当作旧模板覆盖。旧内容和在途run固定快照保持。源模板发布不等于对应岗位业务验收。
 
-复杂档登记用`scripts/task-call-budget.mjs --task-id <原root> --approval-source <既有本人授权来源>`预览；只有`--apply`写可信原任务额度记录，要求关闭派发、无活动run/call锁及真实Owner会话。原budget目录全部保留，不因升级至12次或重新规划退款。
+原根授额用`scripts/task-call-budget.mjs --task-id <原root> --maximum 20 --approval-source <既有本人授权来源>`预览；只有`--apply`写可信原任务额度记录，要求关闭派发、无活动run/call锁及真实Owner会话。原budget目录全部保留，不因授额20次或重新规划退款；不再新建12次授额。
 
-本人创建、尚未唤醒且属于已登记项目的Native根任务可在首次Chief调用前登记复杂档；这一步只保存额度，不登记执行、不增加调用或操作历史。已经运行的原根仍沿其登记与累计记录处理。
+本人创建、尚未唤醒且属于已登记项目的Native根任务可在首次Chief调用前显式登记20次额度；这一步只保存额度，不登记执行、不增加调用或操作历史。已经运行的原根仍沿其登记与累计记录处理。
 
 `host.rwb_release`只接受Native项目metadata中该root的登记操作ID，且执行者必须是DevOps本岗、当前Native操作绑定吻合并持有该action。`inspect`只读取本地受管回执，不刷新远端CI、不调用会合并的status。`merge`复用RWB GitSafety，`deploy/rollback`复用其现有resident CLI；跨Git common的证据transfer仍是RWB原发布窗口的独立前置，接口不改`source_common`。部署source tree须等于审查候选，旧版/当前版与真实accepted一致。回滚传`--rollback-target CURRENT_ACCEPTED_SHA`，由原sealed capsule决定恢复前版。原host-call队列按登记operation ID去重，started未知只核对，不以新RPC或新run重放。
 
