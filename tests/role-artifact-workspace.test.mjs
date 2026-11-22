@@ -27,6 +27,41 @@ test('registered Native artifact workspaces retain their real workspace IDs with
  f.task.executionRunId=null;assert.equal(isRoleArtifactWorkspace(f),true);
 });
 
+// Selected-field shapes observed on the original LEO-48 preflight; identities and
+// task text stay anonymized. Active status/pointers are the Native launch contract,
+// not a replay or a claim that the preserved failed row is still running.
+function nativeChiefPreflight(){
+ const f=fixture();f.task.parentId=null;f.task.createdByUserId='owner';f.rootTask=f.task;
+ f.registry.agents[0].profile.role='chief';f.registry.team.ids={chief:f.agent.id};f.registry.operations=[];f.registry.tasks=[];
+ f.agent.adapterConfig.env.SUPER_AGENT_ROLE_ENABLED={type:'plain',value:'true'};
+ f.run.scopeKind='issue';f.run.finishedAt=null;f.run.wakeupRequestId='wake';
+ f.run.contextSnapshot={issueId:f.task.id,taskId:f.task.id,projectId:f.task.projectId,executionWorkspaceId:f.persistedWorkspace.id};
+ f.wakeup={id:'wake',runId:f.run.id,companyId:f.registry.companyId,agentId:f.agent.id,requestedByActorType:'user',requestedByActorId:'owner',payload:{issueId:f.task.id}};
+ f.input.environmentDriver='local';f.input.resolvedWorkspace.source='project_primary';
+ f.input.leaseMetadata={driver:'local',executionWorkspaceMode:'shared_workspace'};f.persistedWorkspace.status='active';
+ return f;
+}
+
+test('Native selected-row plain env binding reaches the original owner Chief preflight without resolving secrets',async()=>{
+ const f=nativeChiefPreflight(),before=structuredClone(f),logs=[];
+ assert.equal(isRoleArtifactWorkspace(f),true);
+ assert.equal(await allowRoleArtifactWorkspace(f.input,{readRegistry:()=>f.registry,database:async()=>databaseFor(f),log:event=>logs.push(event)}),true);
+ assert.equal(logs[0].code,'ROLE_ARTIFACT_WORKSPACE_BOUND');assert.deepEqual(f,before);
+ for(const change of [v=>v.wakeup.requestedByActorType='agent',v=>v.wakeup.requestedByActorId='foreign',v=>v.wakeup.runId='other',
+  v=>v.input.persistedExecutionWorkspace.id='other',v=>v.task.executionWorkspaceId='other',v=>v.task.checkoutRunId='other',v=>v.run.issueId='other']){
+  const copy=structuredClone(f);change(copy);assert.equal(isRoleArtifactWorkspace(copy),false);
+ }
+});
+
+test('role enablement accepts only literal true or its Native plain binding and rejects secret or malformed values',()=>{
+ for(const value of ['true',{type:'plain',value:'true'}]){const f=fixture();f.agent.adapterConfig.env.SUPER_AGENT_ROLE_ENABLED=value;assert.equal(isRoleArtifactWorkspace(f),true);}
+ for(const value of [undefined,null,false,true,'false',' true ',{type:'plain',value:'false'},{type:'plain',value:true},
+  {type:'plain'},{value:'true'},{type:'secret_ref',secretId:'never-resolve'},{type:'user_secret_ref',value:'true'},
+  {type:'plain',value:'true',secretId:'mixed'},['true']]){
+  const f=fixture();f.agent.adapterConfig.env.SUPER_AGENT_ROLE_ENABLED=value;assert.equal(isRoleArtifactWorkspace(f),false,JSON.stringify(value));
+ }
+});
+
 test('foreign identities, inactive runs, stale inputs and workspace substitutions cannot claim the artifact exception',()=>{
  const changes=[
   f=>f.registry.enabled=false,f=>f.registry.team.enabled=false,f=>f.registry.team.ids.research='other',

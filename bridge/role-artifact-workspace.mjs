@@ -5,13 +5,15 @@ import {taskInputRevision} from './task-input.mjs';
 
 const audit=event=>fs.appendFileSync(ROLE_ROOT+'/events.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});
 const currentRunIds=task=>[...new Set([task?.executionRunId,task?.checkoutRunId].filter(Boolean))];
+const roleEnabled=value=>value==='true'||value!==null&&typeof value==='object'&&!Array.isArray(value)&&
+ Object.keys(value).length===2&&value.type==='plain'&&value.value==='true';
 
 /** Only the missing-.git condition uses this exception; Native retains every other check. */
 export function isRoleArtifactWorkspace({input,registry:r,task,run,agent,project,workspace,persistedWorkspace,rootTask,wakeup}={}){
  if(!input||!r||r.enabled!==true||r.team?.enabled!==true||input.adapterType!=='codex_local'||
   (input.executionTarget?.kind??'local')!=='local'||(input.environmentDriver??'local')!=='local'||
   !agent||agent.id!==input.agentId||agent.companyId!==r.companyId||agent.adapterType!=='codex_local'||
-  agent.adapterConfig?.env?.SUPER_AGENT_ROLE_ENABLED!=='true')return false;
+  !roleEnabled(agent.adapterConfig?.env?.SUPER_AGENT_ROLE_ENABLED))return false;
  const roles=(r.agents??[]).filter(entry=>entry.profile?.agentId===agent.id),role=roles[0]?.profile;
  if(roles.length!==1||r.team.ids?.[role?.role]!==agent.id)return false;
  try{if(!isMacNative(role))return false;}catch{return false;}
