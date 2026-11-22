@@ -16,7 +16,7 @@ import {selectRoleKnowledge} from './role-materials.mjs';
 import {createRoleMaterialSnapshot} from './role-material-snapshot.mjs';
 import {assertRoleInstructionsReady} from './role-instruction-store.mjs';
 import {resolveRoleInstructionCopy} from './role-instruction-paths.mjs';
-import {readRoleProjectContext} from './role-project-context.mjs';
+import {readRoleProjectContext,nativeRoleArtifactTarget} from './role-project-context.mjs';
 import {resolveRoleCapabilities} from './role-capabilities.mjs';
 import {readControl} from './role-control-store.mjs';
 import {assertRolePermitSize} from './role-permit-contract.mjs';
@@ -36,11 +36,18 @@ export function nativeRolePreflightFailure(error){
   resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
 }
 /** Native source selection never changes the permit/CLI artifact working directory. */
-export function nativeRoleArtifactExecution(checked,registration){
+export function nativeRoleArtifactExecution(checked,registration,{log:audit=()=>{}}={}){
  const managedCwd='/paperclip/instances/default/projects/'+registration.binding.companyId+'/'+registration.binding.projectId+'/_default';
  const executionCwd=registration.contextVersion===1?registration.workspaceCwd:managedCwd;
  if(executionCwd!==managedCwd)fail('NATIVE_ROLE_WORKSPACE_DENIED');
- return {...checked,config:{...checked.config,cwd:executionCwd},context:{...checked.context,
+ let executionTarget;
+ try{executionTarget=nativeRoleArtifactTarget(registration,checked.context,checked.executionTarget);}
+ catch(error){audit({code:'NATIVE_ROLE_ARTIFACT_TARGET_CHECK',runId:registration.binding.runId,
+  sourceCwd:registration.projectContext?.nativeSourceWorkspace?.cwd??null,artifactCwd:executionCwd,checks:error.checks});throw error;}
+ audit({code:'NATIVE_ROLE_ARTIFACT_TARGET_PROJECTED',runId:registration.binding.runId,projectWorkspaceId:registration.binding.projectWorkspaceId,
+  sourceCwd:registration.projectContext?.nativeSourceWorkspace?.cwd??null,artifactCwd:executionCwd,
+  realizationMode:executionTarget?.workspaceRealization?.mode??null});
+ return {...checked,...(executionTarget!==undefined?{executionTarget}:{}),config:{...checked.config,cwd:executionCwd},context:{...checked.context,
   paperclipWorkspace:{...checked.context.paperclipWorkspace,cwd:executionCwd}}};
 }
 function json(file) {
@@ -349,7 +356,7 @@ export async function installNativeRoles() {
       const wrapped=createNativeRoleAdapter({readRegistration,prepareRole,log,basePromptTemplate:utils.DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
         nativeExecute:async checked=>{
           const r=await readRegistration(),file=checked.config.instructionsFilePath;
-          const execution=nativeRoleArtifactExecution(checked,r),executionCwd=execution.config.cwd;
+          const execution=nativeRoleArtifactExecution(checked,r,{log}),executionCwd=execution.config.cwd;
           fs.mkdirSync(executionCwd,{recursive:true});
           const grantId=grantFor(checked.config.env?.CODEX_HOME,r.binding.companyId);
           if(r.contextVersion===1){

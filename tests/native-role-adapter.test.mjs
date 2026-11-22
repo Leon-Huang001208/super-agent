@@ -131,6 +131,33 @@ test('actual Native local source shape is checked separately and dispatch cwd re
  assert.equal(Object.values(scope.checks).every(Boolean),true);
 });
 
+test('local source realization must match the registered shared source before its Native target is projected',async()=>{
+ for(const mode of ['copy','in_place']){
+  const f=codeWorkspaceFixture();
+  f.ctx.executionTarget={kind:'local',environmentId:'environment',leaseId:'lease',
+   workspaceRealization:{mode,authoritativeRoot:'/registered-projects/rwb',pathAliases:[],outboundRestorePaths:[]}};
+  await f.execute(f.ctx);
+  const execution=roleRuntime.nativeRoleArtifactExecution(f.getOutput(),f.registration);
+  assert.equal(execution.executionTarget.workspaceRealization.authoritativeRoot,f.artifactCwd);
+  assert.equal(execution.executionTarget.workspaceRealization.mode,mode);
+  assert.equal(execution.executionTarget.environmentId,'environment');assert.equal(execution.executionTarget.leaseId,'lease');
+  assert.equal(f.ctx.executionTarget.workspaceRealization.authoritativeRoot,'/registered-projects/rwb');
+ }
+});
+
+test('local realization rejects mismatched or remote roots, aliases and isolated Native sources before execute',async()=>{
+ for(const mutate of [f=>{f.ctx.executionTarget.workspaceRealization.authoritativeRoot='/foreign';},
+  f=>{f.ctx.executionTarget.kind='remote';},f=>{f.ctx.executionTarget.workspaceRealization.mode='unknown';},
+  f=>{f.ctx.executionTarget.workspaceRealization.pathAliases=[{path:'/alias',target:'/foreign'}];},
+  f=>{f.ctx.executionTarget.workspaceRealization.outboundRestorePaths=['/foreign'];},
+  f=>{f.ctx.context.paperclipWorkspace.mode='isolated';},f=>{f.ctx.context.paperclipWorkspace.source='project_worktree';},
+  f=>{f.ctx.context.paperclipWorkspace.cwd=f.artifactCwd;f.ctx.context.paperclipWorkspace.mode='isolated';},
+  f=>{delete f.registration.profile.executionPolicy;f.ctx.config.extraArgs=[...NATIVE_ROLE_MANAGED_ARGS];f.ctx.config.dangerouslyBypassApprovalsAndSandbox=false;f.ctx.config.dangerouslyBypassSandbox=false;}]){
+  const f=codeWorkspaceFixture();f.ctx.executionTarget={kind:'local',workspaceRealization:{mode:'in_place',authoritativeRoot:'/registered-projects/rwb',pathAliases:[],outboundRestorePaths:[]}};mutate(f);
+  await assert.rejects(f.execute(f.ctx),/NATIVE_ROLE_(?:WORKSPACE_SCOPE|SCOPE)_DENIED/);assert.equal(f.getCalls(),0);
+ }
+});
+
 test('code source binding rejects wrong Native workspace, project, cwd and absent trusted code registration before execute',async()=>{
  for(const mutate of [f=>{f.ctx.context.paperclipWorkspace.workspaceId='wrong';},f=>{f.ctx.context.paperclipWorkspace.projectId='wrong';},
   f=>{f.ctx.context.paperclipWorkspace.cwd='/unregistered/private-content';},f=>{delete f.registration.projectContext.nativeSourceWorkspace;},

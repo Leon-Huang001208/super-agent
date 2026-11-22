@@ -4,6 +4,7 @@ import {isMacNative,roleAdapterArgs} from './role-execution-policy.mjs';
 import{CHIEF_DISPATCH_PROTOCOL}from'./team-plan.mjs';
 import {validateRootCallBudget} from './native-role-budget.mjs';
 import {rwbReleaseTimeoutPolicy} from './rwb-release.mjs';
+import {nativeRoleArtifactTarget} from './role-project-context.mjs';
 
 export const NATIVE_ROLE_MANAGED_ARGS = Object.freeze(['--sandbox', 'workspace-write']);
 export const NATIVE_ROLE_EXTRA_ARGS = Object.freeze(['--sandbox', 'workspace-write',
@@ -48,16 +49,21 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
         const sourceRegistered=Boolean(source&&source.id===binding?.projectWorkspaceId&&source.id===project.nativeWorkspaceId&&
           source.projectId===binding?.projectId&&source.sourceType==='local_path'&&
           project.repository?.hostPath&&project.workspace?.hostPath&&project.repository.hostPath!==project.workspace.hostPath);
-        const sourceSelected=sourceRegistered&&input?.workspaceId===source.id&&input?.projectId===source.projectId&&input?.cwd===source.cwd;
+        const sourceSelected=native&&sourceRegistered&&input?.workspaceId===source.id&&input?.projectId===source.projectId&&input?.cwd===source.cwd&&
+          input?.source==='project_primary'&&input?.mode==='shared_workspace';
+        let targetValid=true,targetChecks;
+        try{nativeRoleArtifactTarget(registration,original.context,original.executionTarget);}
+        catch(error){if(error.code!=='NATIVE_ROLE_WORKSPACE_TARGET_DENIED')throw error;targetValid=false;targetChecks=error.checks;}
         const checks={artifactCwd:registration.workspaceCwd==='/paperclip/instances/default/projects/'+binding?.companyId+'/'+binding?.projectId+'/_default',
-          sourceRegistration:!source||sourceRegistered,
+          sourceRegistration:!source||native&&sourceRegistered,executionTarget:targetValid,
+          sourceMode:!source||input?.source==='project_primary'&&input?.mode==='shared_workspace',
           inputCwd:!input?.cwd||input.cwd===registration.workspaceCwd||sourceSelected,
           projectId:!input?.projectId||input.projectId===binding?.projectId,
           workspaceId:input?.workspaceId===undefined||input.workspaceId===expectedId,
           projectWorkspaceId:original.context?.projectWorkspaceId===undefined||original.context.projectWorkspaceId===binding?.projectWorkspaceId};
         // Log trusted registered directories and boolean checks, never an arbitrary input cwd.
         log({code:'NATIVE_ROLE_WORKSPACE_SCOPE_CHECK',runId:ctx?.runId,artifactCwd:registration.workspaceCwd,
-          sourceCwd:source?.cwd??null,checks});
+          sourceCwd:source?.cwd??null,checks,...(targetChecks?{targetChecks}:{})});
         if(!Object.values(checks).every(Boolean))fail('NATIVE_ROLE_WORKSPACE_SCOPE_DENIED');
       }
       if (!binding || !config || (original.executionTarget && original.executionTarget.kind !== 'local') || original.executionTransport?.remoteExecution || binding.runId !== ctx.runId || binding.agentId !== ctx.agent?.id ||

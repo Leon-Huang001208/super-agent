@@ -23,6 +23,24 @@ test('the production Native execution projection retains the artifact cwd used b
  assert.equal(execution.context.paperclipWorkspace.workspaceId,'code-workspace');assert.deepEqual(checked,before);
  assert.throws(()=>api('nativeRoleArtifactExecution')(checked,{...registration,workspaceCwd:source}),/NATIVE_ROLE_WORKSPACE_DENIED/);
 });
+test('the production Native projection preserves local identity and refuses an unbound authoritative root',()=>{
+ const source='/registered-projects/rwb',cwd='/paperclip/instances/default/projects/company/project/_default';
+ const registration={binding:{companyId:'company',projectId:'project',projectWorkspaceId:'code-workspace'},contextVersion:1,workspaceCwd:cwd,
+  profile:{executionPolicy:{executor:'macos_native'}},projectContext:{id:'project',nativeWorkspaceId:'code-workspace',
+   nativeSourceWorkspace:{id:'code-workspace',projectId:'project',cwd:source,sourceType:'local_path'},
+   repository:{hostPath:'/source/repo'},workspace:{hostPath:'/task/worktrees/root'}}};
+ for(const mode of ['copy','in_place']){
+  const checked={config:{cwd},context:{paperclipWorkspace:{cwd,workspaceId:'code-workspace',projectId:'project',mode:'shared_workspace',source:'project_primary'}},
+   executionTarget:{kind:'local',environmentId:'environment',leaseId:'lease',workspaceRealization:{mode,authoritativeRoot:source,pathAliases:[],outboundRestorePaths:[]}}};
+  const events=[],execution=api('nativeRoleArtifactExecution')(checked,registration,{log:event=>events.push(event)});
+  assert.equal(execution.executionTarget.kind,'local');assert.equal(execution.executionTarget.environmentId,'environment');assert.equal(execution.executionTarget.leaseId,'lease');
+  assert.deepEqual(execution.executionTarget.workspaceRealization,{mode,authoritativeRoot:cwd,pathAliases:[],outboundRestorePaths:[]});
+  assert.equal(checked.executionTarget.workspaceRealization.authoritativeRoot,source);
+  assert.ok(events.some(event=>event.sourceCwd===source&&event.artifactCwd===cwd));
+  const changed=structuredClone(registration);changed.projectContext.nativeSourceWorkspace.cwd='/registered-projects/changed';
+  assert.throws(()=>api('nativeRoleArtifactExecution')(checked,changed),/NATIVE_ROLE_WORKSPACE_TARGET_DENIED/);
+ }
+});
 test('the actual registered path accepts a legal private registry above 1 MiB and retains instruction readiness checks',{skip:process.getuid()!==0},t=>{
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'native-registry-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const agentId=randomUUID(),registry={enabled:true,companyId:randomUUID(),agents:[{profile:{agentId,role:'document-specialist'}}],padding:''};

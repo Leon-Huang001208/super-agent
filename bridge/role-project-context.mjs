@@ -8,6 +8,26 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 const metadata=workspace=>workspace?.metadata?.superAgentProject??{};
 const sourcePath=workspace=>metadata(workspace).repository?.hostPath??null;
 
+/** Keep Native local environment identity, while binding its higher-priority cwd to artifacts. */
+export function nativeRoleArtifactTarget(registration,context,target){
+ if(target===undefined||target===null)return target;
+ const binding=registration.binding,project=registration.projectContext,source=project?.nativeSourceWorkspace;
+ const artifactCwd='/paperclip/instances/default/projects/'+binding?.companyId+'/'+binding?.projectId+'/_default';
+ const input=context?.paperclipWorkspace,realization=target.workspaceRealization,present=realization!==undefined&&realization!==null;
+ const sourceSelected=Boolean(source&&source.id===binding?.projectWorkspaceId&&source.id===project.nativeWorkspaceId&&
+  source.projectId===binding?.projectId&&source.sourceType==='local_path'&&project.id===binding.projectId&&
+  project.repository?.hostPath&&project.workspace?.hostPath&&project.repository.hostPath!==project.workspace.hostPath&&
+  registration.profile?.executionPolicy?.executor==='macos_native'&&input?.workspaceId===source.id&&input?.projectId===source.projectId&&
+  input?.source==='project_primary'&&input?.mode==='shared_workspace'&&[source.cwd,artifactCwd].includes(input.cwd));
+ const checks={local:target.kind==='local',artifactCwd:registration.contextVersion!==1||registration.workspaceCwd===artifactCwd,
+  realization:!present||object(realization)&&['copy','in_place'].includes(realization.mode),
+  authoritativeRoot:!present||realization.authoritativeRoot===artifactCwd||sourceSelected&&realization.authoritativeRoot===source.cwd,
+  aliases:!present||Array.isArray(realization.pathAliases)&&realization.pathAliases.length===0,
+  restorePaths:!present||Array.isArray(realization.outboundRestorePaths)&&realization.outboundRestorePaths.length===0};
+ if(!Object.values(checks).every(Boolean))throw Object.assign(new Error('NATIVE_ROLE_WORKSPACE_TARGET_DENIED'),{code:'NATIVE_ROLE_WORKSPACE_TARGET_DENIED',checks});
+ return {...target,...(present?{workspaceRealization:{...realization,authoritativeRoot:artifactCwd}}:{})};
+}
+
 /** Select only registered Native projects/workspaces. Goal text never becomes configuration. */
 export function selectNativeProject({projects,workspaces=[],companyId,selector,currentProjectId,parentProjectId,defaultProjectId}){
  const available=projects.filter(project=>project.companyId===companyId);
