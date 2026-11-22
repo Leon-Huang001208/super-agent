@@ -10,7 +10,8 @@ const require=createRequire('/opt/super-agent/bridge-dependencies/package.json')
 const fail=code=>{throw Object.assign(Error(code),{code});};
 export async function startChiefFeishuService({database}){
  const registry=readControl(R+'/registry.json'),credentials=readControl('/paperclip/feishu/feishu.json'),owner=readControl('/paperclip/feishu/ownership.json'),identity=readControl('/chief-feishu-identity/owner-context.json');
- if(registry.team?.enabled!==true||identity.appId!==credentials.appId||identity.ownerOpenId!==owner.ownerOpenId)fail('CHIEF_FEISHU_DEPLOYMENT_BINDING_DENIED');
+ // The receiver may connect while dispatch is paused; currentScope still guards every intake/drain.
+ if(![true,false].includes(registry.team?.enabled)||identity.appId!==credentials.appId||identity.ownerOpenId!==owner.ownerOpenId)fail('CHIEF_FEISHU_DEPLOYMENT_BINDING_DENIED');
  const binding={...identity,nativeOwnerId:registry.ownerId,companyId:registry.companyId,projectId:registry.team.projectId,chiefAgentId:registry.team.ids.chief};
  const contextEnabled=registry.context?.enabled===true,catalogDigest=createHash('sha256').update(JSON.stringify(registry.context?.catalog??null)).digest('hex');
  const currentScope=()=>{const r=readControl(R+'/registry.json'),i=readControl('/chief-feishu-identity/owner-context.json'),u=readControl('/paperclip/feishu/ownership.json');if(r.team?.enabled!==true||r.ownerId!==binding.nativeOwnerId||r.companyId!==binding.companyId||r.team.projectId!==binding.projectId||r.team.ids.chief!==binding.chiefAgentId||i.appId!==binding.appId||i.tenantKey!==binding.tenantKey||i.ownerOpenId!==binding.ownerOpenId||u.ownerOpenId!==binding.ownerOpenId||(r.context?.enabled===true)!==contextEnabled||createHash('sha256').update(JSON.stringify(r.context?.catalog??null)).digest('hex')!==catalogDigest)fail('CHIEF_FEISHU_DEPLOYMENT_BINDING_DENIED');};
