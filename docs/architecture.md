@@ -16,6 +16,8 @@ Paperclip继续拥有任务、运行、会话及正式重试。当前业务模�
 
 RWB普通开发按项目自身持续授权及已登记的交付范围执行，通过原GitSafety、独立评审、必需检查和分支保护后可合并。本人已授权历史有效改动按批发布时，任务绑定的DevOps发布能力仍须精确登记才可调用原RWB GitSafety/resident流程；inspect不执行会合并的delivery status，未知副作用只核对原操作，服务切换需交接当前写窗口。生产发布权限不来自岗位描述、仓库正文或模型参数。
 
+已登记的`workspace.prepare`、`delivery.prepareCandidate`及交付命令在宿主执行时复用`hostProxyEnvironment`，读取现有代理环境或macOS系统loopback HTTPS代理，并保留本地服务的`NO_PROXY`。这覆盖模型启动前的GitSafety源码准备，不依赖随后模型broker的代理初始化；项目命令范围、超时、退出码和脱敏处理仍沿原合同。
+
 Mac 原生 provider 通道采用每 run 的 loopback HTTPS、任务 CA 与原 broker 校验；CLI 与 Node MCP 各自获得对应信任，TLS 实际监听后才可消费就绪记录。原首计划已启动 CLI 但在 HTTPS-origin 检查前未发模型 response 的已结算失败，通过窄的第二次 Native retry 合同恢复，保留旧失败与原根预算；不改写 Native NoProvider 字段。见[原生 HTTPS 与首计划恢复](plans/native-https-recovery.md)。
 
 ## 当前原生执行改造
