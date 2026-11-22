@@ -44,6 +44,8 @@ Chief的`roleInstructions`与DevOps的`renderRoleCapabilitiesMarkdown`同步说�
 
 `bridge/team-qa-repair.mjs`和`team-native-runtime.mjs`把普通成功QA的NEEDS_WORK回交原执行子任务，最多两轮；每轮使用新operation/run/session和独有输出，原开发、QA及失败历史不覆写。采集绑定当前dispatch操作，旧QA不进入新reviewedArtifacts。预算不足、需要多项衍生重建或修复负责人不明确时保留可恢复阻断，不冒充Native失败重试。相关驱动与边界见`tests/team-qa-repair.test.mjs`。
 
+`chief-context-paperclip`沿既有预算/物理映射识别受控Chief直接重试的闭合历史，保留未知Native原字段；`chief-context-native`对已持久Owner continue复用原事务kernel，`scripts/reconcile-chief-command.mjs`提供排空后的认证管理preview/apply。相关context及CLI回归覆盖原source身份、JSONB字段顺序、失败ACK保全、同源幂等、后续项目选择、错误输入和pending补充先后顺序；不接新文本、造SDK事件或增加监听/账本。
+
 `bridge/rwb-release.mjs`只供专门登记的DevOps原任务消费`host.rwb_release`操作，复用RWB的GitSafety和resident；普通项目delivery上限保持。host-call原队列按登记操作去重，未知结果不重放。`tests/rwb-release.test.mjs`、host capability/queue/context回归只证明接口合同，真实合并部署仍须当前写窗口和RWB实际回执。
 
 `scripts/publish-role-profiles.mjs`使用Native Owner/CAS保存；旧生成基线不匹配时保留本人自定义内容，不能用新模板直接覆盖。生成器与六阶段能力说明见[持续迭代](agent-iteration.md)，Native发布、新run加载及业务验收分别记录。

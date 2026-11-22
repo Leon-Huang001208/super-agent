@@ -62,6 +62,12 @@ Native Codex插件代码缓存使用`/Volumes/WorkDisk/Caches/SuperAgent/codex-n
 
 源码经PR、检查与独评后，在同一实例排空的窗口更新原App/宿主传输及启动恢复入口，保留Mac原生策略、12岗ID、公司Skill、原任务/调用历史和飞书入口。运行升级与RWB业务部署是不同写窗口；原任务持有窗口时不并发切换RWB。
 
+### 已保存继续请求的原意图对账
+
+本人真实continue已经保存Native intent、因核对门拒绝且未产生effect/result时，先修复具体状态判定，保留原消息、失败ACK和预算。在关闭team派发、确认全部Native run/队列/环境及phase租约/call锁均排空后，认证Owner可运行`node scripts/reconcile-chief-command.mjs --request <已核私有请求JSON>`只读预览；加`--apply`才在原Native事务中消费同一操作。请求仅绑定原task/company/project/sourceKey/operation及输入、control版本和来源摘要，不接受新正文、消息ID或Owner身份。
+
+来源由唯一Owner intent读取，按原固定schema重建JSONB字段次序并核对原parse/body/fingerprint；不把重建数据投递成SDK入站。应用不调用模型、不创建目标、不改已用调用或旧null、不重发ACK/通知，也不回退后来本人的项目/任务选择；返回成功不等于后续业务通过。必须先完成原意图对账，再恢复coordinator处理pending补充；反向顺序导致旧输入不匹配时保留拒绝，不修改摘要来迎合。再次调用同一已应用请求只读原result；部分结果或未知保持原件核对，禁止另建操作重放。
+
 角色材料用`publish-role-profiles.mjs`经Native Owner/CAS保存。升级可通过`--baseline-profiles <私有JSON>`提供上一现役源码生成的24份文本（键为`<role>/AGENTS.md`或`<role>/CAPABILITIES.md`）。当前文本既不等于目标也不等于旧生成基线时保留整岗材料并报告`custom_content_preserved`；不把人工定制当作旧模板覆盖。旧内容和在途run固定快照保持。源模板发布不等于对应岗位业务验收。
 
 原根授额用`scripts/task-call-budget.mjs --task-id <原root> --maximum 20 --approval-source <既有本人授权来源>`预览；只有`--apply`写可信原任务额度记录，要求关闭派发、无活动run/call锁及真实Owner会话。原budget目录全部保留，不因授额20次或重新规划退款；不再新建12次授额。
