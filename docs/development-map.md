@@ -12,6 +12,8 @@ Chief的`roleInstructions`与DevOps的`renderRoleCapabilitiesMarkdown`同步说�
 
 `role-project-context`从当前Native工作区记录产生代码源输入绑定，`native-role-adapter`对照真实nested `paperclipWorkspace.workspaceId/projectId/cwd`，保留固定artifact目录和配置变化拒绝。`native-role-runtime`的实际产物执行投影沿同一固定目录进入permit；源绑定不能由模型请求或缺失的顶层workspace字段代替。context/adapter/runtime回归覆盖代码源、旧artifact、错项目/ID/cwd、登记变化与产物投影；Host工作树隔离沿原host回归核对。
 
+`role-native-retry`与原consumer/team tick增加显式completed-resume Chief首个workspace bootstrap拒绝的窄分类，fresh Native workspace及原control/claim、Native首次successor、官方NoProvider和零physical同时约束。`completed-resume-chief-retry`按真实字段形状覆盖queue→真实parent→selector→原binder，保留原Root/op/nonce/已用计数；不扩大普通Chief错误、重试次数或UNKNOWN重放。
+
 ## 真实任务驱动的迭代
 
 `native-role-runtime.registered`通过现有`readControl`读取registry，统一使用4 MiB控制文件上限，保留owner、私有mode、常规文件、symlink及hardlink检查；其它私有JSON仍沿原1 MiB读取器，不扩大凭据文件限制。`native-role-runtime-context`回归执行真实registered函数及instruction readiness，复现并验证大于1 MiB的合法registry，同时拒绝超4 MiB、宽权限和链接文件，不用截断旧operations或修改历史来通过。

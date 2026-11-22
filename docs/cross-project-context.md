@@ -12,6 +12,8 @@
 
 普通unmanaged或done根的`add/continue`仍不自动接管。本人明确要求继续一个总体未完成的已结清原根时，用[运维入口](operations.md#20次预算及已完成原根续接)校验、归档原代并建立合法M2控制，新代保留原root和budget。历史普通UI任务不会因全局开关自动变成M2任务。
 
+该显式completed-resume的新Chief首调用若在workspace作用域校验前置失败，只能用Native已登记的首次successor恢复。须联合官方bootstrap/provider未启动、零日志/会话/进程及同操作零physical、当前Owner恢复control/claim、输入/workspace、原预算和phase nonce；仅缺文件不构成证明。consumer按真实parent完成只读校验后仍复用原operation，不新建wake、Root或改写旧失败；未知证据保持reconciliation。
+
 新的只读产物workspace明确采用`non_git_path`。Native配置中有workspace ID不等于目录必须是产品Git checkout；运行例外仅由固定版本hook及当前Native与受管绑定判定，不能由任务或Skill文字声明。M2原workspace ID/项目/输入约束保留；旧local_path可保留历史并经Owner在安全节点明确改类型，不自动删除或重建旧workspace。
 
 Owner显式登记的代码源workspace可有独立Native cwd。仅由fresh DB及已校验的仓库/工作树登记产生输入绑定，再与Native实际nested `workspaceId/projectId/cwd`比对；固定artifact cwd及宿主隔离代码工作树仍各自独立。只读catalog不能借源码绑定恢复宿主写权限；缺少可信源绑定、错项目/目录/ID或登记漂移仍拒绝，不通过放宽原artifact例外解决代码路径差异。
