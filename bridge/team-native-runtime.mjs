@@ -1,6 +1,6 @@
 import{taskInputRevision}from'./task-input.mjs';
 import fs from'node:fs';import path from'node:path';import{createHash,randomUUID}from'node:crypto';
-import{AdmissionMeter}from'./admission.mjs';import{ROLE_ROOT as R,readControl,writeControl,editRoleRegistry}from'./role-control-store.mjs';
+import{AdmissionMeter}from'./admission.mjs';import{ROLE_ROOT as R,readControl,readRolePermit,writeControl,editRoleRegistry}from'./role-control-store.mjs';
 import{authorizeChiefOwnerInput,validateTeamPlan,validateTeamCodeCandidate,validateTeamQaResult,validateTeamCheckEvidence,codeReviewForTeamStep}from'./team-plan.mjs';import{TEAM_ROLES,validateTeamRoster}from'./team-roles.mjs';
 import{readRoleProjectContext}from'./role-project-context.mjs';
 import{validateNativeRoleRetry,advanceNativeRetryFlow,archiveNativeRetryFailure,clearArchivedRetryLock,rebindNativeRetryContext,settleNativeRetryWithoutProvider,canReleaseSettledNativeRetryPhase,NATIVE_RETRY_CONTEXT}from'./role-native-retry.mjs';
@@ -77,7 +77,7 @@ export async function admitChiefInput(ctx,{database}){
  return {...ctx,context:{...ctx.context,issueId:task.id,taskId:task.id,projectId:task.projectId,responsibleUserId:r.ownerId,inputRevision,roleOperationId:op.id,taskGoal:task.description,conversationMode:false}};
 }
 function artifact(r,name,{notBefore=0,runId,historicalTaskId}={}){
- let base=workspace(r);if(runId){const permit=readControl(R+'/permits/'+runId+'.json');base=permit.cwd;
+ let base=workspace(r);if(runId){const permit=readRolePermit(R+'/permits/'+runId+'.json');base=permit.cwd;
   if(historicalTaskId!==undefined){if(permit.runId!==runId||permit.taskId!==historicalTaskId||permit.companyId!==r.companyId||permit.projectId!==r.team.projectId||permit.ownerId!==r.ownerId||!TEAM_ROLES[permit.role]||base!==workspace(r)&&base!==R+'/workspaces/'+permit.role)fail('TEAM_ARTIFACT_WORKSPACE_DENIED');}
   else if(teamContextEnabled(r)){if(permit.projectId!==r.team.projectId||base!==workspace(r))fail('TEAM_ARTIFACT_WORKSPACE_DENIED');}else if(permit.companyId!==r.companyId||base!==workspace(r,permit.projectId)&&!Object.keys(TEAM_ROLES).some(k=>base===R+'/workspaces/'+k))fail('TEAM_ARTIFACT_WORKSPACE_DENIED');}
  if(!/^[a-z][a-z0-9-]{0,110}\.(md|json)$/.test(name??''))fail('TEAM_ARTIFACT_PATH_DENIED');const p=path.join(base,name),stat=fs.lstatSync(p);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size>262144||stat.mtimeMs+2000<notBefore)fail('TEAM_ARTIFACT_DENIED');const bytes=fs.readFileSync(p);if(bytes.includes(0))fail('TEAM_ARTIFACT_DENIED');return {file:name,sha256:sha(bytes),bytes:bytes.length,text:bytes.toString('utf8')};
@@ -184,7 +184,7 @@ export async function bindNativeRetryAttempt(ctx,{database}){
   try{await requireNoPendingOwnerInput({...p,db:tx},r,rootTask.id);await requireNoPendingOwnerInput({...p,db:tx},r,task.id);}
   catch(error){if(error.code!=='TEAM_PENDING_OWNER_INPUT')throw error;settleReason??='owner_input';}
   const meter=meterFor(r,task.projectId);try{if(!meter.verifyLease(r.lease).allowed)fail('TEAM_NATIVE_RETRY_PHASE_LEASE_CHANGED');}finally{meter.close();}
-  const permit=readControl(R+'/permits/'+parentRun.id+'.json');
+  const permit=readRolePermit(R+'/permits/'+parentRun.id+'.json');
   if(permit.runId!==parentRun.id||permit.taskId!==task.id||permit.agentId!==operation.agentId||permit.companyId!==r.companyId||permit.projectId!==task.projectId||permit.ownerId!==r.ownerId||permit.inputRevision!==operation.inputRevision)fail('TEAM_NATIVE_RETRY_PARENT_PERMIT_CHANGED');
   let failedArtifact;
   const artifactFile=entry&&path.join(permit.cwd,entry.outputFile);
@@ -356,7 +356,7 @@ async function collectChild(p,r,flow,entry,task,context){
  flow.artifacts[entry.key]={taskId:task.id,runId:run.id,sessionId:run.sessionIdAfter,file:a.file,sha256:a.sha256,bytes:a.bytes,verdict,...(repairTaskKey!==undefined?{repairTaskKey}:{}),...(a.archiveFile?{archiveFile:a.archiveFile}:{})};
 
  if(entry.role==='qa'&&op.codeCandidate&&verdict==='PASS'){
-  const permit=readControl(R+'/permits/'+run.id+'.json');
+  const permit=readRolePermit(R+'/permits/'+run.id+'.json');
   if(permit.companyId!==r.companyId||permit.projectId!==task.projectId||permit.runId!==run.id||permit.taskId!==task.id||permit.agentId!==entry.agentId||(permit.rootTaskId??permit.taskId)!==flow.rootTaskId)fail('TEAM_CHECK_EVIDENCE_DENIED');
   const checksFile=R+'/code-workspaces/'+flow.rootTaskId+'/checks/'+run.id+'.json';
   const proof=fs.existsSync(checksFile)?validateTeamCheckEvidence(readControl(checksFile),{permit,candidateSha:op.codeCandidate.candidateSha}):{checks:[]};

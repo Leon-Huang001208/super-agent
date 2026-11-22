@@ -9,7 +9,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {AdmissionMeter} from '../bridge/admission.mjs';
 import {taskInputRevision} from '../bridge/task-input.mjs';
-import {readControl,writeControl,editRoleRegistry} from '../bridge/role-control-store.mjs';
+import {readControl,readRolePermit,writeControl,editRoleRegistry} from '../bridge/role-control-store.mjs';
 
 const ROOT='/paperclip/control/research-pm',PKG='/opt/paperclip/node_modules';
 const DIRECTORY=ROOT+'/native-skills-acceptance',RECEIPT=DIRECTORY+'/receipt.json';
@@ -136,7 +136,7 @@ async function main(args){
   }
   step.status=run.status;step.nativeStatus=run.status;step.finishedAt=new Date(run.finishedAt).toISOString();
   if(run.status==='succeeded'){
-   const permit=readControl(ROOT+'/permits/'+run.id+'.json');
+   const permit=readRolePermit(ROOT+'/permits/'+run.id+'.json');
    if(permit.taskId!==step.taskId||permit.rootTaskId!==receipt.rootTaskId||permit.executionPolicy?.executor!=='macos_native'||permit.companyId!==receipt.companyId||permit.agentId!==step.agentId)fail('NATIVE_ACCEPTANCE_PERMIT_CHANGED');
    const proof=readControl(ROOT+'/transport/'+run.id+'/native-proof.json');
    if(proof.runId!==run.id||proof.executor!=='macos_native'||proof.platform!=='darwin'||proof.executionPolicy?.executor!=='macos_native')fail('NATIVE_ACCEPTANCE_NATIVE_PROOF_MISSING');
@@ -177,7 +177,7 @@ async function main(args){
   if((await runsFor(step)).length)fail('NATIVE_ACCEPTANCE_ALREADY_ATTEMPTED');
   let additionalInput='本次只执行已分配的单个角色验收，不创建或唤醒其他任务。'+description(receipt,step);let reviewedArtifacts;
   const predecessor=step.role==='pm'?receipt.steps[0]:step.role==='qa'?receipt.steps[2]:null;
-  if(predecessor){const sourcePermit=readControl(ROOT+'/permits/'+predecessor.runId+'.json');reviewedArtifacts=predecessor.artifacts.map(ref=>{const artifact=readArtifact(path.join(sourcePermit.cwd,ref.file),{expectedHash:ref.sha256});additionalInput+='\n实际已完成上游产物 '+JSON.stringify(ref)+'\n'+artifact.text;return {taskId:ref.taskId,runId:ref.runId,file:ref.file,sha256:ref.sha256};});}
+  if(predecessor){const sourcePermit=readRolePermit(ROOT+'/permits/'+predecessor.runId+'.json');reviewedArtifacts=predecessor.artifacts.map(ref=>{const artifact=readArtifact(path.join(sourcePermit.cwd,ref.file),{expectedHash:ref.sha256});additionalInput+='\n实际已完成上游产物 '+JSON.stringify(ref)+'\n'+artifact.text;return {taskId:ref.taskId,runId:ref.runId,file:ref.file,sha256:ref.sha256};});}
   const operation={id:step.operationId,kind:'run',taskId:step.taskId,projectId:receipt.projectId,agentId:step.agentId,role:step.role,rootTaskId:receipt.rootTaskId,rootInputRevision:receipt.rootInputRevision,inputRevision:step.inputRevision,phase:'work',additionalInput,
    ...(step.role==='qa'?{reviewedArtifacts}:{}),...(step.role==='network-engineer'?{networkScope:{topics:['gateway','routing','dns','connectivity'],actions:['observe','report']}}:{}),...(step.role==='system-resource-engineer'?{resourceScope:{topics:['volumes','capacity','memory','swap','cpu'],actions:['observe','report']}}:{})};
   const current=registry();assertReceiptRegistry(current,receipt);step.previousLeasePresent=Object.hasOwn(current,'lease');if(step.previousLeasePresent)step.previousLease=structuredClone(current.lease);

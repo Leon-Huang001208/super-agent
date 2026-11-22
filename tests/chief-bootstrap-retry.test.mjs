@@ -35,6 +35,12 @@ function fixture(t){
 }
 function admit(f){return bindChiefBootstrapRetry({...f,verifyPhaseLease:()=>true,editRegistry:edit=>{f.registry=edit(structuredClone(f.registry));return f.registry;},log(){}});}
 
+test('bootstrap evidence reads a large permit without widening its budget or operation control files',{skip:process.getuid()!==0},t=>{
+ const f=fixture(t);f.permit.padding='x'.repeat(4371200);f.write('permits/'+f.parentRun.id+'.json',f.permit);
+ const budgetFile=f.root+'/budget/'+f.task.id+'/'+f.operation.id+'.json',before=fs.readFileSync(budgetFile);
+ assert.equal(admit(f).context.roleOperationId,f.registry.operations.at(-1).id);assert.deepEqual(fs.readFileSync(budgetFile),before);
+});
+
 test('the same Native initial plan retry binds a new operation while its original spent slot and bytes remain',t=>{
  const f=fixture(t),opBytes=fs.readFileSync(f.root+'/operations/'+f.operation.id+'.json'),budgetFile=f.root+'/budget/'+f.task.id+'/'+f.operation.id+'.json',budgetBytes=fs.readFileSync(budgetFile),before=structuredClone(f.ctx);
  const result=admit(f),next=f.registry.operations.at(-1);
