@@ -14,6 +14,8 @@ Chief的`roleInstructions`与DevOps的`renderRoleCapabilitiesMarkdown`同步说�
 
 `role-native-retry`与原consumer/team tick增加显式completed-resume Chief首个workspace bootstrap拒绝的窄分类，fresh Native workspace及原control/claim、Native首次successor、官方NoProvider和零physical同时约束。`completed-resume-chief-retry`按真实字段形状覆盖queue→真实parent→selector→原binder，保留原Root/op/nonce/已用计数；不扩大普通Chief错误、重试次数或UNKNOWN重放。
 
+未启动successor校验还区分Native原生前置管理信息与真正调用证据：ledgerScope、初始receipt/reservation必须来自固定安装版dispatch合同并绑定当前任务/run；其它usage、会话、进程、输出或未知结果不因零token获准。原生dispatch无模型回归覆盖真实准备顺序，另验已知受控中间拒绝的三行原retry链；旧reconciliation/null保留，不能以简化status-only fixture代替运行时合同。
+
 ## 真实任务驱动的迭代
 
 `native-role-runtime.registered`通过现有`readControl`读取registry，统一使用4 MiB控制文件上限，保留owner、私有mode、常规文件、symlink及hardlink检查；其它私有JSON仍沿原1 MiB读取器，不扩大凭据文件限制。`native-role-runtime-context`回归执行真实registered函数及instruction readiness，复现并验证大于1 MiB的合法registry，同时拒绝超4 MiB、宽权限和链接文件，不用截断旧operations或修改历史来通过。

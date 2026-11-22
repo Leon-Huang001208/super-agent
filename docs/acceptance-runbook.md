@@ -170,7 +170,11 @@ Native全局scheduler保持原受控关闭状态。恢复既有scheduled retry�
 
 父角色run失败后，先只读核对Native已存在的`scheduled_retry`、父run、attempt序号和原子任务。不得另发manual wake或新建root。本人认证的`POST /issues/:id/scheduled-retry/retry-now`只推进原有run；Agent pause会取消scheduled retry，不能把pause/resume当作原attempt的无损暂停。
 
-Owner completed-resume Chief的workspace前置拒绝另验同一原操作、首次Native successor、官方providerfalse、零日志/会话/进程/permit/claim/transport/预算新增；fresh Native workspace与nested字段、原恢复control/claim、输入、旧累计及phase nonce必须闭合。以真实parent经过queue selector和生产binder后才可推进已有successor；缺证据、第二次attempt、任意Chief失败或旧行被改写均拒绝。维护仅证明没有live provider时须明确保留scheduled行和phase，不误称全局空闲、不删除lease。
+Owner completed-resume Chief的workspace前置拒绝另验同一原操作、首次Native successor、官方providerfalse、零日志/会话/进程/permit/claim/transport/预算新增；fresh Native workspace与nested字段、原恢复control/claim、输入、旧累计及phase nonce必须闭合。以真实parent经过queue selector和生产binder后才可推进已有successor；一般第二次attempt、任意Chief失败、缺证据或旧行被改写仍拒绝。维护仅证明没有live provider时须明确保留scheduled行和phase，不误称全局空闲、不删除lease。
+
+原生dispatch合同另验adapter前的管理字段写入：任务ledgerScope、初始accounting receipt与reservation采用真实安装版路径，字段值按可信task/run核对；不能要求所有usageJson为空，也不能把零token账务字段当作Provider未启动证明。保留Provider/session/process/output/Unknown污染负例，真实管理字段与调用证据分别判定。
+
+受控中间前置拒绝的第二次retry须留全三行：最初官方bootstrapfalse、首次retry精确受控返回且历史null不改、现有attempt2；联合Native只读reconciliation、实际空日志/无会话进程、同op零physical及原phase/预算。原调度器→实际parent→selector→binder无模型合同通过后才允许Owner推进原有第二次行一次，不新建retry/wake/Root，不允许第三次或未知链。
 
 首Root Chief plan的bootstrap恢复单列：父run明确Gate arguments拒绝、未claim且provider未启动，原根仅保留首次失败及其Native首次retry，没有flow、host claim/transport或未知结果。核对原owner wake、输入版本、operation/permit、Admission nonce和原预算槽；计划后暂停的`reviewBeforeDispatch`允许先产生首计划，但本人pause或待应用补充仍阻止执行。原1/6预算保留，新物理attempt正常成为2/6，不新建目标、wake或session来换额度。全局scheduler关闭时，等待到期不会自行推进；只有修复候选装配完毕后，才通过Native的原Issue retry接口推进已存在的run，并由常驻原消费者执行。保存计划产物、模型/进程组结束、Native终态及飞书结果，再进入本人补充阶段。源码回归不能替代这一实机证据。
 
