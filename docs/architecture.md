@@ -107,6 +107,8 @@ flowchart LR
 
 Native内置重试队列拥有后继run。`role-native-retry.mjs`只在该run进入原Adapter执行前，按数据库的`retryOfRunId`和`scheduledRetryAttempt`绑定新的物理调用operation；不创建任务、run或另一个重试队列。父run必须已失败结束，私有host传输必须明确非unknown、未超时、未取消且stdout/stderr摘要匹配，原操作预算、输入、根/子任务、锁和已释放的Native环境租约逐项对应。证据缺失或存在其他活动执行时拒绝，不清理未知锁。
 
+Native真实dispatch在adapter前会补写ledger归属、初始accounting receipt及预算reservation等管理字段；它们不能按scheduled快照要求全空，也不能单独证明Provider已执行或未执行。未启动证明只接受安装版固定合同的最窄管理结构，并按可信任务/运行身份核对；实际会话、进程、输出、Provider结果或未知证据仍拒绝。无模型合同须经过原生dispatch准备路径，不能只把scheduled副本status改成running。
+
 首个Chief计划尚未进入provider而被参数门拒绝时，没有child flow或host传输回执，使用独立的bootstrap恢复合同。只接受Native已登记的首次retry、原根chief/plan操作、明确的`ROLE_GATE_ARGUMENTS_DENIED`且`claimed=false`与Native bootstrap/NoProvider证据；原operation、permit、输入、本人来源、项目、Admission nonce和已花的一次预算保持对应。重试先绑定再决定是否初次admit，避免缺少`roleOperationId`的Native原始context误入新目标准入。已有任务和run不重建，旧预算不退款；实际执行新attempt时按原根可信上限计入第二槽。provider已启动、状态未知或已有flow不进入此分支。
 
 参数门同时接受受信Mac原生策略下Native adapter在model前输出bypass的合法顺序，保留原有尾部managed参数顺序。仅匹配固定model、reasoning、search、可选skip-git与唯一策略参数；不允许重复bypass、额外配置、resume或将原生bypass用于旧Docker策略。该兼容不改变角色、材料、订阅或任务范围校验。
