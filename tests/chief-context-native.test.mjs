@@ -32,6 +32,7 @@ function fixture({dedicatedRwbWorkspace=false}={}) {
   const chatKey='oc_ownerchat';
   const txFor=(key,options)=>({
     readState:async kind=>copy(state.events.get(key+':'+kind)??null),
+    readOwnerContinueIntent:async()=>{const intent=state.events.get(key+':intent');if(!intent||intent.kind!=='continue')throw Object.assign(Error('owner continue required'),{code:'CHIEF_CONTEXT_OWNER_CONTINUE_INTENT_REQUIRED'});return copy(intent);},
     append:async(kind,record)=>{state.events.set(key+':'+kind,copy(record));},
     readLegacyRegistration:async()=>copy(state.legacy.get(key)??null),
     readChat:async()=>copy(state.chats.get(options.chatId)??null),
@@ -136,6 +137,64 @@ function fixture({dedicatedRwbWorkspace=false}={}) {
     delayRegister:fn=>{registerDelay=fn;},setAckError:value=>{ackError=value;},setRegisterAfterCommitError:value=>{registerAfterCommitError=value;},
     afterTransaction:fn=>{afterTransaction=fn;},operationLookups:()=>operationLookups};
 }
+
+async function pendingOwnerContinue(){
+ const f=fixture(),task=f.makeTask({status:'blocked'});f.select(task);
+ f.registry.team.enabled=false;
+ await f.controller.dispatchTrustedCommand(f.message('/chief add A pending authorized change'));
+ f.state.executions.set(task.id,{active:false,unknown:true,budgetUsed:8,budgetMaximum:20});
+ const message=f.message('/chief continue '+task.identifier);
+ await assert.rejects(f.controller.dispatchTrustedCommand(message),{code:'CHIEF_CONTEXT_RECONCILIATION_REQUIRED'});
+ const sourceKey=chiefContextSourceKey(message),intent=f.state.events.get(sourceKey+':intent');
+ f.state.events.set(sourceKey+':ack_claimed',{operationId:intent.operationId,code:'CHIEF_CONTEXT_RECONCILIATION_REQUIRED'});
+ f.state.events.set(sourceKey+':ack_sent',{operationId:intent.operationId,messageId:'om_original_failed_ack'});
+ const reorder=value=>Array.isArray(value)?value.map(reorder):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,reorder(value[key])])):value;
+ f.state.events.set(sourceKey+':intent',reorder(intent));
+ const request={schemaVersion:1,taskId:task.id,companyId:task.companyId,projectId:task.projectId,sourceKey,operationId:intent.operationId,
+  expectedInputRevision:intent.baseInputRevision,expectedControlRevision:intent.controlRevision,expectedFingerprint:intent.fingerprint,expectedBodySha256:intent.bodySha256};
+ return{...f,makeMessage:f.message,task,message,intent,request,sourceKey};
+}
+
+test('only the original persisted Owner continue is reconciled transactionally without another source or acknowledgement',async()=>{
+ const f=await pendingOwnerContinue(),args={registry:f.registry,request:f.request},before=copy(f.state),ackCount=f.acks.length;
+ const blocked=await f.controller.reconcileOwnerContinue(args);assert.equal(blocked.canApply,false);assert.deepEqual(f.state,before);
+ f.state.executions.get(f.task.id).unknown=false;const idle=copy(f.state),preview=await f.controller.reconcileOwnerContinue(args);
+ assert.equal(preview.canApply,true);assert.deepEqual(f.state,idle);
+ const result=await f.controller.reconcileOwnerContinue({...args,apply:true});assert.equal(result.status,'applied');assert.equal(result.result.operationId,f.intent.operationId);
+ const control=f.state.controls.get(f.task.id);assert.equal(control.resumeOperationId,f.intent.operationId);assert.equal(control.pauseRequested,false);assert.equal(control.pendingInputs.length,1);
+ assert.equal(f.state.tasks.get(f.task.id).description,'Original goal');assert.deepEqual(f.state.events.get(f.sourceKey+':ack_sent'),before.events.get(f.sourceKey+':ack_sent'));
+ const synced=await f.controller.syncTask({registry:f.registry,task:f.task});assert.equal(synced.control.pendingInputs.length,0);assert.equal(synced.control.resumeOperationId,f.intent.operationId);
+ assert.notEqual(synced.control.inputRevision,f.request.expectedInputRevision);const after=copy(f.state);
+ assert.equal((await f.controller.reconcileOwnerContinue({...args,apply:true})).status,'reused');assert.deepEqual(f.state,after);
+ await f.controller.dispatchTrustedCommand(f.message);assert.deepEqual(f.state,after);assert.equal(f.acks.length,ackCount);
+ assert.equal(f.registrations.length,0);assert.equal(f.writes.length,0);assert.equal(f.state.executions.get(f.task.id).budgetUsed,8);
+});
+
+test('persisted continue reconciliation rejects changed scope, source values, effect evidence and stale input',async()=>{
+ for(const mutate of [f=>f.request.taskId=randomUUID(),f=>f.request.companyId=randomUUID(),f=>f.request.projectId=randomUUID(),f=>f.request.operationId=randomUUID(),
+  f=>f.request.expectedFingerprint='b'.repeat(64),f=>f.request.expectedBodySha256='b'.repeat(64),f=>f.request.expectedInputRevision='b'.repeat(64),f=>f.request.expectedControlRevision++,
+  f=>f.state.events.get(f.sourceKey+':intent').sourceParams.eventType='feishu.message_api_recovery',f=>f.state.events.get(f.sourceKey+':intent').sourceParams.extra='not original',
+  f=>f.state.events.get(f.sourceKey+':intent').originalText='/chief continue OTHER-1',f=>f.state.events.set(f.sourceKey+':effect_claimed',{operationId:f.intent.operationId}),
+  f=>f.state.tasks.get(f.task.id).description+=' already consumed input',f=>f.state.executions.get(f.task.id).active=true]){
+  const f=await pendingOwnerContinue();f.state.executions.get(f.task.id).unknown=false;mutate(f);const before=copy(f.state);
+  await assert.rejects(f.controller.reconcileOwnerContinue({registry:f.registry,request:f.request,apply:true}),/^Error: CHIEF_CONTEXT_/);assert.deepEqual(f.state,before);
+ }
+ for(const field of ['text','messageId','ownerId','intent']){const f=await pendingOwnerContinue();f.request[field]='cannot add authority';
+  await assert.rejects(f.controller.reconcileOwnerContinue({registry:f.registry,request:f.request,apply:true}),/CHIEF_CONTEXT_RECONCILE_REQUEST_INVALID/);}
+});
+
+test('reconciling an old continue preserves a newer project or same-project task selection',async()=>{
+ for(const differentProject of [true,false]){
+  const f=await pendingOwnerContinue();f.registry.team.enabled=true;
+  if(differentProject)await f.controller.dispatchTrustedCommand(f.makeMessage('/chief project rwb'));
+  else{const other=f.makeTask();f.state.controls.set(other.id,f.controlFor(other));await f.controller.dispatchTrustedCommand(f.makeMessage('/chief continue '+other.identifier));}
+  const selected=copy(f.state.chats.get(f.message.chatId)),acks=f.acks.length;
+  assert.ok(selected.sequence>=f.intent.sequence);f.registry.team.enabled=false;f.state.executions.get(f.task.id).unknown=false;
+  const result=await f.controller.reconcileOwnerContinue({registry:f.registry,request:f.request,apply:true});
+  assert.equal(result.result.operationId,f.intent.operationId);assert.equal(f.state.controls.get(f.task.id).resumeOperationId,f.intent.operationId);
+  assert.deepEqual(f.state.chats.get(f.message.chatId),selected);assert.equal(f.acks.length,acks);
+ }
+});
 
 test('all commands recheck source binding before accessing Native or creating effects', async()=>{
   const f=fixture();const m=f.message('/chief projects');m.ownerOpenId='ou_other';
