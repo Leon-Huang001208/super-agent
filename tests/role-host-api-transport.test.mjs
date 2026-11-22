@@ -12,7 +12,7 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const write=(file,value)=>fs.writeFileSync(file,typeof value==='string'?value:JSON.stringify(value),{mode:0o600});
 const read=file=>JSON.parse(fs.readFileSync(file,'utf8'));
 
-function fixture(t,profileId){
+function fixture(t,profileId,{declaredCloud=false}={}){
  const data=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'api-host-state-'));
  const transportRoot=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'api-host-private-'));
  t.after(()=>{fs.rmSync(data,{recursive:true,force:true});fs.rmSync(transportRoot,{recursive:true,force:true});});
@@ -25,7 +25,7 @@ function fixture(t,profileId){
   role:'research',model:profile.model,reasoningEffort:null,apiFallback:false,expiresAt:Date.now()+120000,cwd,executionPolicy:policy,
   instructionsFilePath:'/paperclip/control/research-pm/materials/'+runId+'.md',materialSha256:hash(material),
   projectContext:{schemaVersion:1,id:runId,key:'api-transport-fixture',name:'API transport fixture',repository:{hostPath:null},workspace:{hostPath:null},delivery:{maximumAction:'artifact'},checks:[],rules:[],hostMcpServers:[],hostActions:[]},
-  effectiveCapabilities:{role:'research',capabilityIds:['research'],hostAllowedTools:['host.project_inspect'],mcpAllowedTools:[],skills:[]}};
+  effectiveCapabilities:{role:'research',capabilityIds:['research'],hostAllowedTools:['host.project_inspect'],mcpAllowedTools:declaredCloud?['github.get_repo']:[],skills:[]}};
  const raw=JSON.stringify(permit);write(root+'/permits/'+runId+'.json',raw);write(root+'/claims/'+runId+'.json',{runId,permitSha256:hash(raw)});
  write(dir+'/stdin',input);write(dir+'/request.json',{runId,taskId:runId,runtimeProfileId:profileId,cwd,executionPolicy:policy,inputSha256:hash(input),
   args:['run','--format','json','--model',profile.model,'--dir',cwd]});
@@ -58,7 +58,7 @@ process.stdin.resume();process.stdin.on('end',async()=>{try{
 
 for(const profileId of ['deepseek_opencode','minimax_opencode'])test('complete '+profileId+' host transport uses private TLS/MCP with no model call',
  {skip:process.platform!=='darwin'?'macOS executable and process identity require the target host':false},async t=>{
- const f=fixture(t,profileId),fake=f.data+'/opencode',npmCacheRoot=f.data+'/caches/npm';
+ const f=fixture(t,profileId,{declaredCloud:true}),fake=f.data+'/opencode',npmCacheRoot=f.data+'/caches/npm';
  fs.writeFileSync(fake,fakeCliCode(f.syntheticKey),{mode:0o700});
  const result=await runHostTransport(f.runId,{dataRoot:f.data,transportRoot:f.transportRoot,opencodePath:fake,platform:'darwin',npmCacheOptions:{cacheRoot:npmCacheRoot,verifyVolume:async()=>true}});
  assert.equal(result.exitCode,0);assert.equal(result.signal,null);assert.equal(result.outputUnknown,false);
@@ -71,6 +71,7 @@ for(const profileId of ['deepseek_opencode','minimax_opencode'])test('complete '
  assert.equal(response.envContainsProviderKey,false);assert.equal(response.configContainsProviderKey,false);assert.equal(response.hasApiKeyEnv,false);assert.equal(response.hasAuthFile,false);
  const namespace=f.profile.model.split('/')[0];assert.deepEqual(response.config.enabled_providers,[namespace]);assert.equal(response.config.provider[namespace].options.apiKey,'{env:PAPERCLIP_ROLE_PROVIDER_TOKEN}');
  assert.equal(response.config.agent.paperclip.model,f.profile.model);assert.deepEqual(response.config.instructions,[]);assert.deepEqual(response.config.plugin,[]);
+ assert.deepEqual(Object.keys(response.config.mcp),['role_host'],'unconnected role-default Cloud Apps must not become a remote CLI connector');
  assert.equal(response.endpointProtocol,'https:');assert.equal(response.list.status,200);assert.deepEqual(response.list.body.result.tools.map(tool=>tool.name),['host.project_inspect']);
  assert.equal(response.inspect.status,200);assert.notEqual(response.inspect.body.result.isError,true);
  const inspection=JSON.parse(response.inspect.body.result.content[0].text);assert.equal(inspection.project.id,f.runId);assert.equal(inspection.workspace.status,'NOT_CONFIGURED');

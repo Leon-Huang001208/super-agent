@@ -22,7 +22,7 @@
 
 `task-runtime-router.mjs`先验证Chief给出的任务难度/风险/模型需要，再从已验收池按工具和任务类型挑选Runtime。Chief的prompt不能携带可用池、PASS或凭据；操作员私有登记需绑定真实Native成功、broker观测模型、usage、实际工具回执、进程闭合及源码/CLI指纹。未通过、未实现或实现已漂移的组合明确拒绝，不自动换成别的模型。普通授权范围内分派无需逐次问用户；controller仍校验原权限及任务身份。
 
-私有operator index的每项登记可选`compatibleSourceSha256`，最多8个不重复的SHA256，只用于已独立审查且无Runtime、工具、权限或执行行为变化的源码兼容登记。原Native/Host implementation proof及其真实sourceSha256保持不变；当前源码必须等于原记录或明确列出的兼容来源，CLI指纹始终完全相同。默认未配置时仍严格匹配，Chief计划不能提供该字段；不存在自动批准。真实executor或CLI功能变化须重新实际验收。
+私有operator index的每项登记可选`compatibleSourceSha256`，最多8个不重复的SHA256，只用于独立审查确认已验证model/tool范围、权限及认证边界不变的源码兼容登记。原Native/Host implementation proof及其真实sourceSha256保持不变；当前源码必须等于原记录或明确列出的兼容来源，CLI指纹始终完全相同。默认未配置时仍严格匹配，Chief计划不能提供该字段；不存在自动批准。涉及已验证范围的executor或CLI功能变化须重新实际验收。
 
 控制器在原Admission/root锁合同下先保存准备记录、通过Native生命周期配置，再重读任务/预算/池与实现，持久化一次wake认领后fresh唤醒。配置或唤醒结果未知时留待对账。当前生产`wakeRole()`尚未接入新池；离线controller检查不能代替真实Chief自动分派验收。
 
@@ -49,6 +49,8 @@ Native准备、材料/知识摘要、工作区、能力allowlist、独立QA及ou
 Codex保持既有会员链。DeepSeek OpenCode固定官方`https://api.deepseek.com/v1`，DeepSeek Claude Code固定`https://api.deepseek.com/anthropic/v1`；MiniMax国内Coding Plan固定`https://api.minimax.cn/anthropic/v1`。按具体Runtime使用chat-completions或Anthropic Messages，不允许任务文本替换endpoint、provider或model。Claude 2.1.330 SDK实际使用的精确`?beta=true`仅为Claude档位放行，其它query仍拒绝。
 
 真实Key原件与临时工作副本仅在内盘受限控制区或受控容器内存，目录/文件0700/0600；不得进入Git、模型提示、CLI argv或普通日志。Native通过`secret_ref`解析控制侧Key；`SUPER_AGENT_ROLE_PROVIDER_API_KEY`只给控制侧，在调用stock OpenCode执行器前剥离。模型Host只获得每run opaque key与固定loopback HTTPS通道；broker按run、model、官方path、到期时间和请求计数核验，日志只记脱敏身份/状态/摘要。
+
+API没有会员委托时不接入Cloud Apps，角色默认Cloud目录不阻断已验证的API与Host MCP；Cloud端点继续403，不据此宣称Cloud Apps已验收，任务真正需要的工具仍由Router按已验池预检。
 
 `OPENCODE_CONFIG`只允许Agent专属的`/paperclip/control/research-pm/opencode-clients/<agentId>/config.json` marker；它不含真实Key，仅使Native不会误继承原OpenAI订阅。任意路径、内容/目录覆盖和上游凭据env仍拒绝。Host真正的OpenCode私有配置按run生成，不继承个人全局provider、session、MCP或Hooks；Native已提供的指令不重复前置。结束后按原结果/进程证明退休临时凭据，unknown时先核对，不掩盖原结果。
 

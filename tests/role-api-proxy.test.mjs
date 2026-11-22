@@ -19,7 +19,7 @@ async function fixture(t,{profile='deepseek_opencode',codex=false,apiAuth={},api
  const write=(name,value)=>fs.writeFileSync(path.join(root,name),typeof value==='string'?value:JSON.stringify(value),{mode:0o600});
  write('config.json',{runId,key,expiresAt:Date.now()+expiresIn,mcpAllowedTools:[],hostTools:[],...(profile===undefined?{}:{runtimeProfileId:profile}),...config});
  if(apiAuth!==null){write(apiAuthName,{runId,runtimeProfileId:profile,apiKey,...apiAuth});fs.chmodSync(path.join(root,apiAuthName),apiAuthMode);}
- if(codex){const jwt='e30.'+Buffer.from(JSON.stringify({'https://api.openai.com/auth':{chatgpt_account_id:'fixture-account'}})).toString('base64url')+'.eA';write('auth.json',{tokens:{access_token:codexToken,id_token:jwt,account_id:'fixture-account'}});}
+ if(codex){const jwt='e30.'+Buffer.from(JSON.stringify({'https://api.openai.com/auth':{chatgpt_account_id:'fixture-account'}})).toString('base64url')+'.eA';write('auth.json',codex===true?{tokens:{access_token:codexToken,id_token:jwt,account_id:'fixture-account'}}:codex);}
  write('fetch.mjs',`import fs from 'node:fs';
 const root=${JSON.stringify(root)},mode=${JSON.stringify(mode)},apiKey=${JSON.stringify(apiKey)},key=${JSON.stringify(key)},sse=${JSON.stringify(sse)};
 globalThis.fetch=async(url,options)=>{
@@ -132,9 +132,27 @@ test('host MCP works without Codex auth, while remote Apps require the existing 
  for(const secret of [key,apiKey,codexToken]){assert.equal(text.includes(secret),false);assert.equal(rejected.read('provider.jsonl').includes(secret),false);}
 });
 
-test('declared Apps capability, invalid API binding and unknown profiles fail closed before readiness',async t=>{
- for(const item of [{config:{mcpAllowedTools:['github.get_repo']},expected:'ROLE_PROXY_APPS_AUTH_REQUIRED'},
-  {config:{mcpAllowedTools:['github.get_repo'],effectiveCapabilities:{mcpAllowedTools:[]}},expected:'ROLE_PROXY_APPS_AUTH_REQUIRED'},
+test('unconnected role-default Cloud Apps do not block API or Host MCP and remain inaccessible',async t=>{
+ for(const config of [{mcpAllowedTools:['github.get_repo']},
+  {mcpAllowedTools:['github.get_repo'],effectiveCapabilities:{mcpAllowedTools:[]}},
+  {effectiveCapabilities:{mcpAllowedTools:['github.get_repo']},readOnlyToolsOnly:true}]){
+  const f=await fixture(t,{config:{...config,hostTools:[{name:'host.project_inspect',inputSchema:{type:'object'}}]}});
+  const model=await f.request();assert.equal(model.status,200);assert.equal(await model.text(),sse);
+  const local=await f.request({path:'/backend-api/role-host-mcp',body:'{"jsonrpc":"2.0","id":1,"method":"tools/list"}'});
+  assert.equal(local.status,200);assert.deepEqual((await local.json()).result.tools.map(tool=>tool.name),['host.project_inspect']);
+  for(const method of ['tools/list','tools/call']){
+   const cloud=await f.request({path:'/backend-api/ps/mcp',body:JSON.stringify({jsonrpc:'2.0',id:2,method,params:{name:'github.get_repo',arguments:{}}})});
+   assert.equal(cloud.status,403);assert.match(await cloud.text(),/ROLE_PROXY_APPS_AUTH_REQUIRED/);
+  }
+  const metadata=await fetch(f.base+'/backend-api/codex/models',{headers:{authorization:'Bearer '+key}});
+  assert.equal(metadata.status,403);assert.match(await metadata.text(),/ROLE_PROXY_APPS_AUTH_REQUIRED/);
+  assert.equal(f.requests().length,1);assert.equal(f.requests()[0].url,definitions.deepseek_opencode.url);
+ }
+});
+
+test('malformed delegated auth, invalid API binding and unknown profiles fail closed before readiness',async t=>{
+ for(const item of [{codex:{tokens:{}},expected:'ROLE_PROXY_APPS_AUTH_REQUIRED'},
+  {profile:'codex_subscription',apiAuth:null,expected:'ROLE_PROXY_AUTH_REQUIRED'},
   {apiAuth:{runId:'another-run'},expected:'ROLE_API_AUTH_DENIED'},
   {apiAuth:{runtimeProfileId:'minimax_opencode'},expected:'ROLE_API_AUTH_DENIED'},
   {apiAuthMode:0o644,expected:'ROLE_API_AUTH_DENIED'},
