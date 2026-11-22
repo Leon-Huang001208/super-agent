@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { resolveRoleProjectContext, selectNativeProject, readRoleProjectContext } from '../bridge/role-project-context.mjs';
 import {resolveRoleCapabilities} from '../bridge/role-capabilities.mjs';
+import * as contextApi from '../bridge/role-project-context.mjs';
 
 const legacyProfile={projectId:'m1',projectKey:'personal-automation-m1',agentId:'existing-agent',role:'pm'};
 const rule='Use project checks. Delivery stops at a PR.';
@@ -133,4 +134,31 @@ test('source and artifact separation requires explicit owner, local source and r
  for(const cwd of ['relative','/registered-projects/../other','/']){
   assert.throws(()=>resolve({workspace:{...code,cwd}}),/ROLE_PROJECT_WORKSPACE_DENIED/);
  }
+});
+
+test('the production binding uses the actual fresh primary source for portable tasks without adding M2',async()=>{
+ const first=structuredClone(workspace);first.id='first-source';first.sourceType='local_path';first.cwd='/registered-projects/first';first.isPrimary=false;
+ first.metadata.superAgentProject.workspace={worktreeRoot:'/task-worktrees'};
+ const primary=structuredClone(first);primary.id='selected-primary';primary.cwd='/registered-projects/primary';primary.isPrimary=true;
+ const schema={projects:{id:'project.id'},projectWorkspaces:{projectId:'workspace.projectId'}};
+ const db={select:()=>({from:table=>({where:async()=>structuredClone(table===schema.projects?[projects[1]]:[first,primary])})})};
+ const read=task=>readRoleProjectContext({db,schema,orm:{eq:(...args)=>args},task,companyId:'company',ownerId:'owner'});
+ for(const projectWorkspaceId of [undefined,primary.id]){
+  const task={id:'root-task',projectId:'rwb',...(projectWorkspaceId?{projectWorkspaceId}:{})},projectContext=await read(task);
+  assert.equal(typeof contextApi.roleProjectWorkspaceBinding,'function');
+  assert.deepEqual(contextApi.roleProjectWorkspaceBinding({task,projectContext}),{projectWorkspaceId:primary.id});
+  assert.equal(projectContext.nativeSourceWorkspace.cwd,primary.cwd);
+ }
+ first.isPrimary=true;primary.isPrimary=false;
+ const task={id:'root-task',projectId:'rwb'},projectContext=await read(task);
+ assert.deepEqual(contextApi.roleProjectWorkspaceBinding({task,projectContext}),{projectWorkspaceId:first.id});
+ assert.throws(()=>contextApi.roleProjectWorkspaceBinding({task:{...task,projectWorkspaceId:primary.id},projectContext}),/ROLE_PROJECT_BINDING_DENIED/);
+ assert.throws(()=>contextApi.roleProjectWorkspaceBinding({task:{...task,projectId:'foreign'},projectContext}),/ROLE_PROJECT_BINDING_DENIED/);
+});
+
+test('portable artifact bindings retain their previous shape and scoped artifact bindings retain explicit IDs',()=>{
+ assert.equal(typeof contextApi.roleProjectWorkspaceBinding,'function');
+ const task={projectId:'rwb',projectWorkspaceId:'artifact'},projectContext={id:'rwb',nativeWorkspaceId:'artifact'};
+ assert.deepEqual(contextApi.roleProjectWorkspaceBinding({task,projectContext}),{});
+ assert.deepEqual(contextApi.roleProjectWorkspaceBinding({task,projectContext,contextVersion:1}),{projectWorkspaceId:'artifact'});
 });

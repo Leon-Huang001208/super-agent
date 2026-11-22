@@ -16,7 +16,7 @@ import {selectRoleKnowledge} from './role-materials.mjs';
 import {createRoleMaterialSnapshot} from './role-material-snapshot.mjs';
 import {assertRoleInstructionsReady} from './role-instruction-store.mjs';
 import {resolveRoleInstructionCopy} from './role-instruction-paths.mjs';
-import {readRoleProjectContext,nativeRoleArtifactTarget} from './role-project-context.mjs';
+import {readRoleProjectContext,nativeRoleArtifactTarget,roleProjectWorkspaceBinding} from './role-project-context.mjs';
 import {resolveRoleCapabilities} from './role-capabilities.mjs';
 import {readControl} from './role-control-store.mjs';
 import {assertRolePermitSize} from './role-permit-contract.mjs';
@@ -325,7 +325,7 @@ export async function installNativeRoles() {
           effectiveCapabilities:resolveRoleCapabilities({role:role.profile.role,additionalCapabilities:capabilityRequests,projectContext,toolCatalog:catalog?.result?.tools??[],agent,companySkills,companySkillVersions}),
           authorizedHostActions:operation.authorizedHostActions??[],toolCatalog:catalog?.result?.tools??[],log});
         return {binding:{companyId:r.companyId,projectId:issue.projectId,taskId:issue.id,agentId:agent.id,runId:run.id,
-          ...(resolved.contextVersion===1&&issue.projectWorkspaceId?{projectWorkspaceId:issue.projectWorkspaceId}:{}),
+          ...roleProjectWorkspaceBinding({task:issue,projectContext,contextVersion:resolved.contextVersion}),
           ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:{...role.profile,projectId:issue.projectId,projectKey:resolved.contextVersion===1?role.profile.projectKey:projectContext.key},...material,
           projectContext,capabilityRequests,effectiveCapabilities,authorizedHostActions,networkScope:operation.networkScope,resourceScope:operation.resourceScope,codeCandidate:operation.codeCandidate,codeReview:operation.codeReview,
           rootTaskId:operation.rootTaskId??issue.id,phase:operation.phase,additionalInput:operation.additionalInput,reviewedArtifacts:operation.reviewedArtifacts,outputFile:operation.outputFile,reviewedTaskKeys:operation.reviewedTaskKeys,teamRoster:role.profile.role==='chief'?r.team?.ids:undefined,

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createNativeRoleAdapter, NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
 import {assertRolePermitSize,ROLE_PERMIT_MAX_BYTES} from '../bridge/role-permit-contract.mjs';
 import * as roleRuntime from '../bridge/native-role-runtime.mjs';
+import * as contextApi from '../bridge/role-project-context.mjs';
 
 test('oversize permit failure survives the actual adapter and no-provider boundary without logging content',async()=>{
  const f=dispatchFixture('document-specialist'),events=[],marker='private-permit-content',permit={padding:marker+'x'.repeat(ROLE_PERMIT_MAX_BYTES)};
@@ -156,6 +157,33 @@ test('local realization rejects mismatched or remote roots, aliases and isolated
   const f=codeWorkspaceFixture();f.ctx.executionTarget={kind:'local',workspaceRealization:{mode:'in_place',authoritativeRoot:'/registered-projects/rwb',pathAliases:[],outboundRestorePaths:[]}};mutate(f);
   await assert.rejects(f.execute(f.ctx),/NATIVE_ROLE_(?:WORKSPACE_SCOPE|SCOPE)_DENIED/);assert.equal(f.getCalls(),0);
  }
+});
+
+test('portable local source tasks use the production workspace binding without requiring M2 preparation',async()=>{
+ const f=codeWorkspaceFixture();delete f.registration.contextVersion;delete f.registration.workspaceCwd;
+ delete f.registration.binding.projectWorkspaceId;
+ assert.equal(typeof contextApi.roleProjectWorkspaceBinding,'function');
+ Object.assign(f.registration.binding,contextApi.roleProjectWorkspaceBinding({task:{projectId:'project'},projectContext:f.registration.projectContext}));
+ f.ctx.executionTarget={kind:'local',workspaceRealization:{mode:'copy',authoritativeRoot:'/registered-projects/rwb',pathAliases:[],outboundRestorePaths:[]}};
+ let calls=0,output;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Portable role',log(){},readRegistration:async()=>f.registration,
+  prepareRole:async()=>({binding:f.registration.binding,sessionMode:'new',knowledge:[],config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:true}}),
+  nativeExecute:async checked=>{calls++;output=roleRuntime.nativeRoleArtifactExecution(checked,f.registration);return{exitCode:0};}});
+ await execute(f.ctx);assert.equal(calls,1);assert.equal(output.config.cwd,f.artifactCwd);
+ assert.equal(output.executionTarget.workspaceRealization.authoritativeRoot,f.artifactCwd);
+ assert.equal(f.registration.contextVersion,undefined);assert.equal(output.context.projectWorkspaceId,undefined);
+ f.ctx.context.paperclipWorkspace.workspaceId='foreign';
+ await assert.rejects(execute(f.ctx),/NATIVE_ROLE_WORKSPACE_SCOPE_DENIED/);assert.equal(calls,1);
+});
+
+test('portable default-primary drift between preparation and dispatch stops the original run',async()=>{
+ const f=codeWorkspaceFixture();delete f.registration.contextVersion;delete f.registration.workspaceCwd;
+ let reads=0,calls=0;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Portable role',log(){},readRegistration:async()=>{
+  const r=structuredClone(f.registration);if(++reads>1){r.binding.projectWorkspaceId='new-primary';r.projectContext.nativeWorkspaceId='new-primary';r.projectContext.nativeSourceWorkspace.id='new-primary';}return r;},
+  prepareRole:async()=>({binding:f.registration.binding,sessionMode:'new',knowledge:[],config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:true}}),
+  nativeExecute:async()=>{calls++;return{exitCode:0};}});
+ await assert.rejects(execute(f.ctx),/NATIVE_ROLE_REGISTRATION_CHANGED/);assert.equal(calls,0);
 });
 
 test('code source binding rejects wrong Native workspace, project, cwd and absent trusted code registration before execute',async()=>{

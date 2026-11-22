@@ -43,7 +43,9 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
       const config = original.config;
       const native=isMacNative(profile),managedArgs=roleAdapterArgs(profile);
       const scoped=registration?.contextVersion===1;
-      if(scoped){
+      const workspaceBound=scoped||Boolean(registration.projectContext?.nativeSourceWorkspace);
+      const artifactCwd='/paperclip/instances/default/projects/'+binding?.companyId+'/'+binding?.projectId+'/_default';
+      if(workspaceBound){
         const input=original.context?.paperclipWorkspace,project=registration.projectContext,source=project?.nativeSourceWorkspace;
         const expectedId=binding?.projectWorkspaceId??project?.nativeWorkspaceId;
         const sourceRegistered=Boolean(source&&source.id===binding?.projectWorkspaceId&&source.id===project.nativeWorkspaceId&&
@@ -54,15 +56,15 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
         let targetValid=true,targetChecks;
         try{nativeRoleArtifactTarget(registration,original.context,original.executionTarget);}
         catch(error){if(error.code!=='NATIVE_ROLE_WORKSPACE_TARGET_DENIED')throw error;targetValid=false;targetChecks=error.checks;}
-        const checks={artifactCwd:registration.workspaceCwd==='/paperclip/instances/default/projects/'+binding?.companyId+'/'+binding?.projectId+'/_default',
+        const checks={artifactCwd:!scoped||registration.workspaceCwd===artifactCwd,
           sourceRegistration:!source||native&&sourceRegistered,executionTarget:targetValid,
           sourceMode:!source||input?.source==='project_primary'&&input?.mode==='shared_workspace',
-          inputCwd:!input?.cwd||input.cwd===registration.workspaceCwd||sourceSelected,
+          inputCwd:!input?.cwd||input.cwd===artifactCwd||sourceSelected,
           projectId:!input?.projectId||input.projectId===binding?.projectId,
           workspaceId:input?.workspaceId===undefined||input.workspaceId===expectedId,
           projectWorkspaceId:original.context?.projectWorkspaceId===undefined||original.context.projectWorkspaceId===binding?.projectWorkspaceId};
         // Log trusted registered directories and boolean checks, never an arbitrary input cwd.
-        log({code:'NATIVE_ROLE_WORKSPACE_SCOPE_CHECK',runId:ctx?.runId,artifactCwd:registration.workspaceCwd,
+        log({code:'NATIVE_ROLE_WORKSPACE_SCOPE_CHECK',runId:ctx?.runId,artifactCwd,
           sourceCwd:source?.cwd??null,checks,...(targetChecks?{targetChecks}:{})});
         if(!Object.values(checks).every(Boolean))fail('NATIVE_ROLE_WORKSPACE_SCOPE_DENIED');
       }
@@ -128,15 +130,15 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
         templateSha256:createHash('sha256').update(scoped?basePromptTemplate:(config.promptTemplate||basePromptTemplate)).digest('hex') });
       // Keep Native identity, execution settings and callbacks from the checked snapshot. Never select another CLI
       // or implement an alternative credential/session store here.
-      const projectedContext=scoped?{...original.context,
-        ...(original.context?.paperclipWorkspace?{paperclipWorkspace:{...original.context.paperclipWorkspace,cwd:registration.workspaceCwd}}:{}),
-        ...(Array.isArray(original.context.paperclipWorkspaces)?{paperclipWorkspaces:original.context.paperclipWorkspaces.filter(value=>value?.projectId===binding.projectId&&value.cwd===registration.workspaceCwd)}:{}),
-        ...(Array.isArray(original.context.paperclipRuntimeServiceIntents)?{paperclipRuntimeServiceIntents:original.context.paperclipRuntimeServiceIntents.filter(value=>value?.projectId===binding.projectId)}:{}),
-        ...(Array.isArray(original.context.paperclipRuntimeServices)?{paperclipRuntimeServices:original.context.paperclipRuntimeServices.filter(value=>value?.projectId===binding.projectId)}:{})}:original.context;
+      const projectedContext=workspaceBound?{...original.context,
+        ...(original.context?.paperclipWorkspace?{paperclipWorkspace:{...original.context.paperclipWorkspace,cwd:artifactCwd}}:{}),
+        ...(scoped&&Array.isArray(original.context.paperclipWorkspaces)?{paperclipWorkspaces:original.context.paperclipWorkspaces.filter(value=>value?.projectId===binding.projectId&&value.cwd===artifactCwd)}:{}),
+        ...(scoped&&Array.isArray(original.context.paperclipRuntimeServiceIntents)?{paperclipRuntimeServiceIntents:original.context.paperclipRuntimeServiceIntents.filter(value=>value?.projectId===binding.projectId)}:{}),
+        ...(scoped&&Array.isArray(original.context.paperclipRuntimeServices)?{paperclipRuntimeServices:original.context.paperclipRuntimeServices.filter(value=>value?.projectId===binding.projectId)}:{})}:original.context;
       const releaseTimeouts=native?rwbReleaseTimeoutPolicy({...binding,rootTaskId:registration.rootTaskId,role:profile.role,projectContext:registration.projectContext,
         effectiveCapabilities:registration.effectiveCapabilities,authorizedHostActions:registration.authorizedHostActions}):null;
       return await nativeExecute({...ctx, ...original, context:projectedContext,config:{...config,promptTemplate,...(releaseTimeouts?{timeoutSec:releaseTimeouts.nativeSeconds}:{}),
-        ...(scoped?{cwd:registration.workspaceCwd,instructionsFilePath:prepared.config.instructionsFilePath}:{})}});
+        ...(workspaceBound?{cwd:artifactCwd}:{}),...(scoped?{instructionsFilePath:prepared.config.instructionsFilePath}:{})}});
     } catch (error) {
       const code = /^(?:NATIVE_ROLE|ROLE_PROJECT|ROLE_CAPABILITY|ROLE_PREPARE|ROLE_MATERIAL|ROLE_KNOWLEDGE|ROLE_INSTRUCTION|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error?.code ?? '')
         ? error.code : 'NATIVE_ROLE_RESULT_UNKNOWN';

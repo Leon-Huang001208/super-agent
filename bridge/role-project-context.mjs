@@ -8,6 +8,14 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 const metadata=workspace=>workspace?.metadata?.superAgentProject??{};
 const sourcePath=workspace=>metadata(workspace).repository?.hostPath??null;
 
+/** The selected Native source binds portable code too; it does not enable M2 control. */
+export function roleProjectWorkspaceBinding({task,projectContext,contextVersion}){
+ const selected=projectContext?.nativeWorkspaceId,source=projectContext?.nativeSourceWorkspace;
+ if(!task||!projectContext||projectContext.id!==task.projectId||task.projectWorkspaceId&&task.projectWorkspaceId!==selected||
+  source&&(!selected||source.id!==selected||source.projectId!==task.projectId))fail('ROLE_PROJECT_BINDING_DENIED');
+ return source?{projectWorkspaceId:selected}:contextVersion===1&&task.projectWorkspaceId?{projectWorkspaceId:task.projectWorkspaceId}:{};
+}
+
 /** Keep Native local environment identity, while binding its higher-priority cwd to artifacts. */
 export function nativeRoleArtifactTarget(registration,context,target){
  if(target===undefined||target===null)return target;
