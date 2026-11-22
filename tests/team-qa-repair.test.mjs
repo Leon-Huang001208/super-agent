@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {taskInputRevision} from '../bridge/task-input.mjs';
 import {teamChildOperation,qaReviewedArtifacts,qaRepairOutputFile,planQaRepair,beginQaRepair,advanceQaRepair,qaRepairStep,validateQaRepairReopen,driveQaRepair} from '../bridge/team-qa-repair.mjs';
 import {validateTeamQaResult} from '../bridge/team-plan.mjs';
+import {renderTeamResultNotification} from '../bridge/team-result-notification.mjs';
 
 const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 function fixture(){
@@ -100,6 +101,23 @@ test('non-code tasks resolve only a unique reviewed executor or explicit reviewe
  f.flow.artifacts.quality.repairTaskKey='backend';assert.equal(planQaRepair({...f,used:3,newId:f.newId}).kind,'repair');
  const inherited={...f.flow.artifacts.backend,taskId:id(90),runId:id(91)};f.flow.taskEntries.push({key:'docs',role:'document-specialist',id:id(90),dependsOn:['backend']});f.flow.artifacts.docs=inherited;
  assert.equal(planQaRepair({...f,used:3,newId:f.newId}).code,'TEAM_QA_REPAIR_DEPENDENT_REBUILD_REQUIRED');
+});
+
+test('real blocked QA decisions have readable distinct notices without changing their technical evidence',()=>{
+ const cases=[
+  [f=>f.operations.push({rootTaskId:f.flow.rootTaskId,qualityRepair:{round:2}}),7,'TEAM_QA_REPAIR_LIMIT',/返修轮次.*上限/],
+  [()=>{},19,'TEAM_QA_REPAIR_BUDGET_EXHAUSTED',/剩余调用.*不足/],
+  [f=>{delete f.operations[1].codeCandidate;f.flow.artifacts.quality.repairTaskKey='not-reviewed';},3,'TEAM_QA_REPAIR_TARGET_REQUIRED',/返修负责人/],
+  [f=>{delete f.operations[1].codeCandidate;f.flow.artifacts.quality.repairTaskKey='backend';f.flow.taskEntries.push({key:'docs',role:'document-specialist',id:id(90),dependsOn:['backend']});f.flow.artifacts.docs={...f.flow.artifacts.backend,taskId:id(90),runId:id(91)};},3,'TEAM_QA_REPAIR_DEPENDENT_REBUILD_REQUIRED',/后续.*重新验证/],
+ ];
+ for(const[change,used,code,reason]of cases){
+  const f=fixture();change(f);const{newId,...state}=f,before=structuredClone(state),decision=planQaRepair({...f,used,newId});
+  assert.equal(decision.kind,'blocked');assert.equal(decision.code,code);
+  const summary={sha256:'f'.repeat(64),text:JSON.stringify(decision)};
+  const text=renderTeamResultNotification({task:{identifier:'LEO-51'},summary,createdAt:'2026-11-22T08:00:00Z',presentation:{kind:'quality-blocked',reasonCode:decision.code}});
+  assert.match(text,reason);assert.equal(text.includes(code),false);assert.equal(text.includes(summary.sha256),false);
+  const{newId:afterNewId,...after}=f;assert.equal(afterNewId,newId);assert.deepEqual(after,before);assert.equal(summary.text,JSON.stringify(decision));
+ }
 });
 
 test('QA recheck never includes a prior QA artifact as a reviewed input',()=>{

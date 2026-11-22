@@ -1,5 +1,11 @@
 # 受控真实验收手册
 
+## 成果回执可读性
+
+用短任务编号和四种真实质量阻断决策验证中文状态、原因及下一步；未知原因不回显技术码。确认通知不把SHA前缀或集成包`0.1.0`冒称成果版本，而显示原创建时点的上海日期；合法业务数字、链接及报告中必要的commit保留。可信预算可显示实际已用／上限，缺失不推零或默认20。
+
+验证原summary字节、摘要、归档和outbox键／UUID保持；已sent重复调用零发送，unknown继续拒绝自动重放。调用仍走原company／owner及私有文件守卫，测试替身不能认证真实飞书交付。Source和CI通过后，在无在途模型的已交接窗口应用；实际下一条通知的任务、状态与文本另取证，不重发旧sent来伪造验收。
+
 queued retry续接须另验协调器整tick：原operation的初始wake指向attempt0，而唯一queued attempt2的`retryOfRunId`指向attempt1时，只能按Native记录的直接父行选择并消费原attempt2一次。父行缺失/错scope、非唯一或scheduled队列、DB失败均不启动；不能用纯binder测试代替队列到binder的衔接验证。
 
 ## 20次与同根开发续接验收
