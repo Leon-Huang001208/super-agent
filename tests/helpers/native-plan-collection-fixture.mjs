@@ -15,10 +15,34 @@ import {startTeamCoordinator} from '../../bridge/team-native-runtime.mjs';
 const P='/opt/paperclip/node_modules',R='/paperclip/control/research-pm',ledger='/paperclip/control/admission.sqlite';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const write=(file,value)=>{fs.mkdirSync(file.slice(0,file.lastIndexOf('/')),{recursive:true,mode:0o700});fs.writeFileSync(file,JSON.stringify(value)+'\n',{mode:0o600});};
+const controlRoot='/paperclip/control',ownerFile=controlRoot+'/.native-plan-collection-owner.json',ownedControls=new WeakMap();
+const fail=code=>{throw Object.assign(Error(code),{code});};
+const identity=stat=>({dev:stat.dev,ino:stat.ino,uid:stat.uid,mode:stat.mode&0o777});
+
+/** Claim only an absent root, before imports/PG initialization or fixture writes. Never adopt existing state. */
+export function claimNativePlanControl(){
+ assert.equal(process.env.SUPER_AGENT_OFFLINE_NATIVE_CONTRACT,'1');assert.ok(process.env.PAPERCLIP_HOME.startsWith('/tmp/'));
+ try{fs.lstatSync(controlRoot);fail('NATIVE_PLAN_FIXTURE_CONTROL_EXISTS');}catch(error){if(error.code!=='ENOENT')throw error;}
+ try{fs.mkdirSync(controlRoot,{mode:0o700});}catch(error){if(error.code==='EEXIST')fail('NATIVE_PLAN_FIXTURE_CONTROL_EXISTS');throw error;}
+ const directory=fs.lstatSync(controlRoot),bytes=Buffer.from(JSON.stringify({ownerToken:randomUUID(),directory:identity(directory)})+'\n');
+ fs.writeFileSync(ownerFile,bytes,{flag:'wx',mode:0o600});
+ const owner=Object.freeze({});ownedControls.set(owner,{directory:identity(directory),marker:identity(fs.lstatSync(ownerFile)),bytes});return owner;
+}
+
+function verifyNativePlanControl(owner){
+ const expected=ownedControls.get(owner);if(!expected)fail('NATIVE_PLAN_FIXTURE_CONTROL_CHANGED');
+ let directory,marker;try{directory=fs.lstatSync(controlRoot);marker=fs.lstatSync(ownerFile);}catch{fail('NATIVE_PLAN_FIXTURE_CONTROL_CHANGED');}
+ if(!directory.isDirectory()||directory.isSymbolicLink()||fs.realpathSync(controlRoot)!==controlRoot||!marker.isFile()||marker.isSymbolicLink()||marker.nlink!==1||
+  JSON.stringify(identity(directory))!==JSON.stringify(expected.directory)||JSON.stringify(identity(marker))!==JSON.stringify(expected.marker)||!fs.readFileSync(ownerFile).equals(expected.bytes))fail('NATIVE_PLAN_FIXTURE_CONTROL_CHANGED');
+}
+
+/** Only the same in-process claim, directory identity and private marker authorize recursive retirement. */
+export function retireNativePlanControl(owner){verifyNativePlanControl(owner);fs.rmSync(controlRoot,{recursive:true});ownedControls.delete(owner);}
 
 /** Real Native repository/controller and AdmissionMeter; all state belongs to a networkless disposable container. */
 export async function nativePlanCollectionFixture(t,{foreignGeneration=false}={}){
  assert.equal(process.env.SUPER_AGENT_OFFLINE_NATIVE_CONTRACT,'1');assert.ok(process.env.PAPERCLIP_HOME.startsWith('/tmp/'));
+ const controlOwner=claimNativePlanControl();
  const f=controlledPreflight(fixture(t)),s=await import(P+'/@paperclipai/db/dist/index.js'),o=await import(P+'/drizzle-orm/index.js');
  const {heartbeatService}=await import(P+'/@paperclipai/server/dist/services/heartbeat.js');
  const {issueService}=await import(P+'/@paperclipai/server/dist/services/issues.js');
@@ -27,8 +51,8 @@ export async function nativePlanCollectionFixture(t,{foreignGeneration=false}={}
  await(await import(P+'/@paperclipai/db/dist/embedded-postgres-native.js')).prepareEmbeddedPostgresNativeRuntime();
  (await import(P+'/@paperclipai/db/dist/test-embedded-postgres.js')).__setEmbeddedPostgresCtorProviderForTests(async()=>class extends EmbeddedPostgres{constructor(options){super({...options,createPostgresUser:true});}});
  const pg=await s.startEmbeddedPostgresTestDatabase('sa-plan-collection-'),db=s.createDb(pg.connectionString),issue=issueService(db),heartbeat=heartbeatService(db);
- const events=[],log=e=>events.push(e),ownerToken=randomUUID(),cwd='/tmp/sa-plan-source';fs.mkdirSync(cwd,{recursive:true});execFileSync('git',['init',cwd],{stdio:'ignore'});
- fs.mkdirSync(R,{recursive:true,mode:0o700});write(R+'/offline-contract-owner.json',{ownerToken});
+ const events=[],log=e=>events.push(e),cwd='/tmp/sa-plan-source';fs.mkdirSync(cwd,{recursive:true});execFileSync('git',['init',cwd],{stdio:'ignore'});
+ fs.mkdirSync(R,{mode:0o700});
  const now=Date.now(),storage=createHostStorageReceipt({hostPlatform:'darwin',capturedAt:new Date(now).toISOString(),externalFilesystem:'apfs',dfPk:'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 50000000 1000000 49000000 2% /\n/dev/data 50000000 1000000 49000000 2% /Volumes/SuperAgentDockerData\n'},{now});
  assert.equal(storage.allowed,true);write('/host-evidence/host-storage.json',storage);
  const meter=new AdmissionMeter({filename:ledger,allowedProjectIds:[f.task.projectId],log});
@@ -76,7 +100,7 @@ export async function nativePlanCollectionFixture(t,{foreignGeneration=false}={}
  registry.registerServerAdapter({...original,execute:async ctx=>{executions.push({runId:ctx.runId,agentId:ctx.agent.id});captured={runId:ctx.runId,agentId:ctx.agent.id,phase:phase(),registry:JSON.parse(fs.readFileSync(R+'/registry.json'))};resolveCapture(captured);await hold;return{exitCode:1,signal:null,errorCode:'OFFLINE_COLLECTION_STOP',errorMessage:'No-provider contract stop',resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};}});
  const coordinator=startTeamCoordinator({database,nativePorts:async()=>ports,contextRuntime:{syncTask:controller.syncTask,checkpoint:controller.checkpoint}});
  coordinator.stop(); // Drive the original public tick deterministically instead of a second concurrent interval.
- t.after(async()=>{coordinator.stop();finishAdapter();await heartbeat.drainActiveRunExecutions();registry.unregisterServerAdapter('codex_local');const lease=phase()[0];if(lease)meter.release({...lease,terminalEvidence:true});meter.close();await pg.cleanup();assert.equal(JSON.parse(fs.readFileSync(R+'/offline-contract-owner.json')).ownerToken,ownerToken);fs.rmSync('/paperclip/control',{recursive:true});fs.rmSync(f.workspaceCwd,{recursive:true});});
+ t.after(async()=>{verifyNativePlanControl(controlOwner);coordinator.stop();finishAdapter();await heartbeat.drainActiveRunExecutions();registry.unregisterServerAdapter('codex_local');const lease=phase()[0];if(lease)meter.release({...lease,terminalEvidence:true});meter.close();await pg.cleanup();retireNativePlanControl(controlOwner);fs.rmSync(f.workspaceCwd,{recursive:true});});
  return{f,db,s,o,coordinator,events,phase,oldNonce:old.nonce,plan,planFile,planBytes,executions,reached,historicalChildren,control:async()=>readManagedChiefContext({db,schema:s,orm:o,task:await issue.getById(f.task.id),companyId:f.task.companyId,ownerId:f.registry.ownerId}),
   children:()=>db.select().from(s.issues).where(o.eq(s.issues.parentId,f.task.id)),rootRuns:()=>db.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.issueId,f.task.id)),budget:()=>fs.readdirSync(R+'/budget/'+f.task.id).sort().map(name=>[name,sha(fs.readFileSync(R+'/budget/'+f.task.id+'/'+name))]),
   workflowFile:R+'/team/workflows/'+f.run.id+'.json',runtimeEvents:()=>fs.readFileSync(R+'/events.jsonl','utf8').trim().split('\n').map(JSON.parse)};

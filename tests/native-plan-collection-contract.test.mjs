@@ -1,9 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {nativePlanCollectionFixture} from './helpers/native-plan-collection-fixture.mjs';
+import {nativePlanCollectionFixture,claimNativePlanControl,retireNativePlanControl} from './helpers/native-plan-collection-fixture.mjs';
 
 const options={skip:!fs.existsSync('/opt/paperclip/node_modules/@paperclipai/db/dist/index.js'),timeout:90000};
+
+test('a pre-existing control root is refused before fixture initialization and its sentinel/registry stay unchanged',options,async t=>{
+ const root='/paperclip/control';fs.mkdirSync(root,{mode:0o700});const identity=fs.lstatSync(root);
+ fs.mkdirSync(root+'/research-pm',{mode:0o700});fs.writeFileSync(root+'/sentinel','foreign state must survive\n',{mode:0o600});
+ fs.writeFileSync(root+'/research-pm/registry.json','{"foreign":"preserve original bytes"}\n',{mode:0o600});
+ const before={sentinel:fs.readFileSync(root+'/sentinel'),registry:fs.readFileSync(root+'/research-pm/registry.json'),entries:fs.readdirSync(root).sort()};
+ t.after(()=>{const stat=fs.lstatSync(root);assert.equal(stat.ino,identity.ino);assert.equal(stat.dev,identity.dev);assert.deepEqual(fs.readFileSync(root+'/sentinel'),before.sentinel);assert.deepEqual(fs.readFileSync(root+'/research-pm/registry.json'),before.registry);assert.deepEqual(fs.readdirSync(root).sort(),before.entries);fs.rmSync(root,{recursive:true});});
+ await assert.rejects(nativePlanCollectionFixture(t),/NATIVE_PLAN_FIXTURE_CONTROL_EXISTS/);
+ assert.deepEqual(fs.readFileSync(root+'/sentinel'),before.sentinel);assert.deepEqual(fs.readFileSync(root+'/research-pm/registry.json'),before.registry);
+ assert.deepEqual(fs.readdirSync(root).sort(),before.entries);assert.equal(fs.lstatSync(root).ino,identity.ino);
+});
 
 test('the actual controller rejects a different generation after filename validation, without collecting or reserving',options,async t=>{
  const p=await nativePlanCollectionFixture(t,{foreignGeneration:true}),budget=p.budget(),runs=await p.rootRuns();
@@ -39,4 +50,16 @@ test('released Chief phase naturally collects the original success, then the fir
  assert.ok(p.runtimeEvents().some(event=>event.code==='ADMISSION_LEASE_DENIED'),'the historical expired nonce is informational and must not prevent collection');
  t.diagnostic(JSON.stringify({contract:'isolated Native stored-success collection',storedChiefSuccessReused:true,newNativeChiefRuns:0,newNativeChildRuns:1,providerCalls:0,
   historicalChildrenPreserved:2,newChildren:4,rootCallFiles:5,sourcePlanBytesUnchanged:true,oldNonceRestored:false,firstChildFreshFormalPhase:true,repeatedTicks:3,duplicateChildren:0}));
+});
+
+test('control retirement preserves changed markers and replacement directory identities',options,()=>{
+ const root='/paperclip/control',marker=root+'/.native-plan-collection-owner.json',owner=claimNativePlanControl(),original=fs.readFileSync(marker),identity=fs.lstatSync(root);
+ fs.writeFileSync(marker,'changed marker\n');assert.throws(()=>retireNativePlanControl(owner),/NATIVE_PLAN_FIXTURE_CONTROL_CHANGED/);
+ assert.equal(fs.readFileSync(marker,'utf8'),'changed marker\n');
+ fs.writeFileSync(marker,original);fs.renameSync(root,root+'-owned-drift');fs.mkdirSync(root,{mode:0o700});
+ fs.renameSync(root+'-owned-drift/.native-plan-collection-owner.json',marker);fs.writeFileSync(root+'/sentinel','replacement must remain',{mode:0o600});
+ assert.notEqual(fs.lstatSync(root).ino,identity.ino);assert.throws(()=>retireNativePlanControl(owner),/NATIVE_PLAN_FIXTURE_CONTROL_CHANGED/);
+ assert.equal(fs.readFileSync(root+'/sentinel','utf8'),'replacement must remain');assert.deepEqual(fs.readFileSync(marker),original);
+ assert.equal(fs.lstatSync(root+'-owned-drift').ino,identity.ino);
+ // Deliberately retained after refusal; the owning disposable container retires its bounded tmpfs after this final case.
 });
