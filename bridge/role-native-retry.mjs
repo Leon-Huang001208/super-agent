@@ -28,6 +28,21 @@ export function isCompletedResumeChiefWorkspaceFailure(run){
   run.stdoutExcerpt===''&&run.stderrExcerpt===''&&run.logBytes===0&&run.logSha256===digest('')&&
   ['nativeSessionId','sessionIdBefore','sessionIdAfter','processPid','processGroupId'].every(key=>run[key]===null);
 }
+/** The successor is an untouched Native attempt, not merely a row without private call files. */
+export function isPristineCompletedResumeChiefSuccessor(run,phase){
+ if(!run||!['queued','running'].includes(phase)||run.status!==phase||
+  ['finishedAt','exitCode','signal','errorCode','error','nativeSessionId','sessionIdBefore','sessionIdAfter',
+   'processPid','processGroupId','processStartedAt','usageJson','lastOutputAt','lastOutputStream'].some(key=>run[key]!==null)||
+  ![null,0].includes(run.logBytes)||![null,digest('')].includes(run.logSha256)||
+  ![null,''].includes(run.stdoutExcerpt)||![null,''].includes(run.stderrExcerpt)||
+  run.lastOutputSeq!==0||![null,0].includes(run.lastOutputBytes)||
+  (phase==='queued'?run.startedAt!==null:run.startedAt!==null&&!ended(run.startedAt)))return false;
+ // Installed Native retries.js seeds this exact controller marker before adapter work.
+ const value=run.resultJson;
+ return value===null||Boolean(value&&typeof value==='object'&&!Array.isArray(value)&&
+  [Object.prototype,null].includes(Object.getPrototypeOf(value))&&
+  (Object.keys(value).length===0||Object.keys(value).length===1&&value.conversationContinuation==='continue_conversation_v1'));
+}
 /** Native context locates the same authorized resume operation before a physical call exists. */
 export function completedResumeChiefOperation(registry,parent){
  if(parent?.errorCode!=='NATIVE_ROLE_WORKSPACE_SCOPE_DENIED')return null;
@@ -49,7 +64,8 @@ export function completedResumeChiefRetryEvidence({root,ctx,registry:r,operation
  activeRuns,taskRuns,leases,flows,nativeWorkspace,workspaceCwd,verifyPhaseLease,phase='running'}){
  const uuid=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
  if(!['queued','running'].includes(phase)||!isCompletedResumeChiefWorkspaceFailure(parent)||run?.status!==phase||
-  run.retryOfRunId!==parent.id||run.scheduledRetryAttempt!==1||run.finishedAt)chiefWorkspaceFail('NATIVE_PROOF_DENIED');
+  run.retryOfRunId!==parent.id||run.scheduledRetryAttempt!==1)chiefWorkspaceFail('NATIVE_PROOF_DENIED');
+ if(!isPristineCompletedResumeChiefSuccessor(run,phase))chiefWorkspaceFail('SUCCESSOR_NOT_PRISTINE');
  if(r?.enabled!==true||r.team?.enabled!==true||r.context?.enabled!==true||!op||!equal(op,completedResumeChiefOperation(r,parent))||
   r.team.ids?.chief!==op.agentId||!task||task.id!==op.taskId||task.parentId||task.companyId!==r.companyId||task.projectId!==op.projectId||
   task.responsibleUserId!==r.ownerId||task.createdByUserId!==r.ownerId||!['todo','in_progress'].includes(task.status)||

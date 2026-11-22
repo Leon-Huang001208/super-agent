@@ -27,7 +27,10 @@ function fixture(t){
   startedAt:'2026-11-22T05:23:42.451Z',finishedAt:'2026-11-22T05:23:49.730Z',exitCode:1,signal:null,errorCode:'NATIVE_ROLE_WORKSPACE_SCOPE_DENIED',error:'NATIVE_ROLE_WORKSPACE_SCOPE_DENIED',
   resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false},stopReason:'adapter_failed',timeoutFired:false,configFreshness:{session:{taskSessionAvailable:false,taskSessionReused:false}}},
   stdoutExcerpt:'',stderrExcerpt:'',logBytes:0,logSha256:sha(''),nativeSessionId:null,sessionIdBefore:null,sessionIdAfter:null,processPid:null,processGroupId:null,contextSnapshot:copy(context)};
- const run={id:retryId,companyId,agentId,issueId:taskId,responsibleUserId:'owner',status:'running',retryOfRunId:parentId,scheduledRetryAttempt:1,contextSnapshot:copy(context)};
+ const run={id:retryId,companyId,agentId,issueId:taskId,responsibleUserId:'owner',status:'running',retryOfRunId:parentId,scheduledRetryAttempt:1,contextSnapshot:copy(context),
+  startedAt:null,finishedAt:null,exitCode:null,signal:null,errorCode:null,error:null,stdoutExcerpt:null,stderrExcerpt:null,logBytes:null,logSha256:null,
+  nativeSessionId:null,sessionIdBefore:null,sessionIdAfter:null,processPid:null,processGroupId:null,processStartedAt:null,usageJson:null,
+  lastOutputSeq:0,lastOutputAt:null,lastOutputStream:null,lastOutputBytes:null,resultJson:{conversationContinuation:'continue_conversation_v1'}};
  const completedResume={schemaVersion:1,resumeId:opId,rootTaskId:taskId,companyId,ownerId:'owner',approvedBy:'owner',projectId,projectWorkspaceId:workspaceId,goalIncomplete:true,
   beforeInputRevision:oldInput,afterInputRevision:inputRevision,usedCalls:4,maximum:20,sourceRunId:randomUUID()};
  const control={managed:true,taskId,companyId,ownerId:'owner',projectId,projectWorkspaceId:workspaceId,inputRevision,pauseRequested:false,pendingInputs:[],plan:null,
@@ -73,7 +76,7 @@ function nativeFixture(t,f){
   promise.for=async lock=>{assert.equal(lock,'update');return selected;};promise.limit=async n=>selected.slice(0,n);return promise;
  }})}),transaction:async perform=>perform(db)};
  return{db,schema,orm,lookups,resumes,verifyPhaseLease:lease=>{assert.deepEqual(lease,f.registry.lease);return true;},issue:{getById:async id=>id===f.task.id?f.task:null},heartbeat:{resumeQueuedRunsForAgent:async(company,agent)=>{
-  assert.equal(company,f.registry.companyId);assert.equal(agent,f.operation.agentId);resumes.push(f.run.id);f.run.status='running';f.task.executionRunId=f.run.id;f.task.checkoutRunId=f.run.id;return[{id:f.run.id}];
+  assert.equal(company,f.registry.companyId);assert.equal(agent,f.operation.agentId);resumes.push(f.run.id);f.run.status='running';f.run.startedAt=new Date('2026-11-22T06:00:00.000Z');f.task.executionRunId=f.run.id;f.task.checkoutRunId=f.run.id;return[{id:f.run.id}];
  }}};
 }
 
@@ -106,6 +109,33 @@ test('missing physical or Native evidence stays reconciliation unknown and canno
  const f=fixture(t);fs.rmSync(f.root+'/budget',{recursive:true});let admissions=0,failure;
  try{await prepareTeamRoleExecution(f.ctx,{database:null,bindNativeRetryAttempt:async()=>{try{return bindUnstartedCompletedResumeChiefRetry(f);}catch(error){throw Object.assign(Error('unknown'),{code:completedResumeChiefRetryEvidenceCode(error)});}},admitChiefInput:async()=>{admissions++;}});}catch(error){failure=teamRoleAdmissionFailure(error);}
  assert.deepEqual(failure.resultJson.executionRecovery,{kind:'reconciliation',providerWorkStarted:null});assert.equal(admissions,0);
+});
+test('the current Native successor must itself be pristine in both queue and running phases',t=>{
+ const variants=[['nativeSessionId','observed-provider-session'],['sessionIdBefore','old-provider-session'],['sessionIdAfter','new-provider-session'],
+  ['processPid',12345],['processGroupId',12345],['processStartedAt','2026-11-22T06:00:00Z'],['logBytes',1],['logSha256','a'.repeat(64)],
+  ['stdoutExcerpt','provider output'],['stderrExcerpt','provider error'],['signal','SIGTERM'],['exitCode',1],['errorCode','interrupted'],['error','unknown execution'],['finishedAt','2026-11-22T06:00:00Z'],
+  ['lastOutputSeq',1],['lastOutputAt','2026-11-22T06:00:00Z'],['lastOutputStream','stdout'],['lastOutputBytes',1],['usageJson',{inputTokens:1}],
+  ['resultJson',{executionRecovery:{kind:'reconciliation',providerWorkStarted:true}}],['resultJson',{executionRecovery:{kind:'reconciliation',providerWorkStarted:null}}],
+  ['resultJson',{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}],['resultJson',{timeoutFired:true}],['resultJson',{outputUnknown:true}],
+  ['resultJson',{conversationContinuation:'unknown-policy'}],['resultJson',{conversationContinuation:'continue_conversation_v1',executionRecovery:{providerWorkStarted:true}}],
+  ['usageJson',{}],['resultJson',[]]];
+ for(const phase of ['queued','running'])for(const [key,value]of variants){
+  const f=fixture(t);f.run.status=phase;f.run[key]=value;const before=contents(f.root);
+  assert.throws(()=>completedResumeChiefRetryEvidence({...f,phase}),/SUCCESSOR_NOT_PRISTINE/,phase+':'+key);assert.deepEqual(contents(f.root),before);
+ }
+ for(const key of ['nativeSessionId','processPid','processStartedAt','logBytes','stdoutExcerpt','resultJson','usageJson']){
+  const f=fixture(t);delete f.run[key];assert.throws(()=>completedResumeChiefRetryEvidence(f),/SUCCESSOR_NOT_PRISTINE/,'missing:'+key);
+ }
+ const f=fixture(t),queued={...f.run,status:'queued'},state={...f,run:queued,activeRuns:[queued],taskRuns:f.taskRuns.map(value=>value.id===queued.id?queued:value),ctx:{...f.ctx,context:queued.contextSnapshot},phase:'queued'},proof=completedResumeChiefRetryEvidence(state);
+ for(const [key,value]of variants)assert.equal(selectQueuedNativeRoleRetry({registry:f.registry,parentRun:f.parentRun,tasks:[f.task],activeRuns:[{...queued,[key]:value}],chiefWorkspaceEvidence:proof}),null,'selector:'+key);
+});
+test('Native controller start time and exact continuation marker are not mistaken for provider work',t=>{
+ for(const resultJson of [null,{}, {conversationContinuation:'continue_conversation_v1'}]){
+  const f=fixture(t);f.run.resultJson=resultJson;f.run.startedAt=new Date('2026-11-22T06:00:00Z');
+  assert.equal(completedResumeChiefRetryEvidence(f).spentBeforeCurrent,4);
+ }
+ const f=fixture(t);f.run.logBytes=0;f.run.logSha256=sha('');f.run.stdoutExcerpt='';f.run.stderrExcerpt='';f.run.lastOutputBytes=0;
+ assert.equal(completedResumeChiefRetryEvidence(f).spentBeforeCurrent,4);
 });
 test('the full queue → actual Native parent → strict selector → production binder chain preserves the old root',async t=>{
  const f=fixture(t);f.run.status='queued';f.activeRuns=[f.run];
