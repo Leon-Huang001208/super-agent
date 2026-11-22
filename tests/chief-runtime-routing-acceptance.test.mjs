@@ -34,7 +34,8 @@ test('Chief stage retains the original root and registered roster while deferrin
  assert.deepEqual(stage.execution.ownerCandidates.map(owner=>owner.role),['full-stack-engineer','backend-engineer','frontend-engineer']);
  assert.notEqual(stage.chief.operationId,stage.execution.operationId);assert.equal(stage.execution.handoffFromOperationId,f.plan.steps.find(step=>step.key==='backend-handoff').operationId);
  for(const phase of [stage.chief,stage.execution]){assert.match(phase.outputFile,/^[a-z][a-z0-9-]{0,110}\.json$/);assert.ok(!f.plan.steps.some(step=>step.outputFile===phase.outputFile));}
- assert.equal(stage.chief.phase,'summary');assert.match(stage.chief.summaryFile,/\.md$/);assert.ok(stage.chief.artifactGeneration);
+ assert.equal(stage.chief.phase,'summary');
+ for(const field of ['artifactGeneration','planFile','summaryFile','outputPrefix'])assert.equal(Object.hasOwn(stage.chief,field),false,'legacy Chief must not claim M2 scope');
  assert.equal(stage.status,'NOT_RUN');assert.equal(stage.chief.status,'NOT_RUN');assert.equal(stage.execution.status,'NOT_RUN');
 });
 
