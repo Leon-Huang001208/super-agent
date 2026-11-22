@@ -13,6 +13,22 @@ const sourceRunId=randomUUID(),registry={companyId:task.companyId,ownerId:task.r
 const createdAt='2026-11-21T18:30:00.000Z';
 const render=presentation=>renderTeamResultNotification({task,summary,presentation,createdAt});
 
+test('result notification uses its separate brief summary instead of the LEO-65-shaped technical report',()=>{
+ const userSummary={completed:'已完成两份交付文档，并通过独立质量复核。',pending:'源码整合和发布尚未执行。',next:'沿原任务整合两份成稿。'};
+ const technical={sha256:'a'.repeat(64),text:'# 内部技术总结\n| Native ID | '+task.id+' |\n| SHA256 | '+'b'.repeat(64)+' |\nNOT_RUN: publish\nnode scripts/private-check.mjs\n\n<!-- user-notification:v1\n'+JSON.stringify(userSummary)+'\n-->'};
+ const before=structuredClone(technical);
+ const text=renderTeamResultNotification({task:{...task,identifier:'LEO-65',title:'RWB交付文档整合：飞书结果核对与原操作恢复'},summary:technical,createdAt,
+  presentation:{kind:'result',stage:'documents-reviewed',userSummary,budget:{used:4,maximum:20}}});
+ assert.ok(text.startsWith('RWB交付文档整合：飞书结果核对与原操作恢复（LEO-65）｜文档成果及质量复核完成'));
+ assert.ok(text.includes('已完成：'+userSummary.completed));
+ assert.ok(text.includes('待完成：'+userSummary.pending));
+ assert.ok(text.includes('下一步：'+userSummary.next));
+ assert.match(text,/当前阶段：文档成果及质量复核完成/);
+ for(const raw of [task.id,'b'.repeat(64),'# 内部','| Native','NOT_RUN','node scripts','<!-- user-notification'])assert.equal(text.includes(raw),false,raw);
+ assert.deepEqual(technical,before,'technical summary bytes and SHA remain unchanged');
+ assert.match(text,/4 \/ 20 次/);assert.doesNotMatch(text,/100%/);
+});
+
 test('readable QA result explains dependency rebuilding without dumping internal identifiers',()=>{
  const text=render({kind:'quality-blocked',reasonCode:'TEAM_QA_REPAIR_DEPENDENT_REBUILD_REQUIRED',budget:{used:8,maximum:20}});
  assert.match(text,/LEO-51.*需要修复.*暂停/);
@@ -26,7 +42,7 @@ test('readable QA result explains dependency rebuilding without dumping internal
 test('readable results lead with the actual task title and show known current-stage progress',()=>{
  const text=render({kind:'quality-blocked',reasonCode:'TEAM_QA_REPAIR_DEPENDENT_REBUILD_REQUIRED',budget:{used:8,maximum:20}});
  assert.ok(text.startsWith(task.title+'（LEO-51）｜'));
- const progress=text.split('\n').find(line=>line.startsWith('当前进度：'));
+ const progress=text.split('\n').find(line=>line.startsWith('当前阶段：'));
  assert.match(progress,/质量复核.*未通过/);assert.match(progress,/后续.*暂停/);
  assert.doesNotMatch(progress,/%|8\s*\/\s*20|100|已完成.*步骤/);
  assert.match(text,/本任务已用调用：8 \/ 20 次/);
@@ -54,10 +70,11 @@ test('long task titles have a readable Unicode-safe bound',()=>{
 test('normal and missing stage metadata do not imply whole-goal completion or fabricated progress',()=>{
  const value={task,summary:{...summary,text:'已提交本轮资料核对结果'},createdAt};
  const text=renderTeamResultNotification({...value,presentation:{kind:'result'}});
- assert.match(text,/当前进度：本轮结果已汇总/);assert.match(text,/执行与验收状态/);
+ assert.match(text,/当前阶段：本轮结果已汇总/);assert.match(text,/质量复核状态未确认/);
+ assert.match(text,/简短用户摘要未提供或无法核对/);assert.equal(text.includes(value.summary.text),false);
  assert.doesNotMatch(text,/100%|全部任务已完成|独立质检通过|S0|S1/);
  const unknown=renderTeamResultNotification(value);
- assert.match(unknown,/当前进度：未提供可信阶段信息/);
+ assert.match(unknown,/当前阶段：未提供可信阶段信息/);
  assert.doesNotMatch(unknown,/100%|全部任务已完成|独立质检通过/);
 });
 
@@ -79,12 +96,22 @@ test('readable unknown quality reason stays generic and never exposes its opaque
  }
 });
 
-test('readable ordinary results retain legitimate business numbers, URLs and source identifiers',()=>{
- const body='净值 1.2345；截至2026-11-22；来源 https://example.org/report/12345678901234567890；commit '+ 'a'.repeat(40);
- const text=renderTeamResultNotification({task,summary:{...summary,text:body},createdAt,presentation:{kind:'result'}});
- assert.match(text,/本轮结果已汇总/);assert.equal(text.includes(body),true);
+test('brief results retain business numbers and URLs while technical commits remain in the original report',()=>{
+ const completed='净值 1.2345；截至2026-11-22；来源 https://example.org/report/12345678901234567890';
+ const technical={...summary,text:completed+'；commit '+'a'.repeat(40)},before=structuredClone(technical);
+ const text=renderTeamResultNotification({task,summary:technical,createdAt,presentation:{kind:'result',userSummary:{completed,pending:'后续资料更新待下一轮核对。',next:'查看原任务中的来源记录。'}}});
+ assert.match(text,/本轮结果已汇总/);assert.equal(text.includes(completed),true);
  assert.doesNotMatch(text,/任务已完成|独立质检通过|Native ID|版本：/);
- assert.equal(text.includes(summary.sha256),false);
+ assert.equal(text.includes(summary.sha256),false);assert.equal(text.includes('a'.repeat(40)),false);assert.deepEqual(technical,before);
+});
+
+test('missing or invalid brief metadata falls back without leaking the report or accepting an invented stage',()=>{
+ for(const userSummary of [undefined,null,{completed:'done',pending:'none',next:'next',stage:'deployed'},JSON.parse('{"completed":"done","pending":"none","next":"next","__proto__":{}}')]){
+  const text=render({kind:'result',stage:'deployed',userSummary});
+  assert.match(text,/待完成：简短用户摘要未提供或无法核对/);
+  assert.match(text,/当前阶段：本轮结果已汇总，质量复核状态未确认/);
+  for(const raw of ['TEAM_QA_REPAIR',task.id,summary.sha256,'deployed'])assert.equal(text.includes(raw),false);
+ }
 });
 
 test('readable dates come from the recorded notification time and missing metadata is not invented',()=>{

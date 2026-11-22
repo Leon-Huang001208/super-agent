@@ -1,8 +1,8 @@
 # 开发地图
 
-成果通知标题读取真实Native根任务`title`，短编号作为辅助；标题缺失时明确未提供，不拿UUID或报告中猜测的主题填补。阶段进度只依据现有可信`presentation.kind`，区分质量复核暂停和本轮结果汇总，不增加Native查询、模型摘要、完成百分比或新的进度状态机。标题的空白归一与长度限制仅用于显示，原任务、正文及技术记录不改。
+成果通知标题读取真实Native根任务`title`，短编号作为辅助；标题缺失时明确未提供，不拿UUID或报告中猜测的主题填补。阶段区分质量阻断、成果收存及真实非空QA通过；文档岗位的产物复核不升级成源码或部署完成。不增加模型调用、完成百分比或进度状态机，原任务及技术记录不改。
 
-`team-result-notification.renderTeamResultNotification`只生成中文用户文本；`team-native-runtime`的普通汇总与质量阻断调用传可信展示状态、原因及可取得的预算。LIMIT、额度不足、返修负责人未明和依赖重建各有明确说明，未知原因安全兜底；不从任意报告中正则删除合法数字或来源。日期来自原outbox创建时点，技术summary/sha与投递键不变。`team-result-notification`测试覆盖展示、真实私有文件校验、sent去重及unknown不重放；`team-qa-repair`邻接回归核对真实决策到中文展示。Docker离线结果与实机新通知分别记录。
+`team-user-summary.mjs`提供同次Chief总结提示、三字段用户摘要解析和基于现有flow的展示阶段。`team-native-runtime`保留原完整MD、摘要、评论及归档，只向通知传独立用户摘要和可信阶段；`team-result-notification`只生成短纯文本，不透传技术MD或靠删长串拼出报告。普通业务数字和合法链接可出现在用户摘要中。LIMIT、额度不足、返修负责人未明和依赖重建沿真实决策解释；未知或缺摘要明确待核对。日期来自原outbox创建时点，技术summary/sha与投递键不变。摘要、sender及QA邻接测试覆盖展示和原有权限、sent去重、unknown不重放；Docker离线结果与实机新通知分别记录。
 
 ## 20次预算与原任务开发续接
 
