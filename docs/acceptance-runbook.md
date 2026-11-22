@@ -56,6 +56,8 @@ Native HTTPS 恢复按[专题合同](plans/native-https-recovery.md)先做无模
 
 已登记命令的代理接线分别核对工作区准备、候选准备、PR发布/状态消费的子进程环境，确认复用现有宿主代理及本地`NO_PROXY`，不由模型参数选择任意代理。离线回归只证明环境传递，不能用GitHub只读或模型连通性替代真实GitSafety fetch。实际网络验收记录同一Root、候选、入口、退出码及回执；网络故障按既有分工交Network Engineer，未知结果沿原操作核对，未运行保持NOT_RUN。
 
+代码源输入绑定须使用真实Native形状：`paperclipWorkspace.workspaceId`而非假造顶层字段。分别验证fresh DB源目录、固定artifact投影及独立Host代码工作树；Native只读源码挂载不写入报告。错ID/project/cwd、缺Owner登记、只读catalog撤权与中途登记变化均拒绝。源码/夹具通过不等于真实Native调用、GitSafety receipt或PoC通过，现场以原Root/run/permit及实际路径另行取证。
+
 Native全局scheduler保持原受控关闭状态。恢复既有scheduled retry时用官方retry-now，记录同一run变为queued；现有team tick仅在当前登记work-step和全局唯一queued匹配时调用Native消费者。scheduled、其他任务、其他active行与陈旧输入不得触发消费；claim返回仅证明Native已认领并安排执行，不能当provider/业务成功。执行前仍须通过retry binder，不重置锁、预算或会话，不另起wake/run。
 
 ## 角色指令网页保存

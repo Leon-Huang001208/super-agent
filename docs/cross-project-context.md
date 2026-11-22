@@ -14,6 +14,8 @@
 
 新的只读产物workspace明确采用`non_git_path`。Native配置中有workspace ID不等于目录必须是产品Git checkout；运行例外仅由固定版本hook及当前Native与受管绑定判定，不能由任务或Skill文字声明。M2原workspace ID/项目/输入约束保留；旧local_path可保留历史并经Owner在安全节点明确改类型，不自动删除或重建旧workspace。
 
+Owner显式登记的代码源workspace可有独立Native cwd。仅由fresh DB及已校验的仓库/工作树登记产生输入绑定，再与Native实际nested `workspaceId/projectId/cwd`比对；固定artifact cwd及宿主隔离代码工作树仍各自独立。只读catalog不能借源码绑定恢复宿主写权限；缺少可信源绑定、错项目/目录/ID或登记漂移仍拒绝，不通过放宽原artifact例外解决代码路径差异。
+
 `host.github_read`只读Native登记的repository.fullName，可在hostPath为空时使用；read_only项目保留该只读工具，代码路径、发布和服务动作继续收窄。原任务质量预算阻断后的显式owner续接见[运维入口](operations.md#github只读通道与原质量任务续接)，不改变输入版本、项目边界或原累计调用。
 
 原任务调用上限沿`task-call-policy.mjs`统一计算：普通原根默认20次，合法历史12次档与专属QA例外保留。补充、继续、重规划、QA返修和Native失败重试均保留原预算文件；提示或输入正文不能改变上限。`scripts/task-call-budget.mjs --task-id <原root> --approval-source <已有授权来源>`默认只预览，`--apply`要求现有Owner会话、关闭派发且无在途run/call锁；不新建目标、不运行模型、不退款。原有第七次QA专项仍独立绑定其历史证据，不转为普遍额度。
