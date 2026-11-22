@@ -189,7 +189,7 @@ export async function prepareRoleProjectWorkspace(options={}){
   if(!existing){
    const fields={rootTaskId:rootOf(permit),worktree:target,taskBranch:branch};
    const managed=context.workspace.prepare;
-   if(managed){await run(substitutions(managed.argv,fields),{cwd:repository});}
+   if(managed){await run(substitutions(managed.argv,fields),{cwd:repository,useHostProxy:true});}
    else if(context.delivery?.maximumAction!=='artifact'&&fs.existsSync(path.join(repository,'scripts','project-runtime.mjs'))){
     const runtime=path.join(repository,'scripts','project-runtime.mjs'),session=rootOf(permit);
     await run([process.execPath,runtime,'session','--start','--new-task','--project',repository,'--host','codex','--session-id',session,'--task-id',rootOf(permit),'--goal','Execute the registered Paperclip project task','--acceptance','Current project checks and independent review','--delivery-required'],{cwd:repository});
@@ -339,7 +339,7 @@ export function createHostCapabilityExecutor(options={}){
     if(context.delivery?.maximumAction==='artifact')fail('ROLE_HOST_DELIVERY_ACTION_DENIED');
     await volumeCheck([workspace.codeHostPath,context.repository.hostPath,options.controlRoot],options,run);
     let result;const configured=context.delivery?.prepareCandidate;
-    if(configured?.argv)result=JSON.parse((await run(substitutions(configured.argv,fields(candidateSha)),{cwd:context.repository.hostPath})).output);
+    if(configured?.argv)result=JSON.parse((await run(substitutions(configured.argv,fields(candidateSha)),{cwd:context.repository.hostPath,useHostProxy:true})).output);
     else if(fs.existsSync(path.join(context.repository.hostPath,'scripts','project-runtime.mjs'))){
      const receipt=await ownProjectReceipt(permit,run);
      if(receipt?.status==='prepared'&&receipt.featureCommit===candidateSha)result=receipt;
@@ -371,7 +371,7 @@ export function createHostCapabilityExecutor(options={}){
     (context.checks??[]).some(check=>!checks.some(actual=>actual.id===check.id))||!validVerification)fail('ROLE_HOST_REVIEW_REQUIRED');
    if((await git(['status','--porcelain=v1','-z','--untracked-files=all'])).trim())fail('ROLE_HOST_DELIVERY_WORKTREE_DIRTY');
    await volumeCheck([workspace.codeHostPath,context.repository.hostPath,options.controlRoot],options,run);
-   return {action,candidateSha,...(generic?await managedDelivery('pull_request'):await run(argv,{cwd:workspace.codeHostPath}))};
+   return {action,candidateSha,...(generic?await managedDelivery('pull_request'):await run(argv,{cwd:workspace.codeHostPath,useHostProxy:true}))};
   }
   fail('ROLE_HOST_TOOL_UNKNOWN');
  }
