@@ -1,6 +1,8 @@
 /** Existing host Node manages Docker stdio only; Native owns all task decisions. */
 import {transportExecutor} from './role-host-transport.mjs';
 import {readRolePermit} from '../bridge/role-control-store.mjs';
+import {createResidentRuntimeObservation,createResidentRuntimeCatalog} from '../bridge/task-runtime-host-observation.mjs';
+import {RUNTIME_PROFILES} from '../bridge/role-runtime-profiles.mjs';
 import fs from'node:fs';import os from'node:os';import http from'node:http';import path from'node:path';import{fileURLToPath}from'node:url';import{spawnSync,spawn}from'node:child_process';
 const D='/Volumes/SuperAgentDockerData/paperclip-v2026.1023.0',R=D+'/state/control/research-pm',docker='/usr/local/bin/docker',context=['--context','desktop-linux'];
 const run=(cmd,args,input)=>{const r=spawnSync(cmd,args,{encoding:'utf8',input,timeout:12000,maxBuffer:1024*1024});if(r.error||r.signal||r.status!==0)throw Error('HOST_OBSERVATION_COMMAND_UNAVAILABLE');return r.stdout;};
@@ -16,8 +18,10 @@ async function observe(){
  const proxy=probe('/usr/sbin/scutil',['--proxy']);if(proxy.output)proxy.output=proxy.output.split('\n').filter(x=>/HTTPSEnable|HTTPEnable|HTTPPort|HTTPSPort|SOCKSEnable|SOCKSPort|ProxyAutoConfigEnable/.test(x)).join('\n');
  const startup='/Users/leon/.local/share/super-agent-runtime/start-runtime.py',startupText=fs.existsSync(startup)?fs.readFileSync(startup,'utf8'):'';
  const snapshot={schemaVersion:1,kind:'macos-host-observation',hostPlatform:process.platform,capturedAt:new Date().toISOString(),source:'existing host management tools; no host state changes',network:{gateway:await health(),tailscale,upnet:processState('UpNet'),shadowrocket:processState('Shadowrocket'),proxy,postLoginGatewayListed:startupText.includes('super-agent-paperclip-eval-gateway-1'),startupSource:startup},resources:{volumes,totalMemoryBytes:os.totalmem(),freeMemoryBytes:os.freemem(),memoryPressure:probe('/usr/bin/memory_pressure',['-Q']),swap:probe('/usr/sbin/sysctl',['-n','vm.swapusage']),cpuCount:os.cpus().length,loadAverage:os.loadavg(),io:{status:'NOT_RUN',reason:'No performance load test requested'}}};
- const code="const fs=require('node:fs');let b='';process.stdin.on('data',c=>b+=c);process.stdin.on('end',()=>{const p='/paperclip/control/research-pm/team/host-observations.json',t=p+'.tmp';fs.mkdirSync(require('node:path').dirname(p),{recursive:true,mode:448});fs.writeFileSync(t,b,{mode:384});fs.renameSync(t,p);});";
- run(docker,[...context,'exec','-i','super-agent-paperclip-eval-paperclip-1','node','-e',code],JSON.stringify(snapshot)+'\n');
+ const registry=JSON.parse(fs.readFileSync(R+'/registry.json','utf8')),taskMode=registry.runtimeRouting?.mode==='task',catalog=taskMode?createResidentRuntimeCatalog():null,implementations=taskMode?createResidentRuntimeObservation():null;
+ if(implementations)for(const profile of Object.values(RUNTIME_PROFILES))if(profile.runtime!=='codex'&&!catalog[profile.runtime])delete implementations.bindings[profile.id];
+ const code="const fs=require('node:fs');let b='';process.stdin.on('data',c=>b+=c);process.stdin.on('end',()=>{const v=JSON.parse(b),base='/paperclip/control/research-pm/';fs.mkdirSync(base+'team/',{recursive:true,mode:448});for(const[name,value]of [['team/host-observations.json',v.host],['team/runtime-implementations.json',v.implementations],['host-runtime-catalog.json',v.catalog]]){if(!value)continue;const p=base+name,t=p+'.tmp';fs.writeFileSync(t,JSON.stringify(value)+'\\n',{mode:384});fs.renameSync(t,p);}});";
+ run(docker,[...context,'exec','-i','super-agent-paperclip-eval-paperclip-1','node','-e',code],JSON.stringify({host:snapshot,implementations,catalog})+'\n');
 }
 if(process.platform!=='darwin')throw Error('HOST_MACOS_REQUIRED');identity();
 const lock=R+'/host-transport-resident.lock';const fd=fs.openSync(lock,'wx',0o600);fs.writeFileSync(fd,JSON.stringify({pid:process.pid,source:fileURLToPath(import.meta.url),startedAt:new Date().toISOString()})+'\n');fs.closeSync(fd);

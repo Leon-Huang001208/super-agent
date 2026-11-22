@@ -11,6 +11,7 @@ const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&
 const only=(value,fields)=>plain(value)&&Object.keys(value).every(key=>fields.includes(key));
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(value);
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+const compatibleSources=value=>value===undefined||Array.isArray(value)&&value.length<=8&&value.every(hash)&&new Set(value).size===value.length;
 const label=value=>typeof value==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value);
 const list=value=>Array.isArray(value)&&value.length<=32&&value.every(label)&&new Set(value).size===value.length;
 const time=value=>typeof value==='string'&&value.length<=40&&Number.isFinite(Date.parse(value));
@@ -50,6 +51,13 @@ export function computeTaskRuntimeImplementationBinding({profileId,files,cliSha2
   new Set(files.map(item=>item.file)).size!==expected.length)fail('TASK_ROUTER_IMPLEMENTATION_MANIFEST_INVALID');
  const manifest=expected.map(file=>({file,sha256:files.find(item=>item.file===file).sha256}));
  return Object.freeze({sourceSha256:sha(JSON.stringify({schemaVersion:1,profile:RUNTIME_PROFILES[profileId],files:manifest})),cliSha256});
+}
+/** Only the private operator registration can name reviewed source compatibility; CLI identity remains exact. */
+export function taskRuntimeImplementationMatches(combination,actual){
+ return only(actual,['sourceSha256','cliSha256'])&&hash(actual.sourceSha256)&&hash(actual.cliSha256)&&
+  hash(combination?.implementation?.sourceSha256)&&compatibleSources(combination.compatibleSourceSha256)&&
+  actual.cliSha256===combination.implementation.cliSha256&&(actual.sourceSha256===combination.implementation.sourceSha256||
+   (combination.compatibleSourceSha256??[]).includes(actual.sourceSha256));
 }
 
 /** Candidate capability catalog, never acceptance or permission. Unimplemented adapters cannot enter the executable pool. */
@@ -112,6 +120,7 @@ async function acceptance(registration,read){
  return Object.freeze({...expected,available:true,acceptanceStatus:'PASS',registrationId:registration.id,acceptanceId:receipt.id,runId:run.id,
   taskTypes:Object.freeze([...receipt.taskTypes]),tools:Object.freeze([...receipt.tools]),receiptSha256:registration.receipt.sha256,
   implementationSha256:registration.implementationSha256,
+  ...(registration.compatibleSourceSha256===undefined?{}:{compatibleSourceSha256:Object.freeze([...registration.compatibleSourceSha256])}),
   implementation:Object.freeze(Object.fromEntries(['sourceSha256','cliSha256','argsSha256','configSha256','npmCacheVerified','freshSession'].map(key=>[key,implementation[key]]))),
   evidenceHashes:Object.freeze(hashes.map(item=>Object.freeze(item))),
   usage:Object.freeze({inputTokens:usage.inputTokens,outputTokens:usage.outputTokens,...(usage.costUsd===undefined?{unknownCost:true}:{costUsd:usage.costUsd,unknownCost:false})})});
@@ -122,7 +131,7 @@ export async function loadTaskRuntimePool({readOperatorRegistrations,readAccepta
  if(typeof readOperatorRegistrations!=='function'||typeof readAcceptanceEvidence!=='function')fail('TASK_ROUTER_POOL_PORT_INVALID');
  let index;try{index=structuredClone(await readOperatorRegistrations());}catch{fail('TASK_ROUTER_OPERATOR_INDEX_UNAVAILABLE');}
  if(!only(index,['schemaVersion','operatorId','entries'])||index.schemaVersion!==1||typeof index.operatorId!=='string'||!index.operatorId.trim()||index.operatorId.length>256||
-  !Array.isArray(index.entries)||index.entries.length>32||index.entries.some(entry=>!only(entry,['id','status','modelId','runtimeId','profileId','receipt','implementationSha256'])||!uuid(entry.id))||
+  !Array.isArray(index.entries)||index.entries.length>32||index.entries.some(entry=>!only(entry,['id','status','modelId','runtimeId','profileId','receipt','implementationSha256','compatibleSourceSha256'])||!uuid(entry.id)||!compatibleSources(entry.compatibleSourceSha256))||
   new Set(index.entries.map(entry=>entry.id)).size!==index.entries.length)fail('TASK_ROUTER_OPERATOR_INDEX_INVALID');
  const available=[],blocked=[];
  for(const entry of index.entries){
@@ -173,7 +182,7 @@ function assertState(state,proposal){
 }
 function assertImplementation(state,combination){
  const actual=state.implementationBindings?.[combination.profileId];
- if(!only(actual,['sourceSha256','cliSha256'])||['sourceSha256','cliSha256'].some(key=>!hash(actual[key])||actual[key]!==combination.implementation[key]))fail('TASK_ROUTER_IMPLEMENTATION_CHANGED');
+ if(!taskRuntimeImplementationMatches(combination,actual))fail('TASK_ROUTER_IMPLEMENTATION_CHANGED');
 }
 function assertPreviousActorClosed(state,route){
  const handoff=route.handoff;if(handoff?.handoffKind!=='role-transfer')return;

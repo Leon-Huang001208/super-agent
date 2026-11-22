@@ -9,7 +9,7 @@ import {TEAM_ROLES} from '../bridge/team-roles.mjs';
 import {reserveAcceptanceTask} from '../scripts/multi-runtime-acceptance.mjs';
 import {FEATURE_STUB,FEATURE_TESTS,HTTP_STUB,HTTP_TESTS,PREFERENCES_STUB,PREFERENCES_TESTS,
  createCurrent13Acceptance,validateCurrent13RunEvidence,snapshotCurrent13Handoff,verifyCurrent13Handoff,validateCurrent13CrossCheck,validateCurrent13ActorClosure,prepareCurrent13Wake,
- CURRENT13_FIXED_INPUTS,current13FixedInputHashes,validateCurrent13FrozenInputs,validateCurrent13ResumePlan,finalizeCurrent13StepBoundary,revalidateCurrent13PassedStep,parseCurrent13AcceptanceArgs} from '../scripts/current13-runtime-acceptance.mjs';
+ CURRENT13_FIXED_INPUTS,current13FixedInputHashes,validateCurrent13FrozenInputs,validateCurrent13ResumePlan,finalizeCurrent13StepBoundary,revalidateCurrent13PassedStep,parseCurrent13AcceptanceArgs,createCurrent13CompatibilityStep,current13QaMaterials} from '../scripts/current13-runtime-acceptance.mjs';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 function history(){
@@ -77,6 +77,12 @@ test('only the exact Codex optional tooling-state denial is classified without g
  for(const event of [{...optional,path:optional.path+'?x=1'},{...optional,path:optional.path+'/other'},{...optional,code:'ROLE_PROXY_TOKEN_DENIED'},
   {code:'ROLE_API_MODEL_DENIED'},{code:'ROLE_API_UPSTREAM_HTTP_ERROR',status:401}])assert.throws(()=>validateCurrent13RunEvidence({...input,providerEvents:[input.providerEvents[0],event]}),/CURRENT13_BROKER_EVIDENCE_DENIED/);
  const api=proofFixture('minimax_claude');assert.throws(()=>validateCurrent13RunEvidence({...api,providerEvents:[...api.providerEvents,optional]}),/CURRENT13_BROKER_EVIDENCE_DENIED/);
+});
+test('a successful canonical API run retains a blocked unknown path as NOT_RUN without masking identity or model failures',()=>{
+ const input=proofFixture('minimax_claude'),blocked={code:'ROLE_API_PATH_DENIED',status:403,runId:input.run.id,profileId:'minimax_claude'};
+ const observed=validateCurrent13RunEvidence({...input,providerEvents:[...input.providerEvents,blocked]});assert.equal(observed.observed,true);assert.deepEqual(observed.blockedRequests,[{code:'ROLE_API_PATH_DENIED',status:403,path:'UNKNOWN',capability:'NOT_RUN',disposition:'blocked-request'}]);
+ for(const event of [{...blocked,runId:randomUUID()},{...blocked,profileId:'deepseek_claude'},{...blocked,code:'ROLE_API_MODEL_DENIED'}])assert.throws(()=>validateCurrent13RunEvidence({...input,providerEvents:[...input.providerEvents,event]}),/BROKER_EVIDENCE_DENIED/);
+ assert.throws(()=>validateCurrent13RunEvidence({...input,providerEvents:[blocked]}),/BROKER_MODEL_DENIED/);
 });
 test('role-transfer snapshot keeps the same task/root, old owner artifacts and cumulative budget hashes without reusing sessions',()=>{
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'current13-transfer-'));
@@ -184,7 +190,20 @@ test('historical source transition is an explicit resume-only CLI option and nev
  assert.deepEqual(parseCurrent13AcceptanceArgs(['--finalize-current13-prefix','--input','private.json']),{mode:'finalize'});
  assert.deepEqual(parseCurrent13AcceptanceArgs(['--repair-current13-preclaim','--input','private.json']),{mode:'repair-preclaim'});
  assert.deepEqual(parseCurrent13AcceptanceArgs(['--repair-current13-preclaim']),{mode:'repair-preclaim'});
+ assert.deepEqual(parseCurrent13AcceptanceArgs(['--continue-current13-subset']),{mode:'continue-subset'});
+ assert.deepEqual(parseCurrent13AcceptanceArgs(['--resume-current13','--allow-historical-source-transition','--allow-closed-runtime-subset','--input','private.json']),{mode:'resume',inputFile:'private.json',allowHistoricalSourceTransition:true,allowClosedRuntimeSubset:true});
  for(const args of [['--allow-historical-source-transition','--input','private.json'],['--input','private.json','--allow-historical-source-transition'],['--finalize-current13-prefix','--allow-historical-source-transition']])assert.throws(()=>parseCurrent13AcceptanceArgs(args),/CURRENT13_ARGUMENT_DENIED/);
+});
+test('the one MiniMax compatibility case is a separate readonly goal and cannot reuse the failed task or an existing operation',()=>{
+ const historical=history(),plan=createCurrent13Acceptance({historical,historicalReportSha256:'c'.repeat(64),agentIds:{...historical.agentIds,'full-stack-engineer':randomUUID()}}),before=structuredClone(plan),compat=createCurrent13CompatibilityStep(plan);
+ assert.equal(compat.key,'current-source-minimax-compatibility');assert.equal(compat.runtimeProfileId,'minimax_opencode');assert.equal(compat.agentId,plan.agentIds['full-stack-engineer']);assert.equal(compat.status,'NOT_RUN');assert.deepEqual(plan,before);
+ assert.ok(!plan.steps.some(step=>step.taskId===compat.taskId||step.operationId===compat.operationId));
+ assert.throws(()=>createCurrent13CompatibilityStep(plan,{taskId:plan.steps[2].taskId}),/COMPATIBILITY_SCOPE_DENIED/);
+ assert.throws(()=>createCurrent13CompatibilityStep(plan,{operationId:plan.steps[0].operationId}),/COMPATIBILITY_SCOPE_DENIED/);
+});
+test('QA successful reviewedArtifacts excludes a closed failed Native run while exposing its partial bytes as failed readonly material',()=>{
+ const good={key:'good',status:'PASS',artifacts:[{file:'good.mjs',runId:randomUUID()}]},bad={key:'failed',status:'FAILED_CLOSED',artifacts:[{file:'partial.mjs',runId:randomUUID()}]},qa={key:'qa',status:'NOT_RUN'},future={key:'compat',status:'NOT_RUN',artifacts:[]},result=current13QaMaterials({steps:[good,bad,qa,future]},qa);
+ assert.deepEqual(result.reviewedSteps,[good]);assert.deepEqual(result.reviewedArtifacts,good.artifacts);assert.deepEqual(result.partialSources,[{...bad.artifacts[0],sourceStatus:'FAILED_CLOSED'}]);assert.ok(!result.reviewedArtifacts.some(ref=>ref.runId===bad.artifacts[0].runId));
 });
 test('Native failure is preserved before reading nonexistent Host result evidence',()=>{
  const historical=history(),plan=createCurrent13Acceptance({historical,historicalReportSha256:'c'.repeat(64),agentIds:{...historical.agentIds,'full-stack-engineer':randomUUID()}}),step=plan.steps[2];

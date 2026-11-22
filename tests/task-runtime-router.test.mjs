@@ -78,6 +78,27 @@ test('operator pool verifies exact receipt and every model, usage, tool and term
  }
 });
 
+test('operator-reviewed compatible sources retain original proof and require the identical CLI',async()=>{
+ for(const [source,cli,allowed,expected]of [
+  ['reviewed','cli',true,'WOKEN'],['unlisted','cli',true,'BLOCKED'],['reviewed','changed-cli',true,'BLOCKED'],['reviewed','cli',false,'BLOCKED']]){
+  const proof=evidence(),original=Buffer.from(proof.files.get(proof.receipt.evidence.implementation.file));
+  if(allowed)proof.registration.compatibleSourceSha256=[sha('reviewed')];
+  const f=controllerFixture([proof]);f.state.implementationBindings.minimax_opencode={sourceSha256:sha(source),cliSha256:sha(cli)};
+  const result=await createTaskRuntimeRouter(f.ports)(f.p);assert.equal(result.status,expected);
+  assert.deepEqual(proof.files.get(proof.receipt.evidence.implementation.file),original);
+  if(expected==='WOKEN')assert.equal(result.combination.implementation.sourceSha256,sha('source'));else assert.deepEqual(f.calls,[]);
+ }
+});
+
+test('compatible source registration is bounded, unique and operator-only',async()=>{
+ for(const value of ['source',['bad-sha'],[sha('same'),sha('same')],Array.from({length:9},(_,index)=>sha(String(index)))]){
+  const proof=evidence();proof.registration.compatibleSourceSha256=value;
+  await assert.rejects(loadTaskRuntimePool(poolPorts(proof)),hasCode('TASK_ROUTER_OPERATOR_INDEX_INVALID'));
+ }
+ const f=controllerFixture(),result=await createTaskRuntimeRouter(f.ports)({...f.p,compatibleSourceSha256:[sha('reviewed')]});
+ assert.equal(result.code,'TASK_ROUTER_PROPOSAL_INVALID');assert.deepEqual(f.calls,[]);
+});
+
 test('a hashed receipt still requires actual tool/model/usage/finished execution proof',async()=>{
  for(const [section,patch]of [['run',{status:'failed'}],['transport',{outputUnknown:true}],['processCleanup',{status:'running'}],
   ['brokerCleanup',{status:'unknown'}],['model',{observed:false}],['model',{modelId:'wrong'}],['usage',{inputTokens:0}],

@@ -10,10 +10,10 @@ import {RUNTIME_PROFILES} from '../bridge/role-runtime-profiles.mjs';
 import {taskInputRevision} from '../bridge/task-input.mjs';
 import {teamArtifactNames} from '../bridge/team-context.mjs';
 import {rootCallLimit} from '../bridge/task-call-policy.mjs';
-import {loadTaskRuntimePool,selectTaskRuntimeCombination,createTaskRuntimeRouter,taskRuntimeImplementationFiles,computeTaskRuntimeImplementationBinding} from '../bridge/task-runtime-router.mjs';
+import {loadTaskRuntimePool,selectTaskRuntimeCombination,taskRuntimeImplementationFiles,computeTaskRuntimeImplementationBinding} from '../bridge/task-runtime-router.mjs';
 import {createTaskRuntimeAcceptanceEvidence} from '../bridge/task-runtime-acceptance-evidence.mjs';
 import {assertDelegatedAuth,reserveAcceptanceTask} from './multi-runtime-acceptance.mjs';
-import {ACCEPTANCE_ROOT as ROOT,privateJson,writePrivate,createMultiRuntimeNativeFixture,knownBootstrapClosure} from '../tests/helpers/multi-runtime-native-fixture.mjs';
+import {ACCEPTANCE_ROOT as ROOT,privateJson,writePrivate,createMultiRuntimeNativeFixture,knownBootstrapClosure,validateCurrent13ClosedSubsetHistory} from '../tests/helpers/multi-runtime-native-fixture.mjs';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const fail=suffix=>{const code='CHIEF_ROUTING_'+suffix;throw Object.assign(Error(code),{code});};
@@ -42,8 +42,10 @@ export function writeChiefRoutingEvidenceOnce(root,files){
  }
 }
 export function assertChiefRoutingSource(plan,registry){
- if(plan?.schemaVersion!==1||plan.status!=='PASS'||!Array.isArray(plan.steps)||!plan.steps.length||
-  plan.steps.some(step=>step.status!=='PASS'||!uuid(step.runId))||registry?.companyId!==plan.companyId||registry.projectId!==plan.projectId||registry.taskId!==plan.rootTaskId||
+ const subset=plan?.kind==='isolated-native-current13'&&plan.status==='COMPLETED_WITH_FAILURES';
+ if(subset&&validateCurrent13ClosedSubsetHistory(plan)!==1)fail('SOURCE_NOT_COMPLETED');
+ if(plan?.schemaVersion!==1||plan.status!=='PASS'&&!subset||!Array.isArray(plan.steps)||!plan.steps.length||
+  plan.steps.some((step,index)=>!(subset&&index===2&&step.status==='FAILED_CLOSED')&&(step.status!=='PASS'||!uuid(step.runId)))||registry?.companyId!==plan.companyId||registry.projectId!==plan.projectId||registry.taskId!==plan.rootTaskId||
   registry.team?.enabled!==false||!equal(registry.team.ids,plan.agentIds)||!Object.values(plan.agentIds??{}).every(uuid)||!plan.agentIds?.chief||
   registry.policy?.maxRootRoleCalls!==20||registry.policy.maxResponsesPerRun!==64||registry.policy.concurrentExecutions!==1)fail('SOURCE_NOT_COMPLETED');
 }
@@ -55,7 +57,6 @@ export function createChiefRuntimeRoutingStage({plan,currentCases=plan,registry,
  return{schemaVersion:1,kind:'isolated-chief-runtime-routing',status:'NOT_RUN',companyId:plan.companyId,projectId:plan.projectId,rootTaskId:plan.rootTaskId,
   sourcePlanSha256,budgetBefore:structuredClone(budgetBefore),agentIds:structuredClone(plan.agentIds),
   chief:{status:'NOT_RUN',operationId:chiefId,taskId:plan.rootTaskId,agentId:plan.agentIds.chief,role:'chief',phase:'summary',outputFile:'runtime-proposal-'+chiefId+'.json',
-   artifactGeneration:chiefId,...teamArtifactNames({taskId:plan.rootTaskId,inputRevision:plan.rootInputRevision,generationId:chiefId}),
    identity:{taskId:plan.rootTaskId,rootTaskId:plan.rootTaskId,agentId:plan.agentIds.chief,role:'chief',operationId:chiefId,inputRevision:plan.rootInputRevision}},
   execution:{status:'NOT_RUN',operationId:executionId,taskId:targetTask.id,identity,handoffFromOperationId:previous.operationId,phase:'work',outputFile:'runtime-task-'+executionId+'.json',
    ownerCandidates:ownerRoles.filter(role=>plan.agentIds[role]&&registry.agents?.some(entry=>entry.profile.role===role&&entry.profile.agentId===plan.agentIds[role])).map(role=>({role,agentId:plan.agentIds[role]}))},
@@ -70,7 +71,8 @@ export function chiefRuntimeRoutingPrompt(stage,pool){
 export function validateChiefRuntimeDecision(document,{stage,pool}){
  if(!plain(document)||Object.keys(document).some(key=>!['schemaVersion','proposal','ownerReason','modelReason','runtimeReason'].includes(key))||document.schemaVersion!==1||
   !['ownerReason','modelReason','runtimeReason'].every(key=>typeof document[key]==='string'&&document[key].trim()&&document[key].length<=4000))fail('PROPOSAL_SHAPE_DENIED');
- const proposal=document.proposal;
+ let proposal=document.proposal;
+ if(plain(proposal?.identity)){const{identity,...fields}=proposal;if(!equal(identity,stage.execution.identity)||Object.keys(identity).some(key=>fields[key]!==undefined&&fields[key]!==identity[key]))fail('PROPOSAL_SCOPE_DENIED');proposal={...identity,...fields};}
  if(!plain(proposal)||Object.entries(stage.execution.identity).some(([key,value])=>proposal[key]!==value)||
   !stage.execution.ownerCandidates.some(owner=>owner.role===proposal.role&&owner.agentId===proposal.agentId)||
   proposal.purpose!=='execution'||!proposal.requiredTools?.includes('shell'))fail('PROPOSAL_SCOPE_DENIED');
@@ -120,7 +122,7 @@ async function currentPool(cases,fixture,sourceCasesSha256){
  const indexFile=POOL+'/index.json';
  if(!fs.existsSync(indexFile)){
   const build=createTaskRuntimeAcceptanceEvidence(evidencePorts(fixture)),items=[],entries=[];
-  for(const step of cases.steps){
+  for(const step of cases.steps.filter(value=>value.status==='PASS')){
    if(step.status!=='PASS'||!uuid(step.runId))fail('CURRENT_CASE_NOT_PASSED');const run=await fixture.getRun(step.runId);
    const operation=fixture.getRegistry().operations.find(value=>value.id===step.operationId);
    if(run?.companyId!==cases.companyId||run.issueId!==step.taskId||run.agentId!==step.agentId||run.contextSnapshot?.roleOperationId!==step.operationId||
@@ -185,7 +187,7 @@ export async function runChiefRuntimeRoutingAcceptance(inputFile,{casesFile=ROOT
  if(path.dirname(casesFile)!==ROOT||path.basename(casesFile)!=='multi-runtime-current13-acceptance.json')fail('CURRENT_CASE_FILE_DENIED');
  const sourceBytes=guardedFile(ROOT,'multi-runtime-acceptance.json'),plan=JSON.parse(sourceBytes),caseBytes=guardedFile(ROOT,path.basename(casesFile)),cases=JSON.parse(caseBytes),sourceCasesSha256=sha(caseBytes);
  if(cases.kind!=='isolated-native-current13')fail('CURRENT_CASE_KIND_DENIED');
- const fixture=await createMultiRuntimeNativeFixture(plan,input,{resumeCompleted:true});
+ const fixture=await createMultiRuntimeNativeFixture(plan,input,{resumeCompleted:true,allowClosedRuntimeSubset:cases.status==='COMPLETED_WITH_FAILURES'});
  const log=event=>{const file=ROOT+'/chief-runtime-routing-events.jsonl';if(fs.existsSync(file)&&fs.statSync(file).size>1048576)fail('LOG_LIMIT');fs.appendFileSync(file,JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});};
  const meter=new AdmissionMeter({filename:fixture.admissionFile,allowedProjectIds:[plan.projectId],log});let stage;
  try{
@@ -219,7 +221,7 @@ export async function runChiefRuntimeRoutingAcceptance(inputFile,{casesFile=ROOT
     agentId:proposal.agentId,role:proposal.role,inputRevision:proposal.inputRevision,phase:step.phase,outputFile:step.outputFile,additionalInput:goal,
     ...(step.artifactGeneration?{artifactGeneration:step.artifactGeneration,planFile:step.planFile,summaryFile:step.summaryFile,outputPrefix:step.outputPrefix}:{})};
    registered.operations.push(operation);registered.lease={taskId:proposal.taskId,projectId:plan.projectId,operationId:proposal.operationId,nonce:lease.nonce};await fixture.setRegistryCAS(registered,{expectedSha256});
-   const router=createTaskRuntimeRouter({...poolPorts,log,
+   const routerPorts={...poolPorts,log,
     readTaskState:async()=>{const bytes=fixture.readRegistryBytes(),registry=JSON.parse(bytes),handoff=await actualHandoff(stage,fixture,proposal,stored),implementationBindings=liveBindings(pool);
      return{registry,registrySha256:sha(bytes),task:await fixture.issue(proposal.taskId),operation:registry.operations.find(op=>op.id===proposal.operationId),budgetUsed:budget(plan.rootTaskId).length,budgetLimit:rootCallLimit(registry,plan.rootTaskId),
       executionClosed:!fs.existsSync(ROOT+'/call.lock'),activeRunIds:await activeRuns(fixture),implementationBindings,...(handoff?{handoff}:{}),
@@ -235,8 +237,9 @@ export async function runChiefRuntimeRoutingAcceptance(inputFile,{casesFile=ROOT
      step.status='WAKE_PENDING';step.taskRuntimeRoute=value.route;save();const run=await fixture.heartbeat.wakeup(proposal.agentId,{manualUserWake:initialChief,source:'on_demand',triggerDetail:'manual',
       requestedByActorType:initialChief?'user':'agent',requestedByActorId:initialChief?fixture.ownerId:plan.agentIds.chief,
       reason:initialChief?'issue_commented':'team_controlled_assignment',idempotencyKey:value.idempotencyKey,payload:{issueId:proposal.taskId},contextSnapshot:{...value.contextSnapshot,taskGoal:goal,superAgentControlledExecution:marker}});
-     if(run?.id){step.runId=run.id;step.status='RUNNING';save();}return run;}});
-   const dispatched=await router(proposal);if(dispatched.status!=='WOKEN'){step.status=dispatched.status;step.errorCode=dispatched.code;save();fail('DISPATCH_RECONCILIATION_REQUIRED');}
+     if(run?.id){step.runId=run.id;step.status='RUNNING';save();}return run;}};
+   const {dispatchTeamTaskRuntime}=await import(fs.existsSync('/metadata-source/bridge/team-task-runtime.mjs')?'file:///metadata-source/bridge/team-task-runtime.mjs':new URL('../bridge/team-task-runtime.mjs',import.meta.url).href);
+   const dispatched=await dispatchTeamTaskRuntime(proposal,routerPorts);if(dispatched.status!=='WOKEN'){step.status=dispatched.status;step.errorCode=dispatched.code;save();fail('DISPATCH_RECONCILIATION_REQUIRED');}
    const until=Date.now()+195000;let run;
    while(Date.now()<until){run=await fixture.getRun(step.runId);if(!['queued','running'].includes(run?.status))break;await new Promise(resolve=>setTimeout(resolve,500));}
    if(!run?.finishedAt||!['succeeded','failed','cancelled','timed_out'].includes(run.status))fail('NATIVE_RESULT_UNKNOWN');
@@ -256,9 +259,11 @@ export async function runChiefRuntimeRoutingAcceptance(inputFile,{casesFile=ROOT
   }
   const chiefProposal={...stage.chief.identity,complexity:'routine',risk:'low',purpose:'execution',modelId:RUNTIME_PROFILES.codex_subscription.providerModel,runtimeId:'codex',requiredTools:[]};
   await phase(stage.chief,chiefProposal,chiefRuntimeRoutingPrompt(stage,pool));await returnRootToOwner(fixture,plan,stage.chief);
-  const decision=validateChiefRuntimeDecision(JSON.parse(guardedFile(fixture.cwd,stage.chief.outputFile,{privateMode:false,maximum:131072})),{stage,pool});
-  stage.proposal=decision.proposal;stage.execution.agentId=decision.proposal.agentId;stage.execution.role=decision.proposal.role;stage.execution.handoff??=makeHandoff(stage,cases,fixture,decision.proposal);save();
-  const goal='读取可信handoff材料与原任务实现及固定测试；仅实际执行下方现有检查并写新的binding.outputFile。不得改旧实现、测试、QA、报告、快照；费用未知，不得自报provider验收PASS。输出JSON {schemaVersion:1,taskId,rootTaskId,operationId,checks:[{command,exitCode}],notRun:[]}。可信身份/检查：'+JSON.stringify({...stage.execution.identity,checks:stage.checks});
+  const decisionStage=stage.execution.originalIdentity?{...stage,execution:{...stage.execution,identity:stage.execution.originalIdentity}}:stage;
+  const decision=validateChiefRuntimeDecision(JSON.parse(guardedFile(fixture.cwd,stage.chief.outputFile,{privateMode:false,maximum:131072})),{stage:decisionStage,pool});
+  if(stage.execution.originalIdentity)decision.proposal.operationId=stage.execution.identity.operationId;
+  stage.proposal=decision.proposal;stage.execution.agentId=decision.proposal.agentId;stage.execution.role=decision.proposal.role;if(!stage.execution.retryOfOperationId)stage.execution.handoff??=makeHandoff(stage,cases,fixture,decision.proposal);save();
+  const goal=(stage.execution.reusedReportFile?'这是一次已定位opaque run token误读后的同任务修复。仅在当前cwd读取上一份已完成检查报告 '+stage.execution.reusedReportFile+'，复用其checks事实并用本次identity写新binding.outputFile；不得读取env、auth、config、token、控制目录或其它报告，不重复已完成检查，不改实现。实际使用一次shell完成读取/写入即可。':'读取可信handoff材料与原任务实现及固定测试；仅实际执行下方现有检查并写新的binding.outputFile。')+'不得改旧实现、测试、QA、报告、快照；费用未知，不得自报provider验收PASS。输出JSON {schemaVersion:1,taskId,rootTaskId,operationId,checks:[{command,exitCode}],notRun:[]}。可信身份/检查：'+JSON.stringify({...stage.execution.identity,checks:stage.checks});
   await phase(stage.execution,decision.proposal,goal,stage.execution.handoff);
   const output=JSON.parse(guardedFile(fixture.cwd,stage.execution.outputFile,{privateMode:false,maximum:131072}));
   if(output.schemaVersion!==1||['taskId','rootTaskId','operationId'].some(key=>output[key]!==stage.execution.identity[key])||!Array.isArray(output.notRun)||
