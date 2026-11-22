@@ -1,5 +1,11 @@
 # 开发与交付流程
 
+## 当前项目开发授权
+
+2026-11-22明确按与直接Codex相同的项目规则执行RWB开发，不增加文档-only或PR-only身份门。Native项目必须一次登记真实源码、工作树、规则/checks和项目受管命令；后续常规开发不逐任务重新授权。发布/自动合并仍由RWB原GitSafety、真实独评、必需CI、最新基线与分支保护决定；生产部署、数据库迁移和业务数据删除按具体任务授权，不从开发登记推定。
+
+普通原根调用额度为20，旧计数和恢复原件保留。只有源码、回归、独评和Git交付通过后才进行受管运行源切换；App、宿主transport和登录恢复source pin必须一致。已结清原根的显式续接与长期项目登记见[运行手册](operations.md#20次预算及已完成原根续接)。
+
 ## 受管任务入口
 
 工程管理统一使用仓库内的 `scripts/project-runtime.mjs`。入口先验证固定文件，再调用对应的 Harness、交付或资源命令。已有宿主 Node、Git、gh 用于管理，不安装宿主产品包。每个新任务使用新的不透明 session 键，延续同一任务时恢复原键：
@@ -47,7 +53,7 @@ CI 成功不等于业务验收。合并后验证远端默认分支包含候选�
 
 固定模块沿用 Git common directory 的 `leon-engineering/harness` 和 `leon-engineering/deliveries` 存储，以及原主机资源账本。已有任务以原 project、task ID 和 session ID 续接。旧 `.ai/harness` 可先用 `storage --preview` 检查，再按已有迁移合同处理。Codex 全局 Hooks 退役后，通过上述显式入口创建任务和记录结果，待补清资源通过受管交付或 `lifecycle event` 的原恢复事件处理。入口自身的脱敏日志写入 `SUPER_AGENT_LOG_ROOT` 或 `logs/project-runtime.jsonl`。
 
-RWB普通代办使用RWB自身入口及规则，最高交付PR；不得调用可能合并的`delivery --status`。本人本次已授权的历史有效改动，按[持续迭代](agent-iteration.md)核对原任务/分支/PR及依赖批次；只有可信Native项目为该原任务登记的DevOps `host.rwb_release`操作可以消费合并/部署例外，不全局提高RWB默认上限。共享发布窗口先取得原持有者的安全交接，RWB自身验证、独评、CI、恢复及验收条件仍全部适用。真实任务操作另见[验收手册](acceptance-runbook.md)。
+RWB代办使用RWB自身入口及规则；长期开发登记允许时，可在真实独评、必需CI与分支保护通过后调用原`delivery --status`自动合并及受管收尾。本人本次已授权的历史有效改动，按[持续迭代](agent-iteration.md)核对原任务/分支/PR及依赖批次；只有可信Native项目为该原任务登记的DevOps `host.rwb_release`操作可以消费合并/部署例外，不全局提高RWB默认上限。共享发布窗口先取得原持有者的安全交接，RWB自身验证、独评、CI、恢复及验收条件仍全部适用。真实任务操作另见[验收手册](acceptance-runbook.md)。
 
 ## 组合交付对账与收尾
 

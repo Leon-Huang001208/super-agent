@@ -20,7 +20,7 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 const clone=value=>structuredClone(value);
 function executionCallLimit(execution){
  const maximum=execution.budgetMaximum??6;
- if(![6,12].includes(maximum))fail('CHIEF_CONTEXT_RECONCILIATION_REQUIRED');
+ if(![6,12,20].includes(maximum))fail('CHIEF_CONTEXT_RECONCILIATION_REQUIRED');
  return maximum;
 }
 function frozen(value){const copy=clone(value);const visit=v=>{if(v&&typeof v==='object'){for(const child of Object.values(v))visit(child);Object.freeze(v);}return v;};return visit(copy);}

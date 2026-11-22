@@ -24,7 +24,7 @@ Native业务入口以原任务/run的受控许可调用现有个人订阅，Mac�
 ## 边界与文档
 
 - 首个项目为 ResearchWorkbench；Codex 开发和独立评审，Claude 手动选择。
-- 不设每日新任务数量硬上限，原根默认6次、可信复杂任务12次，保留已有计数、每run64 responses、全局单写及最多两轮质量返修。RWB普通代办止于PR，本人本次授权的历史交付仅经绑定任务的DevOps发布接口按批合并部署。本项目自身在CI、独立评审和分支保护满足后可自动合并。
+- 不设每日新任务数量硬上限，普通原根默认20次，历史12次和QA专项保持可核验，保留已有计数、每run64 responses、全局单写及最多两轮质量返修。RWB采用与直接Codex相同的项目开发授权，长期登记源码、工作树、检查及受管交付，必需CI、独评和分支保护通过后可按项目规则合并；生产部署仍按具体任务授权。本项目自身也须通过CI、独立评审和分支保护。
 - 数据、凭据和日志在外置SSD的专用APFS卷，秘密不入仓库。
 - 当前真实验收固定既有订阅 `gpt-6.1-sol` / `low`；[产品目标](docs/product.md)、[验收手册](docs/acceptance-runbook.md)、[运行维护](docs/operations.md)。
 - [文档治理](docs/documentation-governance.md)、[Docker 验证基线](docs/paperclip-evaluation.md)、[旧交接快照](docs/current-handoff.md)。

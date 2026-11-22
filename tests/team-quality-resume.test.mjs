@@ -19,7 +19,7 @@ test('explicit owner resume preserves the original root, inputs, failed QA, spen
  assert.equal(plan.kind,'resume');assert.deepEqual(f,before);assert.equal(plan.flow.rootTaskId,f.task.id);assert.equal(plan.flow.inputRevision,f.flow.inputRevision);
  assert.deepEqual(plan.flow.artifacts,f.flow.artifacts);assert.deepEqual(plan.flow.dispatches,f.flow.dispatches);assert.deepEqual(plan.flow.qaRepairHistory,f.flow.qaRepairHistory);
  assert.equal(plan.flow.qaBlocked,undefined);assert.equal(plan.flow.summary,undefined);assert.equal(plan.flow.notification,undefined);
- assert.equal(plan.flow.qualityResumeHistory[0].usedCalls,5);assert.equal(plan.flow.qualityResumeHistory[0].maximum,12);
+ assert.equal(plan.flow.qualityResumeHistory[0].usedCalls,5);assert.equal(plan.flow.qualityResumeHistory[0].maximum,20);
  assert.equal(plan.flow.qualityResumeHistory[0].notification.messageId,'original-receipt');assert.equal(plan.flow.qaRepair.round,1);
 });
 test('a committed Native owner event reconciles only its original filesystem projection without another Native transition',()=>{
@@ -31,10 +31,15 @@ test('a committed Native owner event reconciles only its original filesystem pro
 test('busy execution, goal drift, missing delivery proof, exhausted root and third repair cannot resume',()=>{
  for(const mutate of [f=>f.registry.team.enabled=true,f=>f.callLock=true,f=>f.activeRuns.push({id:'running'}),f=>f.leases.push({releasedAt:null}),
   f=>f.task.description='changed',f=>f.task.status='done',f=>f.task.assigneeAgentId='other',f=>f.flow.notification.status='unknown',f=>f.flow.qaRepair.round=2,
-  f=>f.flow.qaBlocked.sourceQa={...f.flow.qaBlocked.sourceQa,runId:'changed'},f=>f.expectedFlowSha256='c'.repeat(64),f=>f.used=10]){
+  f=>f.flow.qaBlocked.sourceQa={...f.flow.qaBlocked.sourceQa,runId:'changed'},f=>f.expectedFlowSha256='c'.repeat(64),f=>f.used=18]){
   const f=fixture();mutate(f);assert.throws(()=>planQualityResume(f),/TEAM_QUALITY_RESUME_/);
  }
- const f=fixture();delete f.registry.taskCallBudgets;assert.throws(()=>planQualityResume(f),/BUDGET_EXHAUSTED/);
+ const f=fixture();delete f.registry.taskCallBudgets;assert.equal(planQualityResume(f).kind,'resume');f.used=18;assert.throws(()=>planQualityResume(f),/BUDGET_EXHAUSTED/);
+});
+test('quality resume reads a preserved twelve-call allocation without silently upgrading its historical authority',()=>{
+ const f=fixture();f.registry.taskCallBudgets[f.task.id].maximum=12;
+ assert.equal(planQualityResume(f).flow.qualityResumeHistory[0].maximum,12);
+ f.used=10;assert.throws(()=>planQualityResume(f),/BUDGET_EXHAUSTED/);
 });
 test('resume is read-only by default and mutations require the exact root, resume identity and observed flow hash',()=>{
  const f=fixture();assert.deepEqual(qualityResumeArgs(['--task-id',f.task.id]),{apply:false,taskId:f.task.id});
