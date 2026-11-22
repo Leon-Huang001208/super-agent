@@ -64,6 +64,35 @@ test('an unknown workspace response reconciles the same Native operation without
  assert.equal(f.calls.filter(value=>value==='create-workspace').length,1);
 });
 
+test('resuming an unknown workspace response preserves a later owner execution policy instead of overwriting it',async t=>{
+ const f=fixture(t),create=f.native.createWorkspace,beforeRegistry=fs.readFileSync(f.root+'/registry.json');
+ f.native.createWorkspace=async(...args)=>{await create(...args);throw Error('response lost');};
+ await assert.rejects(registerRwbDevelopment({...f.options,apply:true}),/WORKSPACE_UNKNOWN/);
+ const ownerPolicy={enabled:false,defaultMode:'isolated_workspace',sharedWorkspaceConcurrency:'parallel',allowIssueOverride:true,workspaceStrategy:{type:'task_worktree'}};
+ f.project.executionWorkspacePolicy=structuredClone(ownerPolicy);
+ await assert.rejects(registerRwbDevelopment({...f.options,apply:true}),/RWB_DEVELOPMENT_STATE_CHANGED/);
+ assert.deepEqual(f.project.executionWorkspacePolicy,ownerPolicy);
+ assert.deepEqual(f.calls,['create-workspace']);assert.equal(f.project.workspaces.length,2);
+ assert.deepEqual(fs.readFileSync(f.root+'/registry.json'),beforeRegistry);
+});
+
+test('an unknown policy response reconciles this operation target without repeating the Native policy write',async t=>{
+ const f=fixture(t),update=f.native.updateProject;
+ f.native.updateProject=async(...args)=>{await update(...args);throw Error('response lost');};
+ await assert.rejects(registerRwbDevelopment({...f.options,apply:true}),/POLICY_UNKNOWN/);
+ assert.equal(f.project.executionWorkspacePolicy.enabled,true);
+ assert.equal((await registerRwbDevelopment({...f.options,apply:true})).status,'applied');
+ assert.deepEqual(f.calls,['create-workspace','update-project']);
+});
+
+test('a policy change after workspace creation is detected again before publishing the requested policy',async t=>{
+ const f=fixture(t),read=f.native.readProject;
+ const ownerPolicy={enabled:false,defaultMode:'isolated_workspace',sharedWorkspaceConcurrency:'serialize',allowIssueOverride:false,workspaceStrategy:{type:'project_primary'}};
+ let reads=0;f.native.readProject=async(...args)=>{if(++reads===2)f.project.executionWorkspacePolicy=structuredClone(ownerPolicy);return read(...args);};
+ await assert.rejects(registerRwbDevelopment({...f.options,apply:true}),/RWB_DEVELOPMENT_STATE_CHANGED/);
+ assert.deepEqual(f.project.executionWorkspacePolicy,ownerPolicy);assert.deepEqual(f.calls,['create-workspace']);
+});
+
 test('active execution, changed input or foreign project/owner rejects without changing source registration',async t=>{
  for(const mutation of [f=>f.setActive([{id:'active'}]),f=>{f.request.expectedContextSha256='a'.repeat(64);},
   f=>{f.request.expectedProjectSha256='b'.repeat(64);},f=>{f.project.companyId='other';},f=>{f.registry.context.catalog.projects[0].ownerId='other';writeControl(f.root+'/registry.json',f.registry);},

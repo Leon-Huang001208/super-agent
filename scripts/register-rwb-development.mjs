@@ -41,6 +41,13 @@ export async function registerRwbDevelopment({root=R,request,apply=false,native,
   if(!isDeepStrictEqual(registry.context,intent.afterContext)||!registeredDevelopmentWorkspace(project?.workspaces?.find(value=>value.id===intent.workspaceId),plan)||!registeredDevelopmentPolicy(project.executionWorkspacePolicy,plan))fail('RWB_DEVELOPMENT_APPLIED_STATE_CHANGED');
   return {status:'reused',operationId:plan.operationId,projectId:plan.projectId,projectWorkspaceId:intent.workspaceId,newModelCalls:0,newTasks:0};
  }
+ const policyStage=current=>{
+  if(registeredDevelopmentPolicy(current.executionWorkspacePolicy,plan))return 'target';
+  if(isDeepStrictEqual(current.executionWorkspacePolicy??null,intent.beforeProject.executionWorkspacePolicy??null))return 'before';
+  fail('RWB_DEVELOPMENT_STATE_CHANGED');
+ };
+ // Interrupted setup owns only its original value and its own target, never a later owner policy.
+ policyStage(project);
  const matches=(project.workspaces??[]).filter(value=>value.metadata?.superAgentProject?.developmentRegistrationOperationId===plan.operationId);
  if(matches.length>1||matches.some(value=>!registeredDevelopmentWorkspace(value,plan)))fail('RWB_DEVELOPMENT_WORKSPACE_CHANGED');
  let workspace=matches[0];
@@ -52,7 +59,7 @@ export async function registerRwbDevelopment({root=R,request,apply=false,native,
  }
  intent.workspaceId=workspace.id;writeControl(intentFile,intent);
  let updated=await native.readProject(plan.projectId);
- if(!registeredDevelopmentPolicy(updated.executionWorkspacePolicy,plan)){
+ if(policyStage(updated)==='before'){
   try{await native.updateProject(plan.projectId,{executionWorkspacePolicy:plan.executionWorkspacePolicy});}catch{fail('RWB_DEVELOPMENT_POLICY_UNKNOWN');}
   updated=await native.readProject(plan.projectId);
  }
