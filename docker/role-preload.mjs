@@ -1,5 +1,6 @@
 import { installNativeRoles,database } from '../bridge/native-role-runtime.mjs';
 import { installRoleInstructionHook } from './role-instruction-hook.mjs';
+import { ensureRoleArtifactWorkspaceHook } from './role-artifact-workspace-hook.mjs';
 import fs from 'node:fs';
 import {ROLE_ROOT,readControl} from '../bridge/role-control-store.mjs';
 import {reconcileRoleInstructionMutation} from '../bridge/role-instruction-store.mjs';
@@ -10,6 +11,7 @@ if(process.argv[1]==='/opt/super-agent/serve.mjs'&&process.env.SUPER_AGENT_ROLE_
  }
  const hook=installRoleInstructionHook();
  try{
+  await ensureRoleArtifactWorkspaceHook();
   for(const url of hook.moduleUrls)await import(url);
   hook.verify();
  }finally{hook.close();}
