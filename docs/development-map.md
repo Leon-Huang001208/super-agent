@@ -74,6 +74,8 @@ Native HTTPS、每 run 证书/信任、TLS ready 与 MCP CA 传播的合同及�
 
 真实本地包导入的版本创建及恢复由`sync-company-role-skills`使用Native版本API完成，测试覆盖currentVersion缺失与重入不增版本。审查过的目录别名（如Vercel React入口名不同）在岗位分配与运行条件过滤中一致处理；来源并存时不删除其他条目。
 
+`assets/role-skills/shared/engineering.md`随每run只读能力包提供当前共同工程规则：不采用防御式推进，Skill流程按任务裁剪，复用已有授权及有效相关验证，失败只留必要短记录。支持文件与整体包摘要同步，岗位CAPABILITIES中的包摘要由原生成器更新；不改第三方Skill原文或在途快照。
+
 本轮将执行策略贯穿preparation、Native adapter、CLI gate及宿主transport，broker/MCP使用宿主真实路径和loopback端点。公司库分配与最终CODEX_HOME物化使用同一选择，职责摘要、Managed bundle与权限同步。相关测试覆盖原生和旧Docker模式、完整Skill包、来源去重、依赖、参数、取消与恢复；见[本轮合同](plans/native-skills-20261120.md)。配置预检、真实订阅调用、Docker项目检查及运行切换各自留证。
 
 | 子系统 | 本仓库入口 | 维护与验证 |

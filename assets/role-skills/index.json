@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sha256": "58e8e0974314f3566e1b36a17fc4719a59551d6f306dbb9909c8dedfdc183511",
+  "sha256": "7fbbdd9f1d96da78c9221c76b473df0daae0a5ddd0a13b752ebd9638ca3e46a1",
   "skills": {
     "leader": {
       "name": "leader",
@@ -2332,8 +2332,8 @@
     },
     {
       "path": "shared/engineering.md",
-      "bytes": 2851,
-      "sha256": "d78492924286780a8aa57630465a4e5c2f7703def89267ec28c1ec183d4dcece"
+      "bytes": 4196,
+      "sha256": "0236044b91979e71ce8469e9f556736fd69aa1e255a8d5be306d5ff963a22d4a"
     },
     {
       "path": "packages/figma/20.0.0/skills/figma-use-motion/references/motion-easing.md",
