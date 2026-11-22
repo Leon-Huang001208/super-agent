@@ -100,7 +100,7 @@ test('closed historical input remains settled after a new input generation witho
 
 test('an arbitrary later success, broken lineage or provider evidence never closes a controlled failure',async t=>{
   const mutations=[f=>{f.success.retryOfRunId=f.initial.id;},f=>{f.success.scheduledRetryAttempt=1;},f=>{f.refusal.retryOfRunId=randomUUID();},
-    f=>{f.success.contextSnapshot.roleOperationId=randomUUID();},f=>{f.refusal.contextSnapshot.inputRevision=sha('foreign input');},
+    f=>{f.success.contextSnapshot.roleOperationId=randomUUID();},f=>{f.refusal.contextSnapshot.inputRevision=sha('foreign input');},f=>{f.refusal.contextSnapshot.projectId=randomUUID();},
     f=>{f.refusal.agentId=randomUUID();},f=>{f.refusal.responsibleUserId='foreign-owner';},f=>{f.success.status='failed';},
     f=>{f.success.exitCode=1;},f=>{f.success.signal='SIGTERM';},f=>{f.success.contextSnapshot.inputRevision=sha('different successful input');},
     f=>{f.refusal.errorCode='ARBITRARY_FAILURE';},f=>{f.refusal.nativeSessionId=randomUUID();},f=>{f.refusal.logBytes=5;},

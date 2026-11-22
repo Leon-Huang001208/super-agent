@@ -107,7 +107,7 @@ export function observeContextCallEvidence({task,ids,runs,root=ROOT}){
     if(bound.length!==1)continue;
     const chain=[initial,parent,bound[0].run];
     if(chain.some(run=>run.companyId!==task.companyId||run.issueId!==task.id||run.agentId!==op.agentId||run.responsibleUserId!==registry.ownerId||
-       run.contextSnapshot?.roleOperationId!==op.id||run.contextSnapshot?.inputRevision!==op.inputRevision)||
+       run.contextSnapshot?.projectId!==op.projectId||run.contextSnapshot?.roleOperationId!==op.id||run.contextSnapshot?.inputRevision!==op.inputRevision)||
        [initial,parent].some(run=>['permits/'+run.id+'.json','claims/'+run.id+'.json','results/'+run.id+'.json','transport/'+run.id].some(file=>exists(path.join(root,file)))))continue;
     settled.add(parent.id);
   }
