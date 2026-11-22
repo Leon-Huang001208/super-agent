@@ -92,7 +92,7 @@ export function renderRoleCapabilitiesMarkdown(role){
   '当前Native项目登记repository.fullName后，可用host.github_read经宿主现有gh认证读取该仓库的PR、Issue及分支状态/SHA；不复制凭据，不接受其他仓库、任意URL或写入方法。目录发现不代表连接成功，分页截断及当前状态证据不代表代码、CI或业务验收。',
   capability.namespaces.length?`岗位按真实目录匹配MCP namespace：${capability.namespaces.join('、')}；调用前检查具体方法、输入、连接和范围。`:'本岗位没有默认专业MCP namespace；按需由Chief组合已定义能力。',
   `宿主候选工具：${resolved.hostAllowedTools.join('、')}。这些名称表示岗位候选权限；是否已经接通须看实际目录与传输，具体仓库、动作、路径和服务参数仍由当前任务约束。`,
-  role==='devops'?'host.rwb_release仅是DevOps岗位候选，Chief组合其他能力不能继承；必须另经可信projectContext及受管操作身份校验。现有项目最高动作不因此提升，RWB默认仍为PR；未登记对应发布权限和精确操作时不可调用。':'',
+  role==='devops'?'host.rwb_release仅是DevOps岗位候选，Chief组合其他能力不能继承；必须另经可信projectContext及受管操作身份校验。普通交付按当前projectContext.delivery、项目持续授权及受管检查执行，不因Agent身份额外限定为PR；该工具不提高项目最高动作，未登记对应发布权限和精确操作时不可调用。':'',
   capability.serviceMcp?'projectContext.hostMcpServers登记本岗位可用的服务和方法时，才能提供host.mcp_call；services仅描述项目服务，不能替代具体MCP登记。':'',
   'Skill完整只读包在独立资产目录，CODEX_HOME/skills入口指向所需包；包内相对引用、必要references/scripts及每文件摘要保留。未配置的可选技能或工具仍不可调用。',
   'Skill文件存在只证明资料存在；Mac原生CLI、Python、浏览器、Figma连接、项目受管发布器等运行依赖必须单独核实。缺依赖写明NOT_RUN和缺失项，保留已完成成果。',

@@ -22,7 +22,7 @@ Research/PM持有来源、结论、指标与业务口径；实质内容变动回
 
 ## 技能与实际工具
 
-默认9项公司Skill：paperclip、handoff、verification-before-completion、xlsx、docx、pptx、pdf、doc-coauthoring、theme-factory。它们使用真实公司版本与完整文件集；旧静态fallback只提供验证方法，不能伪称自带Office功能。Native计划仍以md/json清单交接二进制文件，最多四个子任务、六次同根调用。
+默认9项公司Skill：paperclip、handoff、verification-before-completion、xlsx、docx、pptx、pdf、doc-coauthoring、theme-factory。它们使用真实公司版本与完整文件集；旧静态fallback只提供验证方法，不能伪称自带Office功能。Native计划仍以md/json清单交接二进制文件，最多四个子任务；调用额度按原根当前可信上限执行，普通默认20次，历史显式12次及QA专项保留，见[2026-11-22额度合同](../agent-iteration.md)。本页既有工具与业务验收证据不因额度变更而升级。
 
 `document-runtime`仅为本岗定位现有Codex bundled Python和Native LibreOffice，提供`PAPERCLIP_DOCUMENT_PYTHON`及`PAPERCLIP_DOCUMENT_SOFFICE`。原11岗环境不变。字体配置只引用现有系统字体，并把缓存写在本run目录；不安装字体或修改全局配置。原始包的fontconfig不含macOS中文字体，曾实际造成导出中文字形缺失，该失败保留。
 
