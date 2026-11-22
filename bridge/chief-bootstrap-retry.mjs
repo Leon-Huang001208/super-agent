@@ -3,7 +3,7 @@ import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual as equal} from 'node:util';
 import {taskInputRevision} from './task-input.mjs';
-import {readControl} from './role-control-store.mjs';
+import {readControl,readRolePermit} from './role-control-store.mjs';
 import {roleExecutionPolicy} from './role-execution-policy.mjs';
 
 const fail=code=>{throw Object.assign(Error(code),{code});};
@@ -33,7 +33,7 @@ function physicalEvidence(root,operation,parent,run){
  if(names.length!==1||names[0]!==operation.id+'.json')fail('TEAM_NATIVE_RETRY_BOOTSTRAP_BUDGET_DENIED');
  const files={permit:'permits/'+parent.id+'.json',budgetRecord:'budget/'+operation.taskId+'/'+operation.id+'.json',operationBinding:'operations/'+operation.id+'.json'};
  const values={},hashes={};
- for(const [key,file] of Object.entries(files)){const full=path.join(root,file);values[key]=readControl(full);hashes[key+'Sha256']=sha(fs.readFileSync(full));}
+ for(const [key,file] of Object.entries(files)){const full=path.join(root,file);values[key]=key==='permit'?readRolePermit(full):readControl(full);hashes[key+'Sha256']=sha(fs.readFileSync(full));}
  return {...values,evidence:hashes};
 }
 

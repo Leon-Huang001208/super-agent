@@ -3,6 +3,7 @@ import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual as equal} from 'node:util';
 import {taskInputRevision} from './task-input.mjs';
+import {ROLE_PERMIT_MAX_BYTES} from './role-permit-contract.mjs';
 import {MACOS_NATIVE_EXECUTION_POLICY,roleExecutionPolicy} from './role-execution-policy.mjs';
 import {isInitialChiefPlan,isUnclaimedChiefGateFailure} from './chief-bootstrap-retry.mjs';
 import {archiveNativeRetryFailure,clearArchivedRetryLock,NATIVE_RETRY_CONTEXT} from './role-native-retry.mjs';
@@ -20,13 +21,14 @@ export const isChiefTransportPlanRetry=(op,parent)=>op?.kind==='run'&&op.role===
  op.acceptedRunId===parent?.id&&op.retryOfRunId===parent.retryOfRunId&&parent.scheduledRetryAttempt===1&&
  parent.status==='failed'&&parent.exitCode===1&&parent.errorCode==='adapter_failed'&&ended(parent.finishedAt);
 
-function bytes(root,name){
+function bytes(root,name,maximumBytes=8*1024*1024){
  if(!path.isAbsolute(root)||path.normalize(root)!==root||root==='/'||fs.realpathSync(root)!==root||path.isAbsolute(name)||name.split('/').some(x=>!x||x==='.'||x==='..'))fail('EVIDENCE_UNAVAILABLE');
  let current=root;for(const component of name.split('/')){current=path.join(current,component);if(fs.lstatSync(current).isSymbolicLink())fail('EVIDENCE_UNAVAILABLE');}
- const stat=fs.lstatSync(current);if(!stat.isFile()||stat.nlink!==1||stat.uid!==process.getuid()||(stat.mode&0o077)||stat.size>8*1024*1024)fail('EVIDENCE_UNAVAILABLE');
+ const stat=fs.lstatSync(current);if(!stat.isFile()||stat.nlink!==1||stat.uid!==process.getuid()||(stat.mode&0o077)||stat.size>maximumBytes)fail('EVIDENCE_UNAVAILABLE');
  return fs.readFileSync(current);
 }
 const json=(root,name)=>JSON.parse(bytes(root,name));
+const permitBytes=(root,name)=>bytes(root,name,ROLE_PERMIT_MAX_BYTES);
 const absent=(root,name)=>{try{fs.lstatSync(path.join(root,name));return false;}catch(error){if(error.code==='ENOENT')return true;throw error;}};
 
 /** Positive terminal CLI, broker and process evidence. No Native row or no-provider flag is synthesized. */
@@ -36,7 +38,7 @@ export function readChiefTransportFailureEvidence({root,operation:op,parentRun:p
   const base='transport/'+parent.id+'/',names={permit:'permits/'+parent.id+'.json',claim:'claims/'+parent.id+'.json',gateResult:'results/'+parent.id+'.json',
    transportResult:base+'result.json',stdout:base+'stdout',stderr:base+'stderr',audit:base+'proxy-audit/provider.jsonl',request:base+'request.json',hostClaim:base+'host.claim.json',
    proof:base+'native-proof.json',hostInput:base+'host-stdin',process:base+'process.json',processCleanup:base+'process-cleanup.json',broker:base+'broker-process.json',brokerCleanup:base+'broker-process-cleanup.json'};
-  const raw=Object.fromEntries(Object.entries(names).map(([key,file])=>[key,bytes(root,file)]));
+  const raw=Object.fromEntries(Object.entries(names).map(([key,file])=>[key,key==='permit'?permitBytes(root,file):bytes(root,file)]));
   const value=Object.fromEntries(Object.entries(raw).filter(([key])=>!['stdout','stderr','audit','hostInput'].includes(key)).map(([key,b])=>[key,JSON.parse(b)]));
   const {permit,claim,gateResult:g,transportResult:t,request,hostClaim,proof,process:child,processCleanup,broker,brokerCleanup}=value;
   if(permit.schemaVersion!==1||permit.runId!==parent.id||permit.taskId!==op.taskId||permit.rootTaskId!==op.taskId||permit.agentId!==op.agentId||permit.projectId!==op.projectId||permit.companyId!==parent.companyId||permit.ownerId!==parent.responsibleUserId||typeof permit.ownerId!=='string'||!permit.ownerId||permit.role!=='chief'||permit.inputRevision!==op.inputRevision||permit.cwd!==op.workspaceCwd||!equal(roleExecutionPolicy(permit),MACOS_NATIVE_EXECUTION_POLICY)||
@@ -77,7 +79,7 @@ export function bindChiefTransportRetry({root,ctx,editRegistry,verifyPhaseLease,
   ['taskId','rootTaskId','agentId','projectId','contextVersion','projectKey','workspaceCwd','projectWorkspaceId','inputRevision'].some(key=>initial[key]!==op[key])||
   [initialRun,parent,run].some(value=>value.companyId!==r.companyId||value.agentId!==op.agentId||value.issueId!==task.id||value.responsibleUserId!==r.ownerId)||
   wakeup?.id!==initialRun.wakeupRequestId||wakeup.companyId!==r.companyId||wakeup.agentId!==op.agentId||wakeup.requestedByActorType!=='user'||wakeup.requestedByActorId!==r.ownerId)fail('AUTHORITY_CHANGED');
- const profile=r.agents?.find(value=>value.profile?.agentId===op.agentId&&value.profile.role==='chief')?.profile,permit=json(root,'permits/'+parent.id+'.json');
+ const profile=r.agents?.find(value=>value.profile?.agentId===op.agentId&&value.profile.role==='chief')?.profile,permit=JSON.parse(permitBytes(root,'permits/'+parent.id+'.json'));
  if(!profile||permit.ownerId!==r.ownerId||!equal(roleExecutionPolicy(profile),roleExecutionPolicy(permit))||!control||control.managed!==true||control.inputRevision!==op.inputRevision||control.pauseRequested!==false||!Array.isArray(control.pendingInputs)||control.pendingInputs.length||control.plan||control.approvedPlanSha256||
   (control.projectWorkspaceId??null)!==(op.projectWorkspaceId??null)||!Array.isArray(f.flows)||f.flows.some(({flow})=>flow.rootTaskId===task.id))fail('CONTROL_CHANGED');
  if(!Array.isArray(f.taskRuns)||f.taskRuns.length!==3||new Set(f.taskRuns.map(value=>value.id)).size!==3||f.taskRuns.some(value=>![initialRun.id,parent.id,run.id].includes(value.id))||
@@ -90,7 +92,7 @@ export function bindChiefTransportRetry({root,ctx,editRegistry,verifyPhaseLease,
   if(Object.keys(operation).some(key=>!equal(budget[key],operation[key]))||binding.operationId!==operation.id||binding.runId!==operation.acceptedRunId||binding.taskId!==task.id||binding.agentId!==op.agentId)fail('BUDGET_DENIED');
  }
  const initialNames={permit:'permits/'+initialRun.id+'.json',budgetRecord:'budget/'+task.id+'/'+initial.id+'.json',operationBinding:'operations/'+initial.id+'.json'};
- if(Object.entries(initialNames).some(([key,name])=>op.bootstrapRetryEvidence?.[key+'Sha256']!==sha(bytes(root,name))))fail('INITIAL_EVIDENCE_CHANGED');
+ if(Object.entries(initialNames).some(([key,name])=>op.bootstrapRetryEvidence?.[key+'Sha256']!==sha(key==='permit'?permitBytes(root,name):bytes(root,name))))fail('INITIAL_EVIDENCE_CHANGED');
  const operations=r.operations.filter(value=>value.rootTaskId===task.id);if(operations.length!==(existing?3:2)||operations.some(value=>![initial.id,op.id,existing?.id].includes(value.id)))fail('OPERATION_CHANGED');
  if(!r.lease?.nonce||r.lease.taskId!==task.id||r.lease.projectId!==task.projectId||![op.id,existing?.id].includes(r.lease.operationId)||verifyPhaseLease(r.lease)!==true)fail('LEASE_CHANGED');
  const context={issueId:task.id,taskId:task.id,projectId:task.projectId,responsibleUserId:r.ownerId,inputRevision:op.inputRevision,taskGoal:task.description,conversationMode:false};

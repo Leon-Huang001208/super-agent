@@ -2,6 +2,12 @@
 
 ## Agent迭代发布
 
+### 大型role permit的采集合同
+
+公司Skill snapshot继续最多8 MiB，完整role permit包括该快照和运行材料元数据，统一最多12 MiB（序列化JSON含结尾换行的UTF-8字节）。生产端在持久化operation binding/permit前检查同一上限；所有正式permit读取路径使用该专用合同。普通控制文件仍最多4 MiB，私有mode、owner、常规文件、symlink及hardlink检查保持，不通过全局放大控制文件上限解决单个permit问题。
+
+成功运行的产物采集若因合法大permit被旧读取上限拒绝，保留原permit/claim/run/session/产物与已用调用，修复读取合同后由原coordinator接续采集。不得重跑已成功的Document任务、编辑旧permit、减少已绑定Skill，或另建替代任务绕开证据。超过12 MiB的新permit在provider启动前以`NATIVE_ROLE_PERMIT_TOO_LARGE`拒绝；该原因沿原adapter错误通道保留，并标记已知未启动provider，不降为未知或记录permit正文。这项大小合同不放宽原任务/角色/工作区/claim校验。
+
 ### 产物工作区和再生缓存
 
 无代码产物目录明确登记为Native `sourceType=non_git_path`、可信owner及`delivery.maximumAction=artifact`、无repository.hostPath；远端fullName只供只读GitHub工具，不能据此把目录当作checkout。固定版本进程内hook仅对受管Mac角色与真实Native绑定全部成立的目录免除缺Git错误；持久工作区/CWD/项目一致性及代码/PR任务的Git检查仍保留。不得用创建假`.git`、改整个Native校验器或清M2 catalog绕过错误。旧local_path需在排空后由Owner明确改类型，配置工具不会悄悄迁移。

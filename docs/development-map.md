@@ -2,6 +2,8 @@
 
 ## 真实任务驱动的迭代
 
+`bridge/role-permit-contract.mjs`统一公司Skill snapshot原8 MiB上限及完整role permit的12 MiB序列化上限；Native生产端在写operation binding/permit前拒绝超限。`role-control-store.readRolePermit`及Gate、宿主/容器transport、resident、原bootstrap/transport retry和验收/产物采集都使用专用permit上限，普通`readControl`保持4 MiB，其他证据限额不变。`tests/role-permit-contract.test.mjs`以实际公司Skill解析器生成大于4 MiB的合法snapshot，覆盖UTF-8边界、权限与链接拒绝；两种Chief retry回归核对大permit的原字节摘要与原预算保持，不重跑已成功任务。`native-role-adapter`回归验证真实超限错误`NATIVE_ROLE_PERMIT_TOO_LARGE`沿原错误白名单及runtime未进入provider的失败映射保留，日志不携带permit内容。
+
 `bridge/role-artifact-workspace.mjs`与`docker/role-artifact-workspace-hook.mjs`按固定Native源摘要装配非Git产物目录支持；仅明确`non_git_path`、实际owner/role/run/项目/工作区/输入及artifact上界全部匹配时免除`.git`要求，其他Native工作区与代码Git保护保留。`role-preload`在instruction hook有效期间先加载、验证artifact补丁，再启动协调器和飞书服务；server-entry复用同一模块已验证的初始化结果，未知ESM缓存仍拒绝启动。`tests/role-preload-order.test.mjs`以fresh process覆盖飞书提前导入heartbeat、维护模式及未知缓存拒绝。新建M2产物workspace使用该类型，旧local_path仅可重用，不自动获得例外。源码/真实Native函数分支测试与实机新任务分别取证，不创建假Git仓库。
 
 守卫读取原始Native Agent行时，启用标记接受字符串`"true"`或Native的`{type:"plain",value:"true"}`，不解析秘密引用；false、混合及无效结构拒绝。`tests/role-artifact-workspace.test.mjs`保留实机选定字段形状的匿名化Chief首调用回归，覆盖owner wake、run与持久工作区绑定；失败终态保持原证据，离线fixture不冒称实机重跑。

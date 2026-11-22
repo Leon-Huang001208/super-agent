@@ -6,6 +6,7 @@ import { isSubscriptionAuth } from './codex-hello-gate.mjs';
 import { executeIsolatedRole } from '../bridge/role-isolated-transport.mjs';
 import {roleManagedArgs,roleExecutionPolicy} from '../bridge/role-execution-policy.mjs';
 import {ROLE_KEYS} from '../bridge/role-labels.mjs';
+import {ROLE_PERMIT_MAX_BYTES} from '../bridge/role-permit-contract.mjs';
 import {validateRoleMaterialSnapshot,ROLE_MATERIAL_ROOT} from '../bridge/role-material-snapshot.mjs';
 import {isRoleInstructionPermitPath} from '../bridge/role-instruction-paths.mjs';
 
@@ -90,7 +91,7 @@ export async function runRoleGate() {
   let claim, permit;
   try {
     if (process.platform !== 'linux' || process.getuid() !== 0 || !uuid.test(process.env.PAPERCLIP_RUN_ID ?? '')) fail('ROLE_GATE_ENVIRONMENT_DENIED');
-    const raw = readPrivate(ROOT + '/permits/' + process.env.PAPERCLIP_RUN_ID + '.json',16*1024*1024);
+    const raw = readPrivate(ROOT + '/permits/' + process.env.PAPERCLIP_RUN_ID + '.json',ROLE_PERMIT_MAX_BYTES);
     permit = validateRoleCall({permit:JSON.parse(raw),args:process.argv.slice(2),env:process.env,cwd:process.cwd(),now:Date.now()});
     if (hash(readPrivate(permit.instructionsFilePath)) !== permit.materialSha256) fail('ROLE_GATE_MATERIAL_CHANGED');
     if(permit.materialSnapshot){const snapshot=validateRoleMaterialSnapshot(permit);let total=0;for(const file of snapshot.manifest.files){const bytes=readPrivate(path.join(ROLE_MATERIAL_ROOT,file.path));total+=bytes.length;if(total>1048576||hash(bytes)!==file.sha256)fail('ROLE_GATE_MATERIAL_CHANGED');}
