@@ -2,6 +2,10 @@
 
 ## 真实交付中的持续迭代
 
+非Git任务另验Native真实校验目录与模型最终cwd，不能用旧Git pilot通过校验后改写cwd来证明产物目录本身正确。正式non_git_path例外只消除对应缺Git分支；已装Native函数的其他错误与代码仓库Git检查必须继续拒绝。运行时新任务应固定实际projectWorkspace/executionWorkspace/Native run和角色许可，源码hook通过不等于已执行任务。
+
+npm缓存复用验证多个run仍有不同私有HOME、auth/session和输出，同一已验卷缓存配置无凭据。临时cache fixture与真实共享cache分开，测试不写真实WorkDisk缓存；首次真实run只证明其实际执行范围。已结束run的再生副本按资源生命周期退休，原会话、预算和失败不能为腾空间删除。
+
 GitHub连接须区分宿主认证可用与Native任务内可用。匿名403/额度耗尽时保留实际响应，不认定仓库缺失；接通登记仓库GET工具后，由真实Research/QA任务读取当前PR、Issue和head，记录工具来源与观察时间。单独CLI测试不能冒充Native已调用。
 
 同Root质量续接另验：旧5次等实际调用文件字节不变，complex12记录不退款；同一resume ID只记录一次Native恢复事件，提交失败无提前发布，文件投影丢失只对账。下一轮仍使用原Research/开发及QA子任务、新operation/run/session和独有输出，旧NEEDS_WORK及通知保持；第三轮、未知传输、输入变化、未释放租约均拒绝。源码夹具不替代真实原任务续接结果。
