@@ -16,7 +16,7 @@ Native保存按当前版本更新后续run，保留Doc／QA人工内容；角色
 
 `role-preparation`、`native-role-adapter`和`native-role-runtime`将所选档位接到原Native身份、材料、知识、fresh session、预算及settlement。`scripts/role-opencode-config.mjs`只生成本run OpenCode配置；`docker/role-opencode-gate.mjs`验证固定CLI和permit；`role-isolated-transport`、`role-host-transport`及`role-api-routing`/provider broker保留控制侧真实Key、opaque客户端key、官方路径和64次请求上限。Codex会员链独立保留，不把API主选实现为失败fallback。
 
-正常API任务没有会员委托时，只配置已连接的Host MCP，不因角色默认Cloud目录阻止启动；远端Cloud Apps仍不可调用，有委托与Codex路径保持原样。Native启动读取registry复用控制存储既有4 MiB限制，秘密与permit的1 MiB限制不变，不能通过截断历史解决启动失败。`role-api-proxy`和`role-host-api-transport`的针对用例验证无委托时API及Host可用、Cloud仍拒绝。
+正常API任务没有会员委托时，只配置已连接的Host MCP，不因角色默认Cloud目录阻止启动；远端Cloud Apps仍不可调用，有委托与Codex路径保持原样。Native启动读取registry复用控制存储既有4 MiB限制，秘密JSON仍用原1 MiB、permit沿现有独立限额不变，不能通过截断历史解决启动失败。`role-api-proxy`和`role-host-api-transport`的针对用例验证无委托时API及Host可用、Cloud仍拒绝。
 
 `scripts/multi-runtime-acceptance.mjs`和`tests/helpers/multi-runtime-native-fixture.mjs`准备独立Native测试数据库、公司、控制根与task绑定，沿原Native执行器运行有限步骤；它不是另一个自动调度器。定向测试为`task-runtime-policy`、`task-runtime-routing`、`role-runtime-profiles`、`role-opencode-config`、`role-opencode-gate`、`role-api-routing`、`role-api-proxy`、`role-isolated-transport`和`multi-runtime-acceptance`，并保留原prep/adapter/host/budget/QA回归。离线通过、真实Native模型、同任务handoff、生产部署和业务是不同证据；本轮已完成的隔离结果见专题，不能代替生产激活验证。
 
