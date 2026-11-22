@@ -1,13 +1,29 @@
 {
   "schemaVersion": 1,
-  "required": ["AGENTS.md", "README.md", "docs/README.md", "docs/product.md", "docs/architecture.md", "docs/development-map.md", "docs/cross-project-context.md", "docs/agent-workflow.md", "docs/documentation-governance.md", "docs/operations.md", "docs/acceptance-runbook.md", "docs/decisions/0001-paperclip-and-delivery.md"],
+  "required": ["AGENTS.md", "README.md", "docs/README.md", "docs/product.md", "docs/architecture.md", "docs/development-map.md", "docs/cross-project-context.md", "docs/agent-workflow.md", "docs/documentation-governance.md", "docs/operations.md", "docs/acceptance-runbook.md", "docs/decisions/0001-paperclip-and-delivery.md", "docs/plans/task-runtime-routing.md", "docs/plans/full-stack-engineer.md"],
   "entrypoints": {
     "README.md": ["AGENTS.md", "docs/README.md", "docs/architecture.md", "docs/development-map.md", "docs/agent-workflow.md"],
     "AGENTS.md": ["docs/README.md", "docs/architecture.md", "docs/development-map.md", "docs/agent-workflow.md"],
-    "docs/README.md": ["AGENTS.md", "docs/product.md", "docs/architecture.md", "docs/development-map.md", "docs/cross-project-context.md", "docs/agent-workflow.md", "docs/documentation-governance.md", "docs/operations.md", "docs/acceptance-runbook.md", "docs/decisions/0001-paperclip-and-delivery.md"]
+    "docs/README.md": ["AGENTS.md", "docs/product.md", "docs/architecture.md", "docs/development-map.md", "docs/cross-project-context.md", "docs/agent-workflow.md", "docs/documentation-governance.md", "docs/operations.md", "docs/acceptance-runbook.md", "docs/decisions/0001-paperclip-and-delivery.md", "docs/plans/task-runtime-routing.md", "docs/plans/full-stack-engineer.md"]
   },
   "rules": [
     {"prefix": "docs/documentation-governance.json", "docs": ["docs/documentation-governance.md"]},
+    {"prefix": "bridge/role-labels.mjs", "docs": ["docs/plans/full-stack-engineer.md", "docs/team.md"]},
+    {"prefix": "bridge/team-roles.mjs", "docs": ["docs/plans/full-stack-engineer.md", "docs/team.md"]},
+    {"prefix": "bridge/role-capabilities.mjs", "docs": ["docs/plans/full-stack-engineer.md", "docs/development-map.md"]},
+    {"prefix": "assets/role-profiles/", "docs": ["docs/plans/full-stack-engineer.md", "docs/team.md"]},
+    {"prefix": "assets/role-skill-assignments.json", "docs": ["docs/plans/full-stack-engineer.md", "docs/team.md"]},
+    {"prefix": "tests/full-stack-engineer-role.test.mjs", "docs": ["docs/plans/full-stack-engineer.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "bridge/role-runtime-profiles.mjs", "docs": ["docs/plans/task-runtime-routing.md", "docs/development-map.md"]},
+    {"prefix": "bridge/task-runtime-", "docs": ["docs/plans/task-runtime-routing.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "bridge/role-api-routing.mjs", "docs": ["docs/plans/task-runtime-routing.md", "docs/operations.md"]},
+    {"prefix": "scripts/role-opencode-config.mjs", "docs": ["docs/plans/task-runtime-routing.md", "docs/operations.md"]},
+    {"prefix": "docker/role-opencode-gate.mjs", "docs": ["docs/plans/task-runtime-routing.md", "docs/operations.md"]},
+    {"prefix": "scripts/multi-runtime-acceptance.mjs", "docs": ["docs/plans/task-runtime-routing.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "tests/task-runtime-", "docs": ["docs/plans/task-runtime-routing.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "tests/role-runtime-profiles.test.mjs", "docs": ["docs/plans/task-runtime-routing.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "tests/multi-runtime-acceptance.test.mjs", "docs": ["docs/plans/task-runtime-routing.md", "docs/acceptance-runbook.md"]},
+    {"prefix": "tests/helpers/multi-runtime-", "docs": ["docs/plans/task-runtime-routing.md", "docs/acceptance-runbook.md"]},
     {"prefix": "bridge/context-projects.mjs", "docs": ["docs/cross-project-context.md", "docs/plans/cross-project-context-m2.md"]},
     {"prefix": "bridge/chief-context-", "docs": ["docs/cross-project-context.md", "docs/acceptance-runbook.md"]},
     {"prefix": "bridge/project-knowledge-store.mjs", "docs": ["docs/cross-project-context.md", "docs/acceptance-runbook.md"]},

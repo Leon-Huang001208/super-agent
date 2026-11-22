@@ -8,6 +8,18 @@ Native保存按当前版本更新后续run，保留Doc／QA人工内容；角色
 
 `team-user-summary.mjs`提供同次Chief总结提示、三字段用户摘要解析和基于现有flow的展示阶段。`team-native-runtime`保留原完整MD、摘要、评论及归档，只向通知传独立用户摘要和可信阶段；`team-result-notification`只生成短纯文本，不透传技术MD或靠删长串拼出报告。普通业务数字和合法链接可出现在用户摘要中。LIMIT、额度不足、返修负责人未明和依赖重建沿真实决策解释；未知或缺摘要明确待核对。日期来自原outbox创建时点，技术summary/sha与投递键不变。摘要、sender及QA邻接测试覆盖展示和原有权限、sent去重、unknown不重放；Docker离线结果与实机新通知分别记录。
 
+## 任务级多 Runtime 隔离候选
+
+候选入口和验收分层见[专题合同](plans/task-runtime-routing.md)。`bridge/role-runtime-profiles.mjs`固定Codex会员、DeepSeek/MiniMax分别配OpenCode/Claude Code共五个实现档位；默认13岗全Codex map仅是初始/current-binding快照。`bridge/task-runtime-policy.mjs`负责可信任务选型，`bridge/task-runtime-routing.mjs`负责task开始/已知成功且闭合执行后的handoff绑定和live重验；都不改变权限、会话或预算。
+
+13岗源码新增[Full Stack Engineer](plans/full-stack-engineer.md)：`role-labels`/`team-roles`末尾追加key并保留原12顺序和元数据；`role-capabilities`与公司Skill分配给出完整开发/测试资料及权限上限；`team-plan`对全栈代码强制独立QA并禁止组合发布/网络/资源能力。`full-stack-engineer-role`及roster/bootstrap/skills回归分别核严格13名册、旧12拒绝、资料与负例。初始化/bootstrap已按ROLE_KEYS动态计数，不能当12→13迁移器；Native迁移另由受控候选入口同批保存原12对象、绑定新源码与新岗位，不改生产旧12pinned source或既有五次成功证据。
+
+`role-preparation`、`native-role-adapter`和`native-role-runtime`将所选档位接到原Native身份、材料、知识、fresh session、预算及settlement。`scripts/role-opencode-config.mjs`只生成本run OpenCode配置；`docker/role-opencode-gate.mjs`验证固定CLI和permit；`role-isolated-transport`、`role-host-transport`及`role-api-routing`/provider broker保留控制侧真实Key、opaque客户端key、官方路径和64次请求上限。Codex会员链独立保留，不把API主选实现为失败fallback。
+
+`scripts/multi-runtime-acceptance.mjs`和`tests/helpers/multi-runtime-native-fixture.mjs`准备独立Native测试数据库、公司、控制根与task绑定，沿原Native执行器运行有限步骤；它不是另一个自动调度器。定向测试为`task-runtime-policy`、`task-runtime-routing`、`role-runtime-profiles`、`role-opencode-config`、`role-opencode-gate`、`role-api-routing`、`role-api-proxy`、`role-isolated-transport`和`multi-runtime-acceptance`，并保留原prep/adapter/host/budget/QA回归。离线通过、真实Native模型、同任务handoff、生产部署和12岗业务是不同证据；本轮实际模型结果尚待填写，保持NOT_RUN。
+
+`role-claude-gate`兼容stock Native精确的单Agent header及两个固定实例缓存根，实际入口检查缓存目录和指令文件的归属、权限及无链接；Host继续只使用permit绑定材料，不读取缓存正文授予权限。`current13-runtime-acceptance --repair-current13-preclaim`是显式的隔离管理操作：实际Native官方未开始provider、Gate未claim、无Host请求及租约闭合原件都匹配后，保留失败run、原operation与第9次预算，为同task/root/Agent准备一个新operation；它不唤醒模型，也不退款。相关fixture严格重验唯一失败attempt及预算集合；收存器先保留Native失败或未知状态，再读取Host结果，避免缺失文件掩盖真实原因。
+
 ## 20次预算与原任务开发续接
 
 `task-call-policy`默认20，`native-role-budget`、`chief-context-native`及QA返修共同接受可信20次证据；旧6/12回执和历史QA专项保持其原合同。`task-call-budget --maximum 20`只修改Owner绑定额度，不修改旧budget文件或唤醒模型。相关budget/context/retry回归验证第20/21次边界及原计数保留。
@@ -84,7 +96,7 @@ Native HTTPS、每 run 证书/信任、TLS ready 与 MCP CA 传播的合同及�
 | 本人原消息受控补收 | `bridge/chief-official-message-recovery.mjs`、`scripts/chief-feishu-recover.mjs`、M2 service/repository | 官方 GET 验证原 Owner、既有 SDK 单聊、正文 SHA 与原 ID，只恢复 new goal；默认 preview，不造 SDK 事件或直接 wake。`chief-official-message-recovery`、`chief-feishu-recover-cli` 及既有 context 测试覆盖身份拒绝、跨来源并发、ACK 未知与去重。 |
 | M2 记忆与协调 | `bridge/project-knowledge-store.mjs`、`bridge/team-context.mjs`、`bridge/team-native-runtime.mjs` | owner-confirmed 当前版本按项目共享/角色私有先隔离后检索；新 session 不带旧任务 history；原根可信额度（普通20次、历史明确12次与QA专项保持）、原操作对账和分代产物保留。对应 `project-knowledge-store`、`team-context` 测试。 |
 | M2 材料与配置 | `bridge/role-material-snapshot.mjs`、`bridge/native-role-runtime.mjs`、`scripts/role-container-transport.mjs`、`scripts/context-configure.mjs` | 专用只读 snapshot，manifest/permit/项目/workspace 同域；配置默认 preview、显式 apply，保留旧 RWB primary/回调。`native-role-runtime-context`、`role-container-materials`、`context-configure` 及既有 gate/adapter/preparation 测试；合同见[跨项目专题](cross-project-context.md)。 |
-| 通用岗位与能力 | `team-roles.mjs`、`role-capabilities.mjs`、`role-skill-bundles.mjs`、`assets/role-profiles/`、`assets/role-skills/` | 12职业定义（现役11岗，Document Specialist待协调接入）、默认/补充能力、可复核完整Skill包；入口字节摘要与files聚合摘要分别命名并对实物校验。项目规则按实际提供的文件读取，能力按技术栈/服务选择，安装或缓存存在不能当调用通过。 |
+| 通用岗位与能力 | `team-roles.mjs`、`role-labels.mjs`、`role-capabilities.mjs`、`company-role-skills.mjs`、`role-skill-bundles.mjs`、`assets/role-profiles/`、`assets/role-skills/` | 13职业候选含完整Full Stack Engineer，生产旧12保持；默认/补充能力和完整Skill包可核验，方法/工具/业务证据分开。全栈仅前后端开发测试组合，独QA保留；入口字节摘要与files聚合摘要分别对实物校验。 |
 | 跨项目接单 | `role-project-context.mjs`、Native角色及Chief现有入口 | 使用Native workspace.metadata扩展，任务项目决定知识/工作区/交付；官方schema/service合同fixture覆盖真实原始DB和API投影。 |
 | 宿主执行与MCP | `role-host-capabilities.mjs`、`role-host-mcp.mjs`、`role-host-call-queue.mjs`、`docker/role-host-mcp-server.mjs`、`scripts/role-host-mcp-config.mjs` | 现有传输内执行Git/check/已授权动作及选定stdio MCP；仅本run实际host工具逐项批准，服务器默认prompt。固定CLI合同读回真实审批配置；取消清理自有进程组，失败保留有限脱敏诊断。 |
 | 岗位材料发布 | `scripts/publish-role-profiles.mjs` | 暂停新派发后走Native认证HTTP CAS保存AGENTS/CAPABILITIES，原历史及登记同步链保留；不重建Agent。 |
