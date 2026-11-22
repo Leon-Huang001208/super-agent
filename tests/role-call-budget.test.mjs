@@ -8,15 +8,17 @@ import {DatabaseSync} from 'node:sqlite';
 import {AdmissionMeter} from '../bridge/admission.mjs';
 import {withRoleCall} from '../bridge/role-call-budget.mjs';
 import {grantComplexTaskBudget} from '../bridge/task-call-policy.mjs';
-test('complex original root spends up to twelve physical calls and cannot refund an earlier six',async t=>{
+test('the same original root spends up to twenty physical calls without refunding an earlier four',async t=>{
  const f=fixture(t),task=f.operation.taskId;
  f.registry={...f.registry,companyId:'company',ownerId:'owner',tasks:[task],taskRoots:{[task]:task}};
  f.registry=grantComplexTaskBudget(f.registry,{task:{id:task,companyId:'company',responsibleUserId:'owner',status:'in_review'},approvalSource:'owner-task-tier-policy'});
- for(let i=0;i<6;i++)fs.writeFileSync(f.root+'/budget/'+task+'/'+randomUUID()+'.json','{}',{mode:0o600});
+ for(let i=0;i<4;i++)fs.writeFileSync(f.root+'/budget/'+task+'/'+randomUUID()+'.json','{}',{mode:0o600});
+ const original=new Map(fs.readdirSync(f.root+'/budget/'+task).map(file=>[file,fs.readFileSync(f.root+'/budget/'+task+'/'+file,'utf8')]));
  let calls=0;
- for(let i=0;i<6;i++)await withRoleCall({...f,operation:{...f.operation,id:randomUUID()},log(){},perform:async()=>{calls++;return{ok:true};},completed:x=>x.ok},f);
- assert.equal(calls,6);assert.equal(fs.readdirSync(f.root+'/budget/'+task).length,12);
- await assert.rejects(withRoleCall({...f,operation:{...f.operation,id:randomUUID()},log(){},perform:()=>assert.fail('thirteenth'),completed:()=>true},f),/BUDGET_DENIED/);
+ for(let i=0;i<16;i++)await withRoleCall({...f,operation:{...f.operation,id:randomUUID()},log(){},perform:async()=>{calls++;return{ok:true};},completed:x=>x.ok},f);
+ assert.equal(calls,16);assert.equal(fs.readdirSync(f.root+'/budget/'+task).length,20);
+ for(const[file,bytes]of original)assert.equal(fs.readFileSync(f.root+'/budget/'+task+'/'+file,'utf8'),bytes);
+ await assert.rejects(withRoleCall({...f,operation:{...f.operation,id:randomUUID()},log(){},perform:()=>assert.fail('twenty-first'),completed:()=>true},f),/BUDGET_DENIED/);
 });
 function fixture(t){
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'role-budget-'));
@@ -29,6 +31,14 @@ function fixture(t){
  fs.mkdirSync(root+'/budget',{mode:0o700});fs.mkdirSync(root+'/budget/'+taskId,{mode:0o700});
  return{root,admissionFile,registry:{lease:{taskId,projectId,nonce}},operation:{id:randomUUID(),taskId,kind:'probe',agentId:randomUUID()}};
 }
+test('a preserved trusted twelve-call allocation still stops the thirteenth physical call',async t=>{
+ const f=fixture(t),task=f.operation.taskId;
+ f.registry={...f.registry,companyId:'company',ownerId:'owner',taskCallBudgets:{[task]:{maximum:12,tier:'complex',rootTaskId:task,companyId:'company',approvedBy:'owner',approvalSource:'historical-owner-policy'}}};
+ for(let i=0;i<11;i++)fs.writeFileSync(f.root+'/budget/'+task+'/'+randomUUID()+'.json','{}',{mode:0o600});
+ await withRoleCall({...f,log(){},perform:async()=>({ok:true}),completed:x=>x.ok},f);
+ assert.equal(fs.readdirSync(f.root+'/budget/'+task).length,12);
+ await assert.rejects(withRoleCall({...f,operation:{...f.operation,id:randomUUID()},log(){},perform:()=>assert.fail('legacy thirteenth'),completed:()=>true},f),/BUDGET_DENIED/);
+});
 test('probes and runs share one slot and a spent operation cannot call the provider again',async t=>{
  const f=fixture(t);let calls=0,finish;
  const first=withRoleCall({...f,log(){},perform:()=>{calls++;return new Promise(r=>finish=r);},completed:x=>x.status==='pass'},f);
@@ -40,9 +50,9 @@ test('probes and runs share one slot and a spent operation cannot call the provi
  assert.equal(calls,1);
  assert.equal(fs.existsSync(f.root+'/call.lock'),false);
 });
-test('six physical calls and unknown outcomes stop further provider calls',async t=>{
+test('twenty physical calls and unknown outcomes stop further provider calls',async t=>{
  const f=fixture(t);
- for(let i=0;i<6;i++)fs.writeFileSync(f.root+'/budget/'+f.operation.taskId+'/'+randomUUID()+'.json','{}',{mode:0o600});
+ for(let i=0;i<20;i++)fs.writeFileSync(f.root+'/budget/'+f.operation.taskId+'/'+randomUUID()+'.json','{}',{mode:0o600});
  await assert.rejects(withRoleCall({...f,log(){},perform:()=>assert.fail('over budget'),completed:()=>true},f),/ROLE_CALL_BUDGET_DENIED/);
  assert.equal(fs.existsSync(f.root+'/call.lock'),false);
  const g=fixture(t);
@@ -55,7 +65,7 @@ test('delegated tasks spend their original root budget instead of receiving a ne
  f.registry.tasks=[parent,f.operation.taskId];f.registry.taskRoots={[f.operation.taskId]:parent};const operation={...f.operation,rootTaskId:parent,kind:'run'};
  await withRoleCall({...f,operation,log(){},perform:async()=>({ok:true}),completed:x=>x.ok},f);
  assert.equal(fs.readdirSync(f.root+'/budget/'+parent).length,1);assert.equal(fs.readdirSync(f.root+'/budget/'+f.operation.taskId).length,0);
- for(let i=0;i<5;i++)fs.writeFileSync(f.root+'/budget/'+parent+'/'+randomUUID()+'.json','{}',{mode:0o600});
+ for(let i=0;i<19;i++)fs.writeFileSync(f.root+'/budget/'+parent+'/'+randomUUID()+'.json','{}',{mode:0o600});
  await assert.rejects(withRoleCall({...f,operation:{...operation,id:randomUUID()},log(){},perform:()=>assert.fail('child bypassed root cap'),completed:()=>true},f),/ROLE_CALL_BUDGET_DENIED/);
  await assert.rejects(withRoleCall({...f,operation:{...operation,id:randomUUID(),rootTaskId:randomUUID()},log(){},perform:()=>assert.fail('unregistered root'),completed:()=>true},f),/ROLE_CALL_ROOT_DENIED/);
 });

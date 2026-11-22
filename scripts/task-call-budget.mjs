@@ -1,4 +1,4 @@
-/** Explicit owner-authorized tier change; no task creation, budget rewrite or model work. */
+/** Explicit owner-authorized allocation; no task creation, spent-call rewrite or model work. */
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
@@ -6,13 +6,26 @@ import {ROLE_ROOT,readControl,editRoleRegistry} from '../bridge/role-control-sto
 import {grantComplexTaskBudget,rootCallLimit} from '../bridge/task-call-policy.mjs';
 import {createRoleOwnerApi} from './role-owner-api.mjs';
 
+export function parseTaskCallBudgetArguments(args){
+ const fail=()=>{throw Error('NATIVE_ROLE_TASK_BUDGET_ARGUMENTS_DENIED');};
+ if(!Array.isArray(args))fail();
+ const values=new Map();let apply=false;
+ for(let i=0;i<args.length;i++){
+  const key=args[i];
+  if(key==='--apply'){if(apply)fail();apply=true;continue;}
+  if(!['--task-id','--approval-source','--maximum'].includes(key)||values.has(key)||typeof args[i+1]!=='string'||args[i+1].startsWith('--'))fail();
+  values.set(key,args[++i]);
+ }
+ const taskId=values.get('--task-id'),approvalSource=values.get('--approval-source');
+ if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(taskId??'')||typeof approvalSource!=='string'||!approvalSource.trim()||(values.get('--maximum')??'20')!=='20')fail();
+ return{apply,taskId,approvalSource,maximum:20};
+}
+
 async function main(){
- const args=process.argv.slice(2),apply=args.includes('--apply'),taskId=args[args.indexOf('--task-id')+1],approvalSource=args[args.indexOf('--approval-source')+1];
- if(!args.includes('--task-id')||!args.includes('--approval-source')||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(taskId??'')||
-  args.some((arg,i)=>!['--task-id','--approval-source','--apply'].includes(arg)&&args[i-1]!=='--task-id'&&args[i-1]!=='--approval-source'))throw Error('NATIVE_ROLE_TASK_BUDGET_ARGUMENTS_DENIED');
+ const {apply,taskId,approvalSource,maximum}=parseTaskCallBudgetArguments(process.argv.slice(2));
  const before=readControl(ROLE_ROOT+'/registry.json'),api=await createRoleOwnerApi({registry:before,requirePaused:apply});
  try{
-  const task=await api.request('/issues/'+taskId),next=grantComplexTaskBudget(before,{task,approvalSource});
+  const task=await api.request('/issues/'+taskId),next=grantComplexTaskBudget(before,{task,approvalSource,maximum});
   if(apply)editRoleRegistry(current=>{
    if(!isDeepStrictEqual(current,before))throw Error('NATIVE_ROLE_TASK_BUDGET_REGISTRY_CHANGED');
    return next;

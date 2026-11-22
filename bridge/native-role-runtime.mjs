@@ -123,7 +123,7 @@ export function restrictNativeRoleAuthority({registry,task,projectContext,effect
   if(!teamContextEnabled(registry))return{projectContext,effectiveCapabilities,authorizedHostActions};
   const project=projectForTask(registry,task,{log:audit}),context=structuredClone(projectContext),capabilities=structuredClone(effectiveCapabilities);
   if(context?.id!==project.projectId)fail('NATIVE_ROLE_PROJECT_AUTHORITY_DENIED');
-  const levels=['artifact','pull_request','merge','deploy'],maximum=project.maximumAction==='read_only'?'artifact':'pull_request';
+  const levels=['artifact','pull_request','merge','deploy'],maximum=project.maximumAction==='read_only'?'artifact':project.maximumAction;
   const nativeIndex=levels.indexOf(context.delivery?.maximumAction??'artifact');
   if(nativeIndex<0)fail('NATIVE_ROLE_PROJECT_AUTHORITY_DENIED');
   context.key=project.key;context.delivery={...context.delivery,maximumAction:levels[Math.min(nativeIndex,levels.indexOf(maximum))]};

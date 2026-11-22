@@ -216,11 +216,11 @@ test('a completed blocked stage with an unconsumed same-hash continue resumes in
 });
 test('a new plan needs three remaining calls but an existing dispatch still reconciles with a spent root',async()=>{
  const t=task(),env=native(t,{resumeOperationId:id(33)});let wakes=0,observations=0;
- await assert.rejects(env.coordinator.resumePlan({registry:registry(),task:t,flow:flow(t),used:4,
+ await assert.rejects(env.coordinator.resumePlan({registry:registry(),task:t,flow:flow(t),used:18,
   lookupRun:async()=>{observations++;return null;},wake:async()=>{wakes++;}}),/TEAM_CONTEXT_REPLAN_BUDGET_EXHAUSTED/);
  assert.equal(observations,1);assert.equal(wakes,0);assert.equal(env.events.filter(x=>x.kind==='resume_claim').length,0);
  const r=registry();r.operations.push({id:id(33),taskId:t.id,rootTaskId:t.id,inputRevision:taskInputRevision(t),role:'chief',phase:'plan'});
- const existing=await env.coordinator.resumePlan({registry:r,task:t,flow:flow(t),used:6,lookupRun:async()=>({id:id(40)}),wake:async()=>{wakes++;}});
+ const existing=await env.coordinator.resumePlan({registry:r,task:t,flow:flow(t),used:20,lookupRun:async()=>({id:id(40)}),wake:async()=>{wakes++;}});
  assert.equal(existing.runId,id(40));assert.equal(wakes,0);
 });
 test('a complex original task replans after six spent calls without resetting its allowance',async()=>{

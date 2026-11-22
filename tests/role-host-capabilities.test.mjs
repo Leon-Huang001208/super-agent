@@ -108,14 +108,42 @@ test('publish previews registered delivery but requires the Native QA candidate 
  f.setHead('c'.repeat(40));await assert.rejects(executor.execute('host.project_publish',{action:'pull_request'}),/ROLE_HOST_REVIEW_REQUIRED/);
 });
 
-test('RWB delivery never merges even when project metadata asks for a broader ceiling',async t=>{
- const f=fixture(t,'devops'),workspace=await prepareRoleProjectWorkspace(f.options);f.permit.projectContext.key='research-workbench';f.permit.projectContext.repository.fullName='Leon/ResearchWorkbench';f.permit.projectContext.delivery.maximumAction='deploy';
- const executor=createHostCapabilityExecutor({...f.options,workspace});await assert.rejects(executor.execute('host.project_publish',{action:'merge',preview:true}),/ROLE_HOST_DELIVERY_ACTION_DENIED/);
+test('RWB uses the registered project merge entrypoint with the same exact Native QA requirements',async t=>{
+ const f=fixture(t,'devops'),workspace=await prepareRoleProjectWorkspace(f.options);
+ f.permit.projectContext.key='research-workbench';f.permit.projectContext.repository.fullName='Leon/ResearchWorkbench';
+ f.permit.projectContext.delivery.maximumAction='merge';
+ f.permit.projectContext.delivery.commands.merge={argv:['/tools/rwb-git-safety','--reviewed-commit','{candidateSha}']};
+ let executor=createHostCapabilityExecutor({...f.options,workspace});
+ assert.equal((await executor.execute('host.project_publish',{action:'merge',preview:true})).status,'preview');
+ await assert.rejects(executor.execute('host.project_publish',{action:'merge'}),/ROLE_HOST_REVIEW_REQUIRED/);
+ f.permit.codeReview=reviewProof();executor=createHostCapabilityExecutor({...f.options,workspace});
+ assert.equal((await executor.execute('host.project_publish',{action:'merge'})).exitCode,0);
+ assert.ok(f.calls.some(call=>call.binary==='/tools/rwb-git-safety'&&call.args.includes(sha)));
+ await assert.rejects(executor.execute('host.project_publish',{action:'deploy',preview:true}),/ROLE_HOST_DELIVERY_ACTION_DENIED/);
+ f.permit.role='qa';await assert.rejects(createHostCapabilityExecutor({...f.options,workspace}).execute('host.project_publish',{action:'merge'}),/ROLE_HOST_DELIVERY_ACTION_DENIED/);
+ f.permit.role='devops';f.permit.projectContext.delivery.maximumAction='pull_request';
+ await assert.rejects(createHostCapabilityExecutor({...f.options,workspace}).execute('host.project_publish',{action:'merge',preview:true}),/ROLE_HOST_DELIVERY_ACTION_DENIED/);
+ f.permit.projectContext.delivery.maximumAction='merge';delete f.permit.projectContext.delivery.commands.merge;
+ await assert.rejects(createHostCapabilityExecutor({...f.options,workspace}).execute('host.project_publish',{action:'merge',preview:true}),/ROLE_HOST_DELIVERY_UNAVAILABLE/);
 });
 
 test('missing registered publish entrypoint stays explicitly unavailable',async t=>{
  const f=fixture(t,'devops'),workspace=await prepareRoleProjectWorkspace(f.options);delete f.permit.projectContext.delivery.commands;
  await assert.rejects(createHostCapabilityExecutor({...f.options,workspace}).execute('host.project_publish',{action:'pull_request',preview:true}),/ROLE_HOST_DELIVERY_UNAVAILABLE/);
+});
+
+test('registered delivery argv receives the actual Native QA verification and no model-supplied proof',async t=>{
+ const f=fixture(t,'devops'),workspace=await prepareRoleProjectWorkspace(f.options);
+ f.permit.projectContext.delivery.commands.pull_request={argv:['/tools/rwb-git-safety','--verification-command','{verificationCommand}','--verification-duration-seconds','{verificationDurationSeconds}']};
+ let executor=createHostCapabilityExecutor({...f.options,workspace});
+ const preview=await executor.execute('host.project_publish',{action:'pull_request',preview:true});
+ assert.equal(preview.status,'preview');assert.match(preview.argv,/verificationCommand/);
+ assert.ok(!f.calls.some(call=>call.binary==='/tools/rwb-git-safety'));
+ await assert.rejects(executor.execute('host.project_publish',{action:'pull_request',verificationCommand:'fabricated'}),/ROLE_HOST_REVIEW_REQUIRED/);
+ f.permit.codeReview=reviewProof();executor=createHostCapabilityExecutor({...f.options,workspace});
+ assert.equal((await executor.execute('host.project_publish',{action:'pull_request'})).exitCode,0);
+ const call=f.calls.find(value=>value.binary==='/tools/rwb-git-safety');
+ assert.deepEqual(call.args,['--verification-command','Native QA qa-run: unit','--verification-duration-seconds','1']);
 });
 
 test('macOS observation uses host probes and returns unavailable components explicitly',async t=>{

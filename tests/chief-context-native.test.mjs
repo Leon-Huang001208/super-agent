@@ -443,6 +443,18 @@ test('blocked continue with three remaining calls keeps the root and hash but sn
   assert.equal(f.state.tasks.size,1);assert.equal(f.registrations.length,0);
 });
 
+test('trusted twenty-call evidence supports same-root continuation and preserves its final three-call reserve',async()=>{
+ for(const used of [17,18]){
+  const f=fixture(),task=f.makeTask({status:'blocked'}),old=blockedPlan(f,task,used);
+  f.state.executions.get(task.id).budgetMaximum=20;
+  const result=await f.controller.dispatchTrustedCommand(f.message('/chief continue'));
+  assert.equal(f.state.tasks.size,1);assert.equal(f.registrations.length,0);
+  assert.equal(f.state.executions.get(task.id).budgetUsed,used);
+  if(used===17){assert.equal(f.state.tasks.get(task.id).status,'in_review');assert.match(f.state.controls.get(task.id).resumeOperationId,/^[a-f0-9-]{36}$/);}
+  else{assert.equal(result.status,'budget_exhausted');assert.equal(result.remainingCalls,2);assert.equal(f.state.tasks.get(task.id).status,'blocked');assert.equal(f.state.controls.get(task.id).plan.sha256,old.sha256);}
+ }
+});
+
 test('blocked existing operation run is reconciled before the minimum-call rule',async()=>{
   const f=fixture(),task=f.makeTask({status:'blocked'});blockedPlan(f,task,6);
   const operationId=randomUUID(),runId=randomUUID();f.state.controls.get(task.id).resumeOperationId=operationId;
