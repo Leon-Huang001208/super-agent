@@ -114,13 +114,16 @@ export function nativeRetryControlMode({registry,rootTask,flow,control}){
 export async function bindNativeRetryAttempt(ctx,{database}){
  const p=await database(),[observed]=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.eq(p.schema.heartbeatRuns.id,ctx.runId));
  if(!observed?.retryOfRunId)return ctx;
- let unclaimedBootstrapParent=false,childBootstrapParent=false,chiefTransportParent=false;
+ let retryParentClassified=false,unclaimedBootstrapParent=false,childBootstrapParent=false,chiefTransportParent=false;
  try{return await p.db.transaction(async tx=>{
   const{s,o}= {s:p.schema,o:p.orm},[run]=await tx.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,ctx.runId)).for('update');
+  if(!run)fail('TEAM_NATIVE_RETRY_CONTEXT_CHANGED');
   const[parentRun]=await tx.select().from(s.heartbeatRuns).where(o.eq(s.heartbeatRuns.id,run.retryOfRunId)).for('update');
+  if(!parentRun)fail('TEAM_NATIVE_RETRY_CONTEXT_CHANGED');
   // Preserve uncertainty even if a private mapping/flow read fails before the Root branch is selected.
   unclaimedBootstrapParent=isUnclaimedChiefGateFailure(parentRun);
   childBootstrapParent=parentRun?.errorCode==='NATIVE_ROLE_PRIVATE_FILE_DENIED';
+  retryParentClassified=true;
   let r=readControl(R+'/registry.json');const contextConfigured=r.context?.enabled===true;
   chiefTransportParent=run.agentId===r.team?.ids?.chief&&parentRun?.scheduledRetryAttempt===1;
   if(run.agentId!==ctx.agent.id||run.issueId!==ctx.context?.issueId||!parentRun)fail('TEAM_NATIVE_RETRY_CONTEXT_CHANGED');
@@ -220,7 +223,7 @@ export async function bindNativeRetryAttempt(ctx,{database}){
   log({code:'TEAM_NATIVE_RETRY_BOUND',runId:run.id,parentRunId:parentRun.id,operationId:next.id,retryOfOperationId:operation.id,taskId:task.id,rootTaskId:rootTask.id,nativeRetryAttempt:run.scheduledRetryAttempt});
   return rebindNativeRetryContext(ctx,next);
  });}catch(error){
-  const code=childBootstrapParent?childBootstrapEvidenceCode(error):unclaimedBootstrapParent?chiefBootstrapEvidenceCode(error):chiefTransportParent?chiefTransportEvidenceCode(error):/^(?:TEAM_NATIVE_RETRY_[A-Z_]+|TEAM_PENDING_OWNER_INPUT)$/.test(error?.code??'')?error.code:'TEAM_NATIVE_RETRY_PREFLIGHT_FAILED';
+  const code=!retryParentClassified?'TEAM_NATIVE_RETRY_BOOTSTRAP_EVIDENCE_UNAVAILABLE':childBootstrapParent?childBootstrapEvidenceCode(error):unclaimedBootstrapParent?chiefBootstrapEvidenceCode(error):chiefTransportParent?chiefTransportEvidenceCode(error):/^(?:TEAM_NATIVE_RETRY_[A-Z_]+|TEAM_PENDING_OWNER_INPUT)$/.test(error?.code??'')?error.code:'TEAM_NATIVE_RETRY_PREFLIGHT_FAILED';
   log({code,runId:ctx.runId});fail(code);
  }
 }

@@ -6,7 +6,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {taskInputRevision} from '../bridge/task-input.mjs';
 import {bindUnstartedChildRetry,childBootstrapOperation,childBootstrapEvidenceCode} from '../bridge/role-native-retry.mjs';
-import {resolveNativeRetryScope} from '../bridge/team-native-runtime.mjs';
+import {bindNativeRetryAttempt,resolveNativeRetryScope} from '../bridge/team-native-runtime.mjs';
 import {teamRoleAdmissionFailure,prepareTeamRoleExecution} from '../bridge/chief-bootstrap-retry.mjs';
 
 function fixture(t){
@@ -122,6 +122,27 @@ test('early private registry or context failures keep the child bootstrap eviden
   assert.deepEqual(teamRoleAdmissionFailure({code:childBootstrapEvidenceCode(error)}).resultJson.executionRecovery,{kind:'reconciliation',providerWorkStarted:null});
  }
  assert.equal(childBootstrapEvidenceCode({code:'TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_FLOW_OR_PHASE_CHANGED'}),'TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_FLOW_OR_PHASE_CHANGED');
+});
+
+test('actual retry binding preserves unknown when its current or parent Native transaction read fails',async t=>{
+ const events=[];
+ t.mock.method(fs,'appendFileSync',(file,line)=>{assert.equal(file,'/paperclip/control/research-pm/events.jsonl');events.push(JSON.parse(line));});
+ for(const mode of ['current-read-failed','parent-read-failed','current-missing','parent-missing']){
+  const f=fixture(t);let reads=0;
+  const table={id:'id'},orm={eq:(field,value)=>({field,value})};
+  const tx={select:()=>({from:actual=>{assert.equal(actual,table);return{where:()=>({for:async lock=>{
+   assert.equal(lock,'update');reads++;
+   if(mode===(reads===1?'current-read-failed':'parent-read-failed'))throw Object.assign(Error('Native read failed'),{code:'DB_READ_FAILED'});
+   if(mode===(reads===1?'current-missing':'parent-missing'))return [];
+   return [reads===1?f.run:f.parentRun];
+  }})};}})};
+  const db={select:()=>({from:actual=>{assert.equal(actual,table);return{where:async()=>[f.run]};}}),transaction:async perform=>perform(tx)};
+  let failure;
+  try{await bindNativeRetryAttempt(f.ctx,{database:async()=>({db,schema:{heartbeatRuns:table},orm})});}catch(error){failure=teamRoleAdmissionFailure(error);}
+  assert.equal(failure?.errorCode,'TEAM_NATIVE_RETRY_BOOTSTRAP_EVIDENCE_UNAVAILABLE',mode);
+  assert.deepEqual(failure.resultJson.executionRecovery,{kind:'reconciliation',providerWorkStarted:null},mode);
+ }
+ assert.equal(events.length,4);assert.equal(events.every(value=>value.code==='TEAM_NATIVE_RETRY_BOOTSTRAP_EVIDENCE_UNAVAILABLE'),true);
 });
 
 test('a historical twelve-call root keeps its original limit; a full budget cannot re-enter',t=>{
