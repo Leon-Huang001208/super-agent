@@ -8,6 +8,34 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 const metadata=workspace=>workspace?.metadata?.superAgentProject??{};
 const sourcePath=workspace=>metadata(workspace).repository?.hostPath??null;
 
+/** The selected Native source binds portable code too; it does not enable M2 control. */
+export function roleProjectWorkspaceBinding({task,projectContext,contextVersion}){
+ const selected=projectContext?.nativeWorkspaceId,source=projectContext?.nativeSourceWorkspace;
+ if(!task||!projectContext||projectContext.id!==task.projectId||task.projectWorkspaceId&&task.projectWorkspaceId!==selected||
+  source&&(!selected||source.id!==selected||source.projectId!==task.projectId))fail('ROLE_PROJECT_BINDING_DENIED');
+ return source?{projectWorkspaceId:selected}:contextVersion===1&&task.projectWorkspaceId?{projectWorkspaceId:task.projectWorkspaceId}:{};
+}
+
+/** Keep Native local environment identity, while binding its higher-priority cwd to artifacts. */
+export function nativeRoleArtifactTarget(registration,context,target){
+ if(target===undefined||target===null)return target;
+ const binding=registration.binding,project=registration.projectContext,source=project?.nativeSourceWorkspace;
+ const artifactCwd='/paperclip/instances/default/projects/'+binding?.companyId+'/'+binding?.projectId+'/_default';
+ const input=context?.paperclipWorkspace,realization=target.workspaceRealization,present=realization!==undefined&&realization!==null;
+ const sourceSelected=Boolean(source&&source.id===binding?.projectWorkspaceId&&source.id===project.nativeWorkspaceId&&
+  source.projectId===binding?.projectId&&source.sourceType==='local_path'&&project.id===binding.projectId&&
+  project.repository?.hostPath&&project.workspace?.hostPath&&project.repository.hostPath!==project.workspace.hostPath&&
+  registration.profile?.executionPolicy?.executor==='macos_native'&&input?.workspaceId===source.id&&input?.projectId===source.projectId&&
+  input?.source==='project_primary'&&input?.mode==='shared_workspace'&&[source.cwd,artifactCwd].includes(input.cwd));
+ const checks={local:target.kind==='local',artifactCwd:registration.contextVersion!==1||registration.workspaceCwd===artifactCwd,
+  realization:!present||object(realization)&&['copy','in_place'].includes(realization.mode),
+  authoritativeRoot:!present||realization.authoritativeRoot===artifactCwd||sourceSelected&&realization.authoritativeRoot===source.cwd,
+  aliases:!present||Array.isArray(realization.pathAliases)&&realization.pathAliases.length===0,
+  restorePaths:!present||Array.isArray(realization.outboundRestorePaths)&&realization.outboundRestorePaths.length===0};
+ if(!Object.values(checks).every(Boolean))throw Object.assign(new Error('NATIVE_ROLE_WORKSPACE_TARGET_DENIED'),{code:'NATIVE_ROLE_WORKSPACE_TARGET_DENIED',checks});
+ return {...target,...(present?{workspaceRealization:{...realization,authoritativeRoot:artifactCwd}}:{})};
+}
+
 /** Select only registered Native projects/workspaces. Goal text never becomes configuration. */
 export function selectNativeProject({projects,workspaces=[],companyId,selector,currentProjectId,parentProjectId,defaultProjectId}){
  const available=projects.filter(project=>project.companyId===companyId);
@@ -50,17 +78,25 @@ export function resolveRoleProjectContext({companyId,ownerId,project,workspace,l
  const delivery=entry.delivery??{maximumAction:hostPath?'pull_request':'artifact'};
  if(!object(delivery)||!['artifact','pull_request','merge','deploy'].includes(delivery.maximumAction))fail('ROLE_PROJECT_DELIVERY_INVALID');
  const rwbRelease=resolveRwbReleaseMetadata(entry.rwbRelease,{companyId,projectId:project.id,rootTaskId,repository});
- let worktreePath=null;
+ let worktreePath=null,nativeSourceWorkspace;
  if(hostPath){
   if(!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,127}$/.test(rootTaskId??''))fail('ROLE_PROJECT_ROOT_TASK_INVALID');
   const worktreeRoot=entry.workspace?.worktreeRoot??'/Volumes/WorkDisk/Projects/'+key+'/paperclip-worktrees';
   if(typeof worktreeRoot!=='string'||!path.posix.isAbsolute(worktreeRoot)||path.posix.normalize(worktreeRoot)!==worktreeRoot)fail('ROLE_PROJECT_WORKSPACE_DENIED');
   worktreePath=path.posix.join(worktreeRoot,rootTaskId);
+  // Only explicit Owner-registered local code may arrive from a Native source cwd.
+  // This describes the input workspace; plans/reviews still use the fixed artifact cwd.
+  if(entry.ownerId===ownerId&&workspace?.sourceType==='local_path'&&entry.workspace?.worktreeRoot){
+   if(!workspace.id||typeof workspace.cwd!=='string'||!path.posix.isAbsolute(workspace.cwd)||
+    path.posix.normalize(workspace.cwd)!==workspace.cwd||workspace.cwd==='/'||hostPath==='/'||
+    worktreeRoot==='/'||worktreeRoot===hostPath||worktreePath===hostPath)fail('ROLE_PROJECT_WORKSPACE_DENIED');
+   nativeSourceWorkspace={id:workspace.id,projectId:workspace.projectId,cwd:workspace.cwd,sourceType:workspace.sourceType};
+  }
  }
  return {schemaVersion:1,id:project.id,key,name:project.name??project.id,repository,
   workspace:{hostPath:worktreePath,containerPath:'/workspace/project',...(entry.workspace?.prepare?{prepare:entry.workspace.prepare}:{})},rules,checks,delivery,
   hostMcpServers:entry.hostMcpServers??[],hostActions:entry.hostActions??[],services:entry.services??{},stack:entry.stack??[],domains,...(rwbRelease?{rwbRelease}:{}),
-  nativeWorkspaceId:workspace?.id??null};
+  nativeWorkspaceId:workspace?.id??null,...(nativeSourceWorkspace?{nativeSourceWorkspace}:{})};
 }
 
 /** Resolve the current task's Native project on every preflight and recheck. */

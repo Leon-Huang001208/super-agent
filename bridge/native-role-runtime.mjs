@@ -16,7 +16,7 @@ import {selectRoleKnowledge} from './role-materials.mjs';
 import {createRoleMaterialSnapshot} from './role-material-snapshot.mjs';
 import {assertRoleInstructionsReady} from './role-instruction-store.mjs';
 import {resolveRoleInstructionCopy} from './role-instruction-paths.mjs';
-import {readRoleProjectContext} from './role-project-context.mjs';
+import {readRoleProjectContext,nativeRoleArtifactTarget,roleProjectWorkspaceBinding} from './role-project-context.mjs';
 import {resolveRoleCapabilities} from './role-capabilities.mjs';
 import {readControl} from './role-control-store.mjs';
 import {assertRolePermitSize} from './role-permit-contract.mjs';
@@ -34,6 +34,21 @@ export function nativeRolePreflightFailure(error){
  const code=/^(?:NATIVE_ROLE|ROLE_PROJECT|ROLE_CAPABILITY|ROLE_INSTRUCTION|ROLE_MATERIAL|NETWORK_ROLE|RESOURCE_ROLE)_[A-Z_]+$/.test(error.code??'')?error.code:'NATIVE_ROLE_PREFLIGHT_FAILED';
  return {exitCode:1,signal:null,timedOut:false,errorCode:code,errorMessage:code,
   resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
+}
+/** Native source selection never changes the permit/CLI artifact working directory. */
+export function nativeRoleArtifactExecution(checked,registration,{log:audit=()=>{}}={}){
+ const managedCwd='/paperclip/instances/default/projects/'+registration.binding.companyId+'/'+registration.binding.projectId+'/_default';
+ const executionCwd=registration.contextVersion===1?registration.workspaceCwd:managedCwd;
+ if(executionCwd!==managedCwd)fail('NATIVE_ROLE_WORKSPACE_DENIED');
+ let executionTarget;
+ try{executionTarget=nativeRoleArtifactTarget(registration,checked.context,checked.executionTarget);}
+ catch(error){audit({code:'NATIVE_ROLE_ARTIFACT_TARGET_CHECK',runId:registration.binding.runId,
+  sourceCwd:registration.projectContext?.nativeSourceWorkspace?.cwd??null,artifactCwd:executionCwd,checks:error.checks});throw error;}
+ audit({code:'NATIVE_ROLE_ARTIFACT_TARGET_PROJECTED',runId:registration.binding.runId,projectWorkspaceId:registration.binding.projectWorkspaceId,
+  sourceCwd:registration.projectContext?.nativeSourceWorkspace?.cwd??null,artifactCwd:executionCwd,
+  realizationMode:executionTarget?.workspaceRealization?.mode??null});
+ return {...checked,...(executionTarget!==undefined?{executionTarget}:{}),config:{...checked.config,cwd:executionCwd},context:{...checked.context,
+  paperclipWorkspace:{...checked.context.paperclipWorkspace,cwd:executionCwd}}};
 }
 function json(file) {
   const stat=fs.lstatSync(file);
@@ -132,6 +147,7 @@ export function restrictNativeRoleAuthority({registry,task,projectContext,effect
   context.key=project.key;context.delivery={...context.delivery,maximumAction:levels[Math.min(nativeIndex,levels.indexOf(maximum))]};
   if(project.maximumAction==='read_only'){
     context.repository={...context.repository,hostPath:null};context.workspace={...context.workspace,hostPath:null};
+    delete context.nativeSourceWorkspace;
     context.delivery={maximumAction:'artifact'};context.checks=[];context.hostActions=[];context.hostMcpServers=[];
     authorizedHostActions=[];
     if(capabilities){
@@ -309,7 +325,7 @@ export async function installNativeRoles() {
           effectiveCapabilities:resolveRoleCapabilities({role:role.profile.role,additionalCapabilities:capabilityRequests,projectContext,toolCatalog:catalog?.result?.tools??[],agent,companySkills,companySkillVersions}),
           authorizedHostActions:operation.authorizedHostActions??[],toolCatalog:catalog?.result?.tools??[],log});
         return {binding:{companyId:r.companyId,projectId:issue.projectId,taskId:issue.id,agentId:agent.id,runId:run.id,
-          ...(resolved.contextVersion===1&&issue.projectWorkspaceId?{projectWorkspaceId:issue.projectWorkspaceId}:{}),
+          ...roleProjectWorkspaceBinding({task:issue,projectContext,contextVersion:resolved.contextVersion}),
           ownerId:r.ownerId,inputRevision:taskInputRevision(issue)},profile:{...role.profile,projectId:issue.projectId,projectKey:resolved.contextVersion===1?role.profile.projectKey:projectContext.key},...material,
           projectContext,capabilityRequests,effectiveCapabilities,authorizedHostActions,networkScope:operation.networkScope,resourceScope:operation.resourceScope,codeCandidate:operation.codeCandidate,codeReview:operation.codeReview,
           rootTaskId:operation.rootTaskId??issue.id,phase:operation.phase,additionalInput:operation.additionalInput,reviewedArtifacts:operation.reviewedArtifacts,outputFile:operation.outputFile,reviewedTaskKeys:operation.reviewedTaskKeys,teamRoster:role.profile.role==='chief'?r.team?.ids:undefined,
@@ -340,12 +356,8 @@ export async function installNativeRoles() {
       const wrapped=createNativeRoleAdapter({readRegistration,prepareRole,log,basePromptTemplate:utils.DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
         nativeExecute:async checked=>{
           const r=await readRegistration(),file=checked.config.instructionsFilePath;
-          const managedCwd='/paperclip/instances/default/projects/'+r.binding.companyId+'/'+r.binding.projectId+'/_default';
-          const executionCwd=r.contextVersion===1?r.workspaceCwd:managedCwd;
-          if(r.contextVersion===1?executionCwd!==managedCwd:executionCwd!==managedCwd&&executionCwd!==checked.config.cwd)fail('NATIVE_ROLE_WORKSPACE_DENIED');
+          const execution=nativeRoleArtifactExecution(checked,r,{log}),executionCwd=execution.config.cwd;
           fs.mkdirSync(executionCwd,{recursive:true});
-          const execution={...checked,config:{...checked.config,cwd:executionCwd},context:{...checked.context,
-            paperclipWorkspace:{...checked.context.paperclipWorkspace,cwd:executionCwd}}};
           const grantId=grantFor(checked.config.env?.CODEX_HOME,r.binding.companyId);
           if(r.contextVersion===1){
             const currentRegistry=registered(ctx.agent.id).registry;

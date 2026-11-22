@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createNativeRoleAdapter, NATIVE_ROLE_MANAGED_ARGS } from '../bridge/native-role-adapter.mjs';
 import {assertRolePermitSize,ROLE_PERMIT_MAX_BYTES} from '../bridge/role-permit-contract.mjs';
 import * as roleRuntime from '../bridge/native-role-runtime.mjs';
+import * as contextApi from '../bridge/role-project-context.mjs';
 
 test('oversize permit failure survives the actual adapter and no-provider boundary without logging content',async()=>{
  const f=dispatchFixture('document-specialist'),events=[],marker='private-permit-content',permit={padding:marker+'x'.repeat(ROLE_PERMIT_MAX_BYTES)};
@@ -92,6 +93,131 @@ function dispatchFixture(role) {
     nativeExecute:async value=>{calls++;dispatched=value;return{exitCode:0};}});
   return {ctx,registration,reviewedArtifacts,execute,getDispatched:()=>dispatched,getCalls:()=>calls};
 }
+
+function codeWorkspaceFixture(){
+ const f=dispatchFixture('chief'),artifactCwd='/paperclip/instances/default/projects/company/project/_default';
+ f.registration.contextVersion=1;f.registration.workspaceCwd=artifactCwd;
+ f.registration.profile.executionPolicy={executor:'macos_native',sandbox:'none',approvalPolicy:'never',docker:'on_demand'};
+ f.ctx.config.extraArgs=[];f.ctx.config.dangerouslyBypassApprovalsAndSandbox=true;f.ctx.config.dangerouslyBypassSandbox=true;
+ f.registration.binding.projectWorkspaceId='code-workspace';
+ f.registration.projectContext={id:'project',nativeWorkspaceId:'code-workspace',
+  nativeSourceWorkspace:{id:'code-workspace',projectId:'project',cwd:'/registered-projects/rwb',sourceType:'local_path'},
+  repository:{hostPath:'/Volumes/WorkDisk/Projects/RWB/ResearchWorkbench'},
+  workspace:{hostPath:'/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees/root',containerPath:'/workspace/project'},
+  delivery:{maximumAction:'merge'}};
+ // Actual Native context uses workspaceId here and has no top-level projectWorkspaceId.
+ f.ctx.context.paperclipWorkspace={workspaceId:'code-workspace',projectId:'project',cwd:'/registered-projects/rwb',source:'project_primary',mode:'shared_workspace'};
+ f.ctx.context.paperclipWorkspaces=[{workspaceId:'code-workspace',cwd:'/registered-projects/rwb'},
+  {workspaceId:'old-artifact',cwd:artifactCwd},{workspaceId:'foreign',cwd:'/foreign'}];
+ f.ctx.config.cwd='/registered-projects/rwb';
+ const events=[];let output,calls=0;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Assigned role',log:event=>events.push(event),readRegistration:async()=>f.registration,
+  prepareRole:async()=>({binding:f.registration.binding,contextVersion:1,workspaceCwd:artifactCwd,sessionMode:'new',knowledge:[],
+   config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:true}}),
+  nativeExecute:async value=>{output=value;calls++;return{exitCode:0};}});
+ return {...f,execute,events,artifactCwd,getOutput:()=>output,getCalls:()=>calls};
+}
+
+test('actual Native local source shape is checked separately and dispatch cwd remains the artifact directory',async()=>{
+ const f=codeWorkspaceFixture(),before=structuredClone(f.ctx);
+ assert.equal((await f.execute(f.ctx)).exitCode,0);
+ const output=f.getOutput();assert.equal(output.config.cwd,f.artifactCwd);
+ assert.equal(output.context.paperclipWorkspace.cwd,f.artifactCwd);
+ assert.equal(output.context.paperclipWorkspace.workspaceId,'code-workspace');
+ assert.equal(output.context.projectWorkspaceId,undefined);assert.equal(output.context.projectId,'project');
+ assert.equal(output.config.promptTemplate.includes('/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees/root'),true);
+ assert.deepEqual(f.ctx,before);assert.equal(f.getCalls(),1);
+ const scope=f.events.find(event=>event.code==='NATIVE_ROLE_WORKSPACE_SCOPE_CHECK');
+ assert.equal(scope.artifactCwd,f.artifactCwd);assert.equal(scope.sourceCwd,'/registered-projects/rwb');
+ assert.equal(Object.values(scope.checks).every(Boolean),true);
+});
+
+test('local source realization must match the registered shared source before its Native target is projected',async()=>{
+ for(const mode of ['copy','in_place']){
+  const f=codeWorkspaceFixture();
+  f.ctx.executionTarget={kind:'local',environmentId:'environment',leaseId:'lease',
+   workspaceRealization:{mode,authoritativeRoot:'/registered-projects/rwb',pathAliases:[],outboundRestorePaths:[]}};
+  await f.execute(f.ctx);
+  const execution=roleRuntime.nativeRoleArtifactExecution(f.getOutput(),f.registration);
+  assert.equal(execution.executionTarget.workspaceRealization.authoritativeRoot,f.artifactCwd);
+  assert.equal(execution.executionTarget.workspaceRealization.mode,mode);
+  assert.equal(execution.executionTarget.environmentId,'environment');assert.equal(execution.executionTarget.leaseId,'lease');
+  assert.equal(f.ctx.executionTarget.workspaceRealization.authoritativeRoot,'/registered-projects/rwb');
+ }
+});
+
+test('local realization rejects mismatched or remote roots, aliases and isolated Native sources before execute',async()=>{
+ for(const mutate of [f=>{f.ctx.executionTarget.workspaceRealization.authoritativeRoot='/foreign';},
+  f=>{f.ctx.executionTarget.kind='remote';},f=>{f.ctx.executionTarget.workspaceRealization.mode='unknown';},
+  f=>{f.ctx.executionTarget.workspaceRealization.pathAliases=[{path:'/alias',target:'/foreign'}];},
+  f=>{f.ctx.executionTarget.workspaceRealization.outboundRestorePaths=['/foreign'];},
+  f=>{f.ctx.context.paperclipWorkspace.mode='isolated';},f=>{f.ctx.context.paperclipWorkspace.source='project_worktree';},
+  f=>{f.ctx.context.paperclipWorkspace.cwd=f.artifactCwd;f.ctx.context.paperclipWorkspace.mode='isolated';},
+  f=>{delete f.registration.profile.executionPolicy;f.ctx.config.extraArgs=[...NATIVE_ROLE_MANAGED_ARGS];f.ctx.config.dangerouslyBypassApprovalsAndSandbox=false;f.ctx.config.dangerouslyBypassSandbox=false;}]){
+  const f=codeWorkspaceFixture();f.ctx.executionTarget={kind:'local',workspaceRealization:{mode:'in_place',authoritativeRoot:'/registered-projects/rwb',pathAliases:[],outboundRestorePaths:[]}};mutate(f);
+  await assert.rejects(f.execute(f.ctx),/NATIVE_ROLE_(?:WORKSPACE_SCOPE|SCOPE)_DENIED/);assert.equal(f.getCalls(),0);
+ }
+});
+
+test('portable local source tasks use the production workspace binding without requiring M2 preparation',async()=>{
+ const f=codeWorkspaceFixture();delete f.registration.contextVersion;delete f.registration.workspaceCwd;
+ delete f.registration.binding.projectWorkspaceId;
+ assert.equal(typeof contextApi.roleProjectWorkspaceBinding,'function');
+ Object.assign(f.registration.binding,contextApi.roleProjectWorkspaceBinding({task:{projectId:'project'},projectContext:f.registration.projectContext}));
+ f.ctx.executionTarget={kind:'local',workspaceRealization:{mode:'copy',authoritativeRoot:'/registered-projects/rwb',pathAliases:[],outboundRestorePaths:[]}};
+ let calls=0,output;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Portable role',log(){},readRegistration:async()=>f.registration,
+  prepareRole:async()=>({binding:f.registration.binding,sessionMode:'new',knowledge:[],config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:true}}),
+  nativeExecute:async checked=>{calls++;output=roleRuntime.nativeRoleArtifactExecution(checked,f.registration);return{exitCode:0};}});
+ await execute(f.ctx);assert.equal(calls,1);assert.equal(output.config.cwd,f.artifactCwd);
+ assert.equal(output.executionTarget.workspaceRealization.authoritativeRoot,f.artifactCwd);
+ assert.equal(f.registration.contextVersion,undefined);assert.equal(output.context.projectWorkspaceId,undefined);
+ f.ctx.context.paperclipWorkspace.workspaceId='foreign';
+ await assert.rejects(execute(f.ctx),/NATIVE_ROLE_WORKSPACE_SCOPE_DENIED/);assert.equal(calls,1);
+});
+
+test('portable default-primary drift between preparation and dispatch stops the original run',async()=>{
+ const f=codeWorkspaceFixture();delete f.registration.contextVersion;delete f.registration.workspaceCwd;
+ let reads=0,calls=0;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Portable role',log(){},readRegistration:async()=>{
+  const r=structuredClone(f.registration);if(++reads>1){r.binding.projectWorkspaceId='new-primary';r.projectContext.nativeWorkspaceId='new-primary';r.projectContext.nativeSourceWorkspace.id='new-primary';}return r;},
+  prepareRole:async()=>({binding:f.registration.binding,sessionMode:'new',knowledge:[],config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:true}}),
+  nativeExecute:async()=>{calls++;return{exitCode:0};}});
+ await assert.rejects(execute(f.ctx),/NATIVE_ROLE_REGISTRATION_CHANGED/);assert.equal(calls,0);
+});
+
+test('code source binding rejects wrong Native workspace, project, cwd and absent trusted code registration before execute',async()=>{
+ for(const mutate of [f=>{f.ctx.context.paperclipWorkspace.workspaceId='wrong';},f=>{f.ctx.context.paperclipWorkspace.projectId='wrong';},
+  f=>{f.ctx.context.paperclipWorkspace.cwd='/unregistered/private-content';},f=>{delete f.registration.projectContext.nativeSourceWorkspace;},
+  f=>{f.registration.projectContext.nativeSourceWorkspace.id='wrong';},f=>{f.registration.projectContext.nativeSourceWorkspace.projectId='wrong';},
+  f=>{f.registration.projectContext.repository.hostPath=null;},f=>{f.registration.projectContext.workspace.hostPath=null;},
+  f=>{f.ctx.context.projectWorkspaceId='wrong';},f=>{f.ctx.context.paperclipWorkspace={cwd:'/registered-projects/rwb'};}]){
+  const f=codeWorkspaceFixture();mutate(f);
+  await assert.rejects(f.execute(f.ctx),{code:'NATIVE_ROLE_WORKSPACE_SCOPE_DENIED'});
+  assert.equal(f.getCalls(),0);
+  const scope=f.events.find(event=>event.code==='NATIVE_ROLE_WORKSPACE_SCOPE_CHECK');
+  assert.ok(scope);assert.ok(Object.values(scope.checks).some(value=>value===false));
+  assert.equal(JSON.stringify(f.events).includes('/unregistered/private-content'),false);
+ }
+});
+
+test('legacy artifact context remains accepted while an explicit wrong workspace ID is rejected',async()=>{
+ const f=codeWorkspaceFixture();delete f.registration.projectContext.nativeSourceWorkspace;
+ f.ctx.context.paperclipWorkspace.cwd=f.artifactCwd;
+ await f.execute(f.ctx);assert.equal(f.getOutput().config.cwd,f.artifactCwd);
+ f.ctx.context.paperclipWorkspace.workspaceId='wrong';
+ await assert.rejects(f.execute(f.ctx),/NATIVE_ROLE_WORKSPACE_SCOPE_DENIED/);assert.equal(f.getCalls(),1);
+});
+
+test('changing the trusted source registration during preparation still prevents Native execution',async()=>{
+ const f=codeWorkspaceFixture();let calls=0,reads=0;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Assigned role',log(){},
+  readRegistration:async()=>{const value=structuredClone(f.registration);if(++reads>1)value.projectContext.nativeSourceWorkspace.cwd='/registered-projects/changed';return value;},
+  prepareRole:async()=>({binding:f.registration.binding,contextVersion:1,workspaceCwd:f.artifactCwd,sessionMode:'new',knowledge:[],
+   config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:true}}),
+  nativeExecute:async()=>{calls++;return{exitCode:0};}});
+ await assert.rejects(execute(f.ctx),{code:'NATIVE_ROLE_REGISTRATION_CHANGED'});assert.equal(calls,0);
+});
 
 test('quality repair has a trusted new output file without rewriting the original task description',async()=>{
  const f=dispatchFixture('qa');f.registration.outputFile='team-root-quality-qa-r1.json';f.registration.reviewedTaskKeys=['implement'];
