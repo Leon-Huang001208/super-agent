@@ -79,6 +79,7 @@ export function knownBootstrapClosure(run,markers,{executionEvents}={}){
   if(!noProviderProcess(run)||!Array.isArray(executionEvents)||executionEvents.length!==1||!controlEventFor(run,executionEvents[0],'error','error',identityError)||executionEvents[0].payload!==null)fail('MULTI_RUNTIME_IDENTITY_SETUP_PROOF_DENIED');
   return{kind:'native-bootstrap-no-provider',proofSource:'native_identity_setup',runId:run.id,gateCode:'NATIVE_IDENTITY_SETUP_FAILED',finishedAt:new Date(run.finishedAt).toISOString(),nativeResultSha256:sha(JSON.stringify(run.resultJson))};
  }
+ if(run.errorCode==='NATIVE_ROLE_RESULT_UNKNOWN'&&noProviderProcess({...run,logRef:null})&&Number(run.logBytes??0)===0&&!run.stdoutExcerpt&&!run.stderrExcerpt)return{kind:'native-bootstrap-no-provider',proofSource:'native_preparation_no_process',runId:run.id,nativeErrorCode:run.errorCode,finishedAt:new Date(run.finishedAt).toISOString(),nativeResultSha256:sha(JSON.stringify(run.resultJson))};
  let gate;for(const text of [run.error,run.resultJson?.stderr,run.stderrExcerpt])for(const line of String(text??'').split('\n')){
   try{const value=JSON.parse(line);if(/^ROLE_(?:OPENCODE_|CLAUDE_)?GATE_[A-Z_]+$/.test(value.code??'')&&value.claimed===false)gate=value;}catch{}
  }
@@ -194,14 +195,16 @@ export function validateCompletedMultiRuntimeState({plan,registry,rootTask,agent
 }
 export function validateCurrent13SuccessPrefix({current,plan,registry,runs,budget,pendingEvidence}){
  const finalization=current?.postExecutionPrefixFinalization;
+ const subset=validateCurrent13ClosedSubsetHistory(current);
  const repairCount=validateCurrent13PreclaimRepairHistory(current),accounting=repairCount?current.postExecutionPreclaimRepair:finalization;
  const specs=[['fullstack-feature','full-stack-engineer','minimax_opencode'],['backend-transfer','backend-engineer','codex_subscription'],['minimax-claude-preferences','full-stack-engineer','minimax_claude'],
   ['deepseek-claude-crosscheck','research','deepseek_claude'],['deepseek-opencode-crosscheck','research','deepseek_opencode'],['qa13','qa','codex_subscription']];
- if(current?.schemaVersion!==1||current.kind!=='isolated-native-current13'||current.status!=='PARTIAL_VALIDATED'||current.sourceRoleCount!==13||current.companyId!==plan.companyId||current.projectId!==plan.projectId||current.workspaceId!==plan.workspaceId||
-  current.rootTaskId!==plan.rootTaskId||current.rootInputRevision!==plan.rootInputRevision||!isDeepStrictEqual(current.agentIds,registry.team.ids)||current.steps?.length!==6||
-  current.steps.some((step,index)=>[step.key,step.role,step.runtimeProfileId].some((value,part)=>value!==specs[index][part])||step.agentId!==registry.team.ids[step.role])||
-  current.steps[0].taskId!==current.steps[1].taskId||current.steps[5].taskId!==plan.steps.find(step=>step.role==='qa').taskId||new Set(current.steps.map(step=>step.operationId)).size!==6||
-  current.callsSpent!==budget.length||finalization?.schemaVersion!==1||finalization.kind!=='closed-success-prefix'||finalization.modelCallsAdded!==0||accounting.budgetUsedBefore!==budget.length||accounting.budgetUsedAfter!==budget.length||
+ if(current?.schemaVersion!==1||current.kind!=='isolated-native-current13'||!['PARTIAL_VALIDATED',...(subset?['COMPLETED_WITH_FAILURES']:[])].includes(current.status)||current.sourceRoleCount!==13||current.companyId!==plan.companyId||current.projectId!==plan.projectId||current.workspaceId!==plan.workspaceId||
+  current.rootTaskId!==plan.rootTaskId||current.rootInputRevision!==plan.rootInputRevision||!isDeepStrictEqual(current.agentIds,registry.team.ids)||![6,...(subset?[7]:[])].includes(current.steps?.length)||
+  current.steps.slice(0,6).some((step,index)=>[step.key,step.role,step.runtimeProfileId].some((value,part)=>value!==specs[index][part])||step.agentId!==registry.team.ids[step.role])||
+  current.steps[0].taskId!==current.steps[1].taskId||current.steps[5].taskId!==plan.steps.find(step=>step.role==='qa').taskId||new Set(current.steps.map(step=>step.operationId)).size!==current.steps.length||
+  current.callsSpent!==budget.length||finalization?.schemaVersion!==1||finalization.kind!=='closed-success-prefix'||finalization.modelCallsAdded!==0||(!subset&&(accounting.budgetUsedBefore!==budget.length||accounting.budgetUsedAfter!==budget.length))||
+  subset&&budget.length!==current.historicalMatrix.callsSpent+current.steps.filter(step=>step.status==='PASS').length+repairCount+1||
   !/^[a-f0-9]{64}$/.test(finalization.sourceReportSha256??'')||!Array.isArray(current.budgetRecords)||current.budgetRecords.length!==budget.length||current.budgetRecords.some(ref=>!budget.some(value=>ref.operationId===value.operationId&&ref.sha256===value.sha256&&ref.taskId===value.taskId&&ref.agentId===value.agentId&&ref.role===value.role)))fail('MULTI_RUNTIME_CURRENT13_PREFIX_DENIED');
  let prefix=0,pending=false;
  for(const step of current.steps){
@@ -209,13 +212,69 @@ export function validateCurrent13SuccessPrefix({current,plan,registry,runs,budge
    const run=runs.find(value=>value.id===step.runId);
    if(pending||!run||run.status!=='succeeded'||run.exitCode!==0||!run.finishedAt||run.issueId!==step.taskId||run.agentId!==step.agentId||run.companyId!==plan.companyId||run.responsibleUserId!==registry.ownerId||
     !step.artifacts?.length||step.modelEvidence?.observed!==true||!budget.some(value=>value.operationId===step.operationId&&value.taskId===step.taskId&&value.agentId===step.agentId))fail('MULTI_RUNTIME_CURRENT13_STARTED_RESULT_UNKNOWN');prefix++;
+  }else if(subset&&step.status==='FAILED_CLOSED'){
+   const run=runs.find(value=>value.id===step.runId);if(pending||step!==current.steps[2]||run?.status!=='timed_out'||run.id!==step.runId||run.issueId!==step.taskId||run.agentId!==step.agentId||!run.finishedAt||!budget.some(value=>value.operationId===step.operationId))fail('MULTI_RUNTIME_CLOSED_SUBSET_NATIVE_CHANGED');prefix++;
   }else{
    pending=true;const evidence=pendingEvidence.find(value=>value.operationId===step.operationId),op=registry.operations.find(value=>value.id===step.operationId);
    if(step.status!=='NOT_RUN'||step.runId||step.nativeEvidence||step.nativeStatus||step.wakeAttemptedAt||step.leaseReleased||!evidence||evidence.nativeRunIds.length||
     evidence.operationFile||evidence.budgetSlot||evidence.orphanControl||op?.wakeAttemptedAt||op?.runId||op?.acceptedRunId||op?.runtimeDispatch?.status==='WAKE_ATTEMPTED')fail('MULTI_RUNTIME_CURRENT13_PENDING_ALREADY_STARTED');
   }
  }
- if(prefix<1||prefix>=current.steps.length||finalization.successfulPrefix!==prefix)fail('MULTI_RUNTIME_CURRENT13_PREFIX_DENIED');return prefix;
+ if(prefix<1||(!subset&&prefix>=current.steps.length)||(!subset&&finalization.successfulPrefix!==prefix))fail('MULTI_RUNTIME_CURRENT13_PREFIX_DENIED');return prefix;
+}
+export function validateCurrent13ClosedSubsetHistory(current){
+ const meta=current?.postExecutionSubsetContinuation,failed=(current?.steps??[]).filter(step=>step.status==='FAILED_CLOSED');if(!meta&&!failed.length)return 0;
+ const step=current.steps?.[2],compat=current.steps?.[6];
+ if(meta?.schemaVersion!==1||meta.kind!=='operator-authorized-closed-runtime-subset'||meta.companyId!==current.companyId||meta.rootTaskId!==current.rootTaskId||meta.failedStepIndex!==2||meta.failedProfileId!=='minimax_claude'||step?.status!=='FAILED_CLOSED'||step.key!=='minimax-claude-preferences'||step.runtimeProfileId!=='minimax_claude'||failed.length!==1||
+  meta.runId!==step.runId||meta.operationId!==step.operationId||meta.taskId!==step.taskId||meta.agentId!==step.agentId||!controlReference(meta.releaseReceipt)||!/^[a-f0-9]{64}$/.test(meta.sourceReportSha256??'')||!/^[a-f0-9]{64}$/.test(meta.sourceRegistrySha256??'')||meta.budgetUsedBefore!==10||meta.budgetUsedAfter!==10||meta.modelCallsAdded!==0||meta.poolEligibility!=='EXCLUDED_FAILED_RUNTIME'||
+  current.steps.length>7||compat&&(compat.key!=='current-source-minimax-compatibility'||compat.role!=='full-stack-engineer'||compat.agentId!==current.agentIds['full-stack-engineer']||compat.runtimeProfileId!=='minimax_opencode'||!/^[-a-f0-9]{36}$/.test(compat.taskId??'')||!/^[-a-f0-9]{36}$/.test(compat.operationId??'')||current.steps.slice(0,6).some(old=>old.taskId===compat.taskId||old.operationId===compat.operationId)))fail('MULTI_RUNTIME_CLOSED_SUBSET_HISTORY_DENIED');
+ return 1;
+}
+export function inspectCurrent13ClosedSubset({current,run,registry,receipt,releaseReceipt,budget,transport,processCleanup,brokerCleanup,nativeStopped,activeRunIds,sourceReportSha256,sourceRegistrySha256,authorized}){
+ const step=current?.steps?.[2];
+ if(authorized!==true||current?.kind!=='isolated-native-current13'||current.status!=='FAILED'||current.steps?.length!==6||current.steps.slice(0,2).some(value=>value.status!=='PASS')||current.steps.slice(3).some(value=>value.status!=='NOT_RUN'||value.runId)||registry.lease!==undefined||
+  step?.key!=='minimax-claude-preferences'||step.runtimeProfileId!=='minimax_claude'||run?.id!==step.runId||run.issueId!==step.taskId||run.agentId!==step.agentId||run.companyId!==current.companyId||run.status!=='timed_out'||run.errorCode!=='timeout'||!run.finishedAt||run.resultJson?.stopReason!=='timeout'||run.resultJson?.timeoutFired!==true||run.resultJson?.effectiveTimeoutSec!==180||
+  nativeStopped!==true||!Array.isArray(activeRunIds)||activeRunIds.length||transport?.runId!==run.id||transport.exitCode!==143||transport.signal!==null||transport.cancelled!==true||transport.outputUnknown!==false||processCleanup?.status!=='terminated'||brokerCleanup?.status!=='terminated'||
+  receipt?.schemaVersion!==1||receipt.kind!=='known-closed-failed-current13-phase'||receipt.companyId!==current.companyId||receipt.rootTaskId!==current.rootTaskId||receipt.runId!==run.id||receipt.taskId!==step.taskId||receipt.operationId!==step.operationId||receipt.sourceReportSha256!==sourceReportSha256||receipt.budgetSpent!==10||receipt.hostAndBrokerTerminated!==true||receipt.nativeExecutionStopVerified!==true||receipt.logicalValidation!=='FAILED_CLOSED_EXCLUDE_FROM_POOL'||!controlReference(releaseReceipt)||
+  !Array.isArray(budget)||budget.length!==10||!budget.some(ref=>ref.operationId===step.operationId&&ref.taskId===step.taskId&&ref.agentId===step.agentId))fail('MULTI_RUNTIME_CLOSED_SUBSET_PROOF_DENIED');
+ return{schemaVersion:1,kind:'verified-closed-runtime-subset',companyId:current.companyId,rootTaskId:current.rootTaskId,taskId:step.taskId,agentId:step.agentId,operationId:step.operationId,runId:step.runId,
+  releaseReceipt,sourceReportSha256,sourceRegistrySha256,budgetRecords:budget,poolEligibility:'EXCLUDED_FAILED_RUNTIME'};
+}
+export function projectCurrent13ClosedSubset(current,proof,{compatibilityStep}={}){
+ const step=current?.steps?.[2];if(proof?.kind!=='verified-closed-runtime-subset'||proof.runId!==step?.runId||proof.operationId!==step.operationId||proof.companyId!==current.companyId||proof.rootTaskId!==current.rootTaskId||current.postExecutionSubsetContinuation)fail('MULTI_RUNTIME_CLOSED_SUBSET_PROOF_DENIED');
+ const next=structuredClone(current);next.status='PARTIAL_VALIDATED';next.steps[2].status='FAILED_CLOSED';next.steps[2].runtimePoolEligibility='EXCLUDED_FAILED_RUNTIME';next.steps[2].failureReceipt=proof.releaseReceipt;
+ delete next.errorCode;next.callsSpent=proof.budgetRecords.length;next.rootCallsSpent=proof.budgetRecords.length;next.budgetRecords=structuredClone(proof.budgetRecords);
+ next.postExecutionSubsetContinuation={schemaVersion:1,kind:'operator-authorized-closed-runtime-subset',companyId:next.companyId,rootTaskId:next.rootTaskId,failedStepIndex:2,failedProfileId:'minimax_claude',taskId:step.taskId,agentId:step.agentId,runId:step.runId,operationId:step.operationId,
+  sourceReportSha256:proof.sourceReportSha256,sourceRegistrySha256:proof.sourceRegistrySha256,releaseReceipt:proof.releaseReceipt,budgetUsedBefore:10,budgetUsedAfter:10,modelCallsAdded:0,poolEligibility:'EXCLUDED_FAILED_RUNTIME',budgetRecords:structuredClone(proof.budgetRecords)};
+ if(compatibilityStep)next.steps.push(structuredClone(compatibilityStep));validateCurrent13ClosedSubsetHistory(next);return next;
+}
+export async function verifyCurrent13ClosedSubset({current,ports,root=ACCEPTANCE_ROOT,cwd,authorized=process.env.SUPER_AGENT_ALLOW_CLOSED_RUNTIME_SUBSET==='1'}){
+ if(authorized!==true||['getRun','getActiveRuns','verifyNativeStopped'].some(key=>typeof ports?.[key]!=='function'))fail('MULTI_RUNTIME_CLOSED_SUBSET_AUTH_REQUIRED');
+ const step=current.steps[2],registry=privateJson(root+'/registry.json'),relative='closed-phase-releases/'+step.operationId+'.json',releaseReceipt={file:relative,sha256:sha(fs.readFileSync(root+'/'+relative))},receipt=privateJson(root+'/'+relative);
+ const read=ref=>{if(!controlReference(ref))fail('MULTI_RUNTIME_CLOSED_SUBSET_REFERENCE_DENIED');let file=root;for(const part of ref.file.split('/')){file=path.join(file,part);if(fs.lstatSync(file).isSymbolicLink())fail('MULTI_RUNTIME_CLOSED_SUBSET_REFERENCE_DENIED');}const stat=fs.lstatSync(file),bytes=fs.readFileSync(file);if(!stat.isFile()||stat.nlink!==1||(stat.mode&0o077)||sha(bytes)!==ref.sha256)fail('MULTI_RUNTIME_CLOSED_SUBSET_REFERENCE_CHANGED');return bytes;};
+ for(const ref of Object.values(receipt.artifactRefs??{}))read(ref);
+ for(const name of ['report','registry','native','callLock','implementation','fixedTests','testing'])if(!receipt.artifactRefs?.[name])fail('MULTI_RUNTIME_CLOSED_SUBSET_REFERENCE_DENIED');
+ const frozen=current.fixedInputs?.find(ref=>ref.file==='item-preferences.test.mjs'),testing=read(receipt.artifactRefs.testing).toString();
+ if(!frozen||frozen.sha256!==receipt.artifactRefs.fixedTests.sha256||!/(?:#|ℹ) pass 5\b/.test(testing)||!/(?:#|ℹ) fail 0\b/.test(testing))fail('MULTI_RUNTIME_CLOSED_SUBSET_TEST_EVIDENCE_DENIED');
+ const directory=root+'/transport/'+step.runId,transport=privateJson(directory+'/result.json');
+ for(const stream of ['stdout','stderr'])if(sha(fs.readFileSync(directory+'/'+stream))!==transport[stream+'Sha256'])fail('MULTI_RUNTIME_CLOSED_SUBSET_OUTPUT_CHANGED');
+ if(fs.existsSync(root+'/call.lock')||registry.lease!==undefined||cwd&&fs.existsSync(path.join(cwd,step.outputFile)))fail('MULTI_RUNTIME_CLOSED_SUBSET_UNEXPECTED_REPORT');
+ const budget=fs.readdirSync(root+'/budget/'+current.rootTaskId).sort().map(name=>{const file=root+'/budget/'+current.rootTaskId+'/'+name,value=privateJson(file);if(name!==value.id+'.json')fail('MULTI_RUNTIME_CLOSED_SUBSET_BUDGET_CHANGED');return{operationId:value.id,taskId:value.taskId,agentId:value.agentId,role:value.role,sha256:sha(fs.readFileSync(file))};});
+ for(const prior of current.budgetRecords??[])if(!budget.some(ref=>isDeepStrictEqual(ref,prior)))fail('MULTI_RUNTIME_CLOSED_SUBSET_BUDGET_CHANGED');
+ return inspectCurrent13ClosedSubset({current,registry,run:await ports.getRun(step.runId),receipt,releaseReceipt,budget,transport,processCleanup:privateJson(directory+'/process-cleanup.json'),brokerCleanup:privateJson(directory+'/broker-process-cleanup.json'),nativeStopped:await ports.verifyNativeStopped(step.agentId),activeRunIds:await ports.getActiveRuns(),
+  sourceReportSha256:sha(fs.readFileSync(root+'/multi-runtime-current13-acceptance.json')),sourceRegistrySha256:sha(fs.readFileSync(root+'/registry.json')),authorized});
+}
+async function verifyClosedRuntimeSubsetFiles({current,runs,budget,db,root=ACCEPTANCE_ROOT}){
+ if(!validateCurrent13ClosedSubsetHistory(current))return;
+ const step=current.steps[2],meta=current.postExecutionSubsetContinuation,run=runs.find(value=>value.id===step.runId),file=root+'/'+meta.releaseReceipt.file,bytes=fs.readFileSync(file),receipt=privateJson(file);
+ if(sha(bytes)!==meta.releaseReceipt.sha256||receipt.kind!=='known-closed-failed-current13-phase'||receipt.runId!==step.runId||receipt.operationId!==step.operationId||receipt.taskId!==step.taskId||receipt.budgetSpent!==10||receipt.sourceReportSha256!==meta.sourceReportSha256||
+  run?.status!=='timed_out'||run.errorCode!=='timeout'||run.resultJson?.stopReason!=='timeout'||run.resultJson?.effectiveTimeoutSec!==180||run.resultJson?.timeoutFired!==true)fail('MULTI_RUNTIME_CLOSED_SUBSET_HISTORY_CHANGED');
+ for(const ref of Object.values(receipt.artifactRefs??{})){if(!controlReference(ref))fail('MULTI_RUNTIME_CLOSED_SUBSET_REFERENCE_DENIED');let cursor=root;for(const part of ref.file.split('/')){cursor=path.join(cursor,part);if(fs.lstatSync(cursor).isSymbolicLink())fail('MULTI_RUNTIME_CLOSED_SUBSET_REFERENCE_DENIED');}if(sha(fs.readFileSync(cursor))!==ref.sha256)fail('MULTI_RUNTIME_CLOSED_SUBSET_REFERENCE_CHANGED');}
+ for(const old of meta.budgetRecords??[])if(!budget.some(value=>['operationId','taskId','agentId','role','sha256'].every(key=>value[key]===old[key])))fail('MULTI_RUNTIME_CLOSED_SUBSET_BUDGET_CHANGED');
+ const dir=root+'/transport/'+run.id,result=privateJson(dir+'/result.json');
+ if(result.runId!==run.id||result.exitCode!==143||result.signal!==null||result.cancelled!==true||result.outputUnknown!==false||['process-cleanup.json','broker-process-cleanup.json'].some(name=>privateJson(dir+'/'+name).status!=='terminated')||fs.existsSync(root+'/call.lock'))fail('MULTI_RUNTIME_CLOSED_SUBSET_EXECUTION_OPEN');
+ for(const stream of ['stdout','stderr'])if(sha(fs.readFileSync(dir+'/'+stream))!==result[stream+'Sha256'])fail('MULTI_RUNTIME_CLOSED_SUBSET_OUTPUT_CHANGED');
+ const {agentExecutionsHaveStopped}=await import(P+'/@paperclipai/server/dist/services/agent-execution-stop.js');if(!await agentExecutionsHaveStopped(db,[step.agentId]))fail('MULTI_RUNTIME_CLOSED_SUBSET_EXECUTION_OPEN');
 }
 const controlReference=value=>value&&typeof value.file==='string'&&value.file.length<=512&&!value.file.startsWith('/')&&value.file.split('/').every(part=>/^[a-zA-Z0-9_.-]+$/.test(part)&&part!=='.'&&part!=='..')&&/^[a-f0-9]{64}$/.test(value.sha256??'');
 export function validateCurrent13PreclaimRepairHistory(current){
@@ -296,7 +355,7 @@ function verifyCurrent13PreclaimHistoryFiles(current,runs,budget,root=ACCEPTANCE
 }
 /** Authorizes historical work-product continuation only; this never makes an old implementation eligible for the current runtime pool. */
 export async function validateHistoricalPrefixSourceTransition({descriptor,before,after,bridgeBefore,bridgeAfter,diff,review,reviewOutput,regression,regressionStdout,regressionStderr,current,plan,implementations,permits,currentBindings,observedBindings}){
- const d=descriptor,hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value),profiles=current.steps.filter(step=>step.status==='PASS');
+ const d=descriptor,hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value),profiles=current.steps.slice(0,2).filter(step=>step.status==='PASS');
  if(d?.schemaVersion!==1||d.kind!=='historical-prefix-source-transition'||!/^[a-f0-9-]{36}$/.test(d.id??'')||d.companyId!==plan.companyId||d.rootTaskId!==plan.rootTaskId||!/^[a-f0-9]{40}$/.test(d.preparedCommit??'')||
   profiles.length!==2||d.passed?.length!==2||before?.schemaVersion!==1||after?.schemaVersion!==1||after.preparedCommit!==d.preparedCommit||
   !isDeepStrictEqual(Object.keys(before.profiles??{}).sort(),profiles.map(step=>step.runtimeProfileId).sort())||!isDeepStrictEqual(Object.keys(after.profiles??{}).sort(),Object.keys(before.profiles).sort()))fail('MULTI_RUNTIME_SOURCE_TRANSITION_SCOPE_DENIED');
@@ -339,19 +398,21 @@ async function readHistoricalPrefixTransition({current,plan,implementations,perm
  archivePrivateSnapshot(ACCEPTANCE_ROOT+'/source-transition-continuations','continuation',Buffer.from(JSON.stringify(receipt)+'\n'));return receipt;
 }
 
-async function verifyCurrent13PrefixFiles({current,plan,registry,runs,budget,cwd,validation,allowHistoricalSourceTransition=false}){
+async function verifyCurrent13PrefixFiles({current,plan,registry,runs,budget,cwd,validation,allowHistoricalSourceTransition=false,allowClosedRuntimeSubset=false}){
  if(typeof validation?.validateRunEvidence!=='function'||!Array.isArray(validation.fixedInputs)||validation.fixedInputs.length!==4)fail('MULTI_RUNTIME_CURRENT13_VALIDATOR_REQUIRED');
  verifyCurrent13PreclaimHistoryFiles(current,runs,budget);
- const allowedPreviousRuns=new Set([...plan.steps,...current.steps.filter(step=>step.status==='PASS'),...current.steps.flatMap(step=>step.priorAttempts??[])].map(step=>step.runId));
- const pendingEvidence=current.steps.filter(step=>step.status!=='PASS').map(step=>({operationId:step.operationId,nativeRunIds:runs.filter(run=>run.contextSnapshot?.roleOperationId===step.operationId||run.issueId===step.taskId&&!allowedPreviousRuns.has(run.id)).map(run=>run.id),
+ if(validateCurrent13ClosedSubsetHistory(current)&&!allowClosedRuntimeSubset)fail('MULTI_RUNTIME_CLOSED_SUBSET_AUTH_REQUIRED');
+ const settled=step=>step.status==='PASS'||allowClosedRuntimeSubset&&step.status==='FAILED_CLOSED';
+ const allowedPreviousRuns=new Set([...plan.steps,...current.steps.filter(settled),...current.steps.flatMap(step=>step.priorAttempts??[])].map(step=>step.runId));
+ const pendingEvidence=current.steps.filter(step=>!settled(step)).map(step=>({operationId:step.operationId,nativeRunIds:runs.filter(run=>run.contextSnapshot?.roleOperationId===step.operationId||run.issueId===step.taskId&&!allowedPreviousRuns.has(run.id)).map(run=>run.id),
   operationFile:fs.existsSync(ACCEPTANCE_ROOT+'/operations/'+step.operationId+'.json')||fs.existsSync('/paperclip/control/daily/tasks/'+step.taskId+'/managed-wake-'+step.operationId+'.json'),budgetSlot:budget.some(value=>value.operationId===step.operationId),orphanControl:false}));
  const knownRuns=new Set(runs.map(run=>run.id));
  for(const folder of ['permits','claims'])for(const name of fs.readdirSync(ACCEPTANCE_ROOT+'/'+folder)){
-  const record=privateJson(ACCEPTANCE_ROOT+'/'+folder+'/'+name);for(const step of current.steps.filter(value=>value.status!=='PASS'))if(record.taskId===step.taskId&&!knownRuns.has(record.runId))pendingEvidence.find(value=>value.operationId===step.operationId).orphanControl=true;
+  const record=privateJson(ACCEPTANCE_ROOT+'/'+folder+'/'+name);for(const step of current.steps.filter(value=>!settled(value)))if(record.taskId===step.taskId&&!knownRuns.has(record.runId))pendingEvidence.find(value=>value.operationId===step.operationId).orphanControl=true;
  }
  for(const name of fs.readdirSync(ACCEPTANCE_ROOT+'/transport')){const file=ACCEPTANCE_ROOT+'/transport/'+name+'/request.json';if(!fs.existsSync(file))continue;const request=privateJson(file);
-  for(const step of current.steps.filter(value=>value.status!=='PASS'))if(request.taskId===step.taskId&&!allowedPreviousRuns.has(request.runId))pendingEvidence.find(value=>value.operationId===step.operationId).orphanControl=true;}
- const prefix=validateCurrent13SuccessPrefix({current,plan,registry,runs,budget,pendingEvidence}),passed=current.steps.slice(0,prefix);
+  for(const step of current.steps.filter(value=>!settled(value)))if(request.taskId===step.taskId&&!allowedPreviousRuns.has(request.runId))pendingEvidence.find(value=>value.operationId===step.operationId).orphanControl=true;}
+ const prefix=validateCurrent13SuccessPrefix({current,plan,registry,runs,budget,pendingEvidence}),passed=current.steps.slice(0,prefix).filter(step=>step.status==='PASS');
  verifyCompletedFiles({...current,steps:passed},cwd);
  if(!isDeepStrictEqual(current.fixedInputs,validation.fixedInputs))fail('MULTI_RUNTIME_CURRENT13_FROZEN_INPUT_CHANGED');
  const controlBytes=ref=>{if(typeof ref?.file!=='string'||ref.file.startsWith('/')||!ref.file.split('/').every(value=>/^[a-zA-Z0-9_.-]+$/.test(value)&&value!=='.'&&value!=='..'))fail('MULTI_RUNTIME_CURRENT13_PROOF_PATH_DENIED');
@@ -359,7 +420,7 @@ async function verifyCurrent13PrefixFiles({current,plan,registry,runs,budget,cwd
   const stat=fs.lstatSync(cursor);if(!stat.isFile()||stat.nlink!==1||(stat.mode&0o077))fail('MULTI_RUNTIME_CURRENT13_PROOF_PATH_DENIED');
   const bytes=fs.readFileSync(cursor);if(bytes.length>4194304||sha(bytes)!==ref.sha256)fail('MULTI_RUNTIME_CURRENT13_PROOF_CHANGED');return bytes;};
  for(const ref of validation.fixedInputs){const file=path.join(cwd,ref.file);if(path.dirname(file)!==cwd||sha(fs.readFileSync(file))!==ref.sha256)fail('MULTI_RUNTIME_CURRENT13_FROZEN_INPUT_CHANGED');}
- const release=JSON.parse(controlBytes(current.postExecutionPrefixFinalization.releaseReceipt)),last=passed.at(-1);
+ const release=JSON.parse(controlBytes(current.postExecutionPrefixFinalization.releaseReceipt)),last=current.steps[current.postExecutionPrefixFinalization.successfulPrefix-1];
  if(release.schemaVersion!==1||release.kind!=='known-closed-current13-phase'||release.runId!==last.runId||release.taskId!==last.taskId||release.operationId!==last.operationId||release.modelCallsAdded!==0||release.budgetSpent!==current.postExecutionPrefixFinalization.budgetUsedAfter||
   release.sourceReportSha256!==current.postExecutionPrefixFinalization.sourceReportSha256||release.transportSha256!==sha(fs.readFileSync(ACCEPTANCE_ROOT+'/transport/'+last.runId+'/result.json'))||
   release.providerAuditSha256!==sha(fs.readFileSync(ACCEPTANCE_ROOT+'/transport/'+last.runId+'/proxy-audit/provider.jsonl')))fail('MULTI_RUNTIME_CURRENT13_RELEASE_PROOF_DENIED');
@@ -374,14 +435,14 @@ async function verifyCurrent13PrefixFiles({current,plan,registry,runs,budget,cwd
    files:taskRuntimeImplementationFiles(step.runtimeProfileId).map(file=>({file,sha256:sha(fs.readFileSync(path.join(sourceRoot,file)))}))});
   if(observed?.sourceSha256!==binding.sourceSha256||implementation.cliSha256!==binding.cliSha256)fail('MULTI_RUNTIME_CURRENT13_IMPLEMENTATION_CHANGED');
   implementations[step.runId]=implementation;permits[step.runId]=privateJson(ACCEPTANCE_ROOT+'/permits/'+step.runId+'.json');currentBindings[step.runtimeProfileId]=binding;
-  if(implementation.sourceSha256!==binding.sourceSha256)changed=true;
-  const expected=step.key==='fullstack-feature'?[8]:step.key==='backend-transfer'?[8,4]:step.key==='minimax-claude-preferences'?[5]:step.role==='qa'?[8,4,5]:[];
+  if(implementation.sourceSha256!==binding.sourceSha256){if(!current.steps.slice(0,2).some(original=>original.runId===step.runId))fail('MULTI_RUNTIME_CURRENT13_IMPLEMENTATION_CHANGED');changed=true;}
+  const expected=step.key==='fullstack-feature'?[8]:step.key==='backend-transfer'?[8,4]:step.key==='minimax-claude-preferences'?[5]:step.role==='qa'||step.key==='current-source-minimax-compatibility'?[8,4,5]:[];
   if(step.testing?.length!==expected.length)fail('MULTI_RUNTIME_CURRENT13_TEST_EVIDENCE_MISSING');
   for(const [index,check]of (step.testing??[]).entries()){const out=controlBytes(check.stdout).toString();controlBytes(check.stderr);
    if(check.exitCode!==0||check.signal!==null||check.count!==expected[index]||!new RegExp('# pass '+check.count+'\\b').test(out)||!/# fail 0\b/.test(out))fail('MULTI_RUNTIME_CURRENT13_TEST_EVIDENCE_FAILED');}
  }
  if(changed){if(!allowHistoricalSourceTransition||!fs.existsSync(SOURCE_TRANSITION))fail('MULTI_RUNTIME_CURRENT13_IMPLEMENTATION_CHANGED');
-  await readHistoricalPrefixTransition({current,plan,implementations,permits,currentBindings,observedBindings:observations.bindings});}
+  await readHistoricalPrefixTransition({current:{...current,steps:current.steps.slice(0,2)},plan,implementations,permits,currentBindings,observedBindings:observations.bindings});}
  const {agentExecutionsHaveStopped}=await import(P+'/@paperclipai/server/dist/services/agent-execution-stop.js');
  return{prefix,passedAgentIds:[...new Set(passed.map(step=>step.agentId))],agentExecutionsHaveStopped};
 }
@@ -504,7 +565,7 @@ export function isolatedRuntimeBinding({role,id,projectId,cwd,providerHome,runti
 }
 
 /** Disposable migrated Native database. No installed adapter is replaced by a stub. */
-export async function createMultiRuntimeNativeFixture(plan,input,{resumeKnownBootstrap=false,resumeCompleted=false,resumeCurrent13=false,current13,allowHistoricalSourceTransition=false,migrateRoster=false}={}){
+export async function createMultiRuntimeNativeFixture(plan,input,{resumeKnownBootstrap=false,resumeCompleted=false,resumeCurrent13=false,current13,allowHistoricalSourceTransition=false,allowClosedRuntimeSubset=false,migrateRoster=false}={}){
  if(process.platform!=='linux'||process.getuid()!==0||process.env.SUPER_AGENT_ISOLATED_MULTI_RUNTIME!=='1')fail('MULTI_RUNTIME_ISOLATED_CONTAINER_REQUIRED');
  if(resumeKnownBootstrap&&resumeCompleted)fail('MULTI_RUNTIME_RESUME_MODE_DENIED');
  if(resumeCurrent13&&!resumeCompleted)fail('MULTI_RUNTIME_RESUME_MODE_DENIED');
@@ -538,17 +599,21 @@ export async function createMultiRuntimeNativeFixture(plan,input,{resumeKnownBoo
   if(budget.length>plan.callsSpent){
    const current=privateJson(ACCEPTANCE_ROOT+'/multi-runtime-current13-acceptance.json');
    verifyCurrent13PreclaimHistoryFiles(current,runs,budget);
+   const subset=validateCurrent13ClosedSubsetHistory(current);if(subset){if(!allowClosedRuntimeSubset)fail('MULTI_RUNTIME_CLOSED_SUBSET_AUTH_REQUIRED');await verifyClosedRuntimeSubsetFiles({current,runs,budget,db});}
    if(resumeCurrent13){
-    const sourceRegistrySha256=current.postExecutionPreclaimRepair?.sourceRegistrySha256??current.postExecutionPrefixFinalization?.sourceRegistrySha256;
-    if(sourceRegistrySha256!==sha(fs.readFileSync(ACCEPTANCE_ROOT+'/registry.json')))fail('MULTI_RUNTIME_CURRENT13_REGISTRY_CHANGED');
-    const verified=await verifyCurrent13PrefixFiles({current,plan,registry,runs,budget,cwd,validation:current13,allowHistoricalSourceTransition:allowHistoricalSourceTransition===true});
+    const sourceRegistrySha256=current.postExecutionSubsetContinuation?.sourceRegistrySha256??current.postExecutionPreclaimRepair?.sourceRegistrySha256??current.postExecutionPrefixFinalization?.sourceRegistrySha256;
+    const anchorBudget=current.postExecutionSubsetContinuation?.budgetUsedAfter??current.postExecutionPreclaimRepair?.budgetUsedAfter??current.postExecutionPrefixFinalization?.budgetUsedAfter;
+    if(budget.length===anchorBudget&&sourceRegistrySha256!==sha(fs.readFileSync(ACCEPTANCE_ROOT+'/registry.json')))fail('MULTI_RUNTIME_CURRENT13_REGISTRY_CHANGED');
+    const verified=await verifyCurrent13PrefixFiles({current,plan,registry,runs,budget,cwd,validation:current13,allowHistoricalSourceTransition:allowHistoricalSourceTransition===true,allowClosedRuntimeSubset:allowClosedRuntimeSubset===true});
     if(!await verified.agentExecutionsHaveStopped(db,verified.passedAgentIds))fail('MULTI_RUNTIME_CURRENT13_EXECUTION_OPEN');
-   }else if(current.schemaVersion!==1||current.status!=='PASS'||current.companyId!==plan.companyId||current.projectId!==plan.projectId||current.rootTaskId!==plan.rootTaskId||
-    !isDeepStrictEqual(current.agentIds,registry.team.ids)||!Array.isArray(current.steps)||!current.steps.length||current.steps.some(step=>step.status!=='PASS'||!runs.some(run=>run.id===step.runId&&run.status==='succeeded'&&run.issueId===step.taskId&&run.agentId===step.agentId)))fail('MULTI_RUNTIME_CURRENT_MATRIX_UNACCEPTED');
-   if(!resumeCurrent13)verifyCompletedFiles(current,cwd);
-   const accepted=new Set([...plan.steps,...current.steps.filter(step=>step.status==='PASS')].map(step=>step.operationId));
+   }else if(current.schemaVersion!==1||!['PASS',...(subset?['COMPLETED_WITH_FAILURES']:[])].includes(current.status)||current.companyId!==plan.companyId||current.projectId!==plan.projectId||current.rootTaskId!==plan.rootTaskId||
+    !isDeepStrictEqual(current.agentIds,registry.team.ids)||!Array.isArray(current.steps)||!current.steps.length||current.steps.some(step=>!(subset&&step.status==='FAILED_CLOSED')&&(step.status!=='PASS'||!runs.some(run=>run.id===step.runId&&run.status==='succeeded'&&run.issueId===step.taskId&&run.agentId===step.agentId))))fail('MULTI_RUNTIME_CURRENT_MATRIX_UNACCEPTED');
+   if(!resumeCurrent13)verifyCompletedFiles({...current,steps:current.steps.filter(step=>step.status==='PASS')},cwd);
+   const accepted=new Set([...plan.steps,...current.steps.filter(step=>step.status==='PASS'||subset&&step.status==='FAILED_CLOSED')].map(step=>step.operationId));
    for(const step of plan.steps)for(const prior of step.priorAttempts??[])accepted.add(prior.operationId);
    for(const step of current.steps)for(const prior of step.priorAttempts??[])accepted.add(prior.operationId);
+   const routingFile=ACCEPTANCE_ROOT+'/chief-runtime-routing-acceptance.json';
+   if(fs.existsSync(routingFile)){const routing=privateJson(routingFile);if(routing.kind==='isolated-chief-runtime-routing'&&routing.companyId===plan.companyId&&routing.rootTaskId===plan.rootTaskId)for(const step of [routing.chief,routing.execution,...(routing.execution?.priorAttempts??[])])if(['PASS','FAILED_CLOSED'].includes(step?.status)&&runs.some(run=>run.id===step.runId&&['succeeded','failed'].includes(run.status)&&run.issueId===step.taskId&&run.agentId===step.agentId))accepted.add(step.operationId);}
    if(budget.some(record=>!accepted.has(record.operationId)))fail('MULTI_RUNTIME_CURRENT_MATRIX_BUDGET_UNPROVEN');
   }
   else if(resumeCurrent13)fail('MULTI_RUNTIME_CURRENT13_PREFIX_DENIED');

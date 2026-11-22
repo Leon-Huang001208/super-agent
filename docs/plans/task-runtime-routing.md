@@ -22,6 +22,8 @@
 
 `task-runtime-router.mjs`先验证Chief给出的任务难度/风险/模型需要，再从已验收池按工具和任务类型挑选Runtime。Chief的prompt不能携带可用池、PASS或凭据；操作员私有登记需绑定真实Native成功、broker观测模型、usage、实际工具回执、进程闭合及源码/CLI指纹。未通过、未实现或实现已漂移的组合明确拒绝，不自动换成别的模型。普通授权范围内分派无需逐次问用户；controller仍校验原权限及任务身份。
 
+私有operator index的每项登记可选`compatibleSourceSha256`，最多8个不重复的SHA256，只用于已独立审查且无Runtime、工具、权限或执行行为变化的源码兼容登记。原Native/Host implementation proof及其真实sourceSha256保持不变；当前源码必须等于原记录或明确列出的兼容来源，CLI指纹始终完全相同。默认未配置时仍严格匹配，Chief计划不能提供该字段；不存在自动批准。真实executor或CLI功能变化须重新实际验收。
+
 控制器在原Admission/root锁合同下先保存准备记录、通过Native生命周期配置，再重读任务/预算/池与实现，持久化一次wake认领后fresh唤醒。配置或唤醒结果未知时留待对账。当前生产`wakeRole()`尚未接入新池；离线controller检查不能代替真实Chief自动分派验收。
 
 可信Controller/经验证的Chief计划调用`selectTaskRuntimeProfile`，输入仅角色、complexity、risk、purpose和可选profileId，返回canonical profile与固定reason code。它不修改Native对象、会话、预算或权限，也不接受prompt作为授权。
@@ -54,6 +56,16 @@ Claude使用独立的`CLAUDE_CONFIG_DIR` marker与Host配置，`--bare`、禁hoo
 
 会员委托不复制真实refresh token：每个Codex步骤在已取得真实租约、Owner及旧执行闭合后，要求至少210秒有效期，不足则向控制侧申请同账号的短委托，响应只写内盘并校验nonce、期限与身份。broker期限不得超过原委托期限；超时或未知不得唤醒模型。`implementation-proof.json`记录实际源码manifest、CLI入口/二进制、args与配置摘要；不记录完整prompt或认证。
 
+## 正常 Coordinator 接线与启用边界
+
+`team-native-runtime.wakeRole`在明确配置`runtimeRouting:{schemaVersion:1,mode:"task"}`时，先读取通过且当前源码/CLI仍匹配的池，再沿`team-task-runtime`共享出口调用原`createTaskRuntimeRouter`；配置使用真实Native lifecycle，路由、Owner与累计预算沿原控制器登记，最终仍由原Native heartbeat唤醒。初始Owner Chief已经有真实Native run时只为该run登记固定Codex路由，不创建第二次wake。没有池、组合、凭据引用或当前实现观察时，在外层模型调用计数前给出具体阻塞。未启用task模式的注册、派发与旧计划维持原路径；已存在且缺分类的计划按unknown保守选择Codex，不补跑Chief。
+
+新Chief计划中的`runtime`分别携带complexity、risk、purpose、requiredTools以及可选modelId/runtimeId；role仍先确定唯一工作范围Owner。核心四岗及plan/summary固定Codex，质量返修的分类缺项也保守用Codex。已成功且执行闭合后发生档位或Owner变化，复用原route/handoff合同与现存产物，不能在未知运行后自动选择新组合。
+
+生产启用仍是Owner维护窗口动作，代码合并本身不代表服务或配置已激活。最少准备项为：同批完整岗位/材料/执行器；私有`ROOT/task-runtime-pool/index.json`及其引用的真实验收原件；Native公司级`credentialRefs.deepseek/minimax`的secret_ref；各Agent既有官方Codex会员aiConnection。第一次离开Codex时控制器把原Native配置保存为该Agent的`runtimeBaseline`，回到Codex恢复原会员绑定，不复制认证或refresh token。已有API配置但缺Codex基线会明确拒绝，不能猜测新的会员连接。
+
+既有Mac `role-transport-resident`的60秒观察循环在task模式下额外发布`ROOT/team/runtime-implementations.json`，用实际已安装CLI字节和候选源码计算绑定；同轮以OpenCode/Claude的`--version`更新`ROOT/host-runtime-catalog.json`，供现有Gate的metadata调用使用，版本探测失败的Runtime不提供当前绑定。catalog只含固定公开模型ID，沿原合同30分钟到期；不运行CLI模型探针、不安装、不另起daemon。正常Coordinator只读控制文件；隔离验收仍使用原`/host-evidence/runtime-implementations.json`。池推广、生产registry更新、resident/服务切换以及真实普通新任务验收仍须分别留实际证据，本次源码检查不把它们标为已完成。
+
 ## 隔离验收与证据
 
 `scripts/multi-runtime-acceptance.mjs`使用`tests/helpers/multi-runtime-native-fixture.mjs`准备隔离Native数据库、公司、项目、fixture和控制根，只驱动明确列出的Native任务。原12岗历史fixture保持原source身份；新13岗候选须先完整迁移Native名册、资料、Skills、registry/catalog与执行器，再做新case。它不启动第二个SDK监听、M2或生产接单；共享Admission仍保留全局单执行，不用新私有锁绕过现有任务。
@@ -70,13 +82,17 @@ Claude使用独立的`CLAUDE_CONFIG_DIR` marker与Host配置，`--bare`、禁hoo
 |---|---|---|
 | 固定profile/策略、route、gate及broker离线检查 | 由本候选精确检查回执单列 | 真实模型、Native业务结果 |
 | 原12岗五步Native模型与同任务handoff | PASS，5次真实调用、独立QA及固定检查；原根累计6次，收尾不新增模型调用 | 新13源码、生产启用或自动调度 |
-| 新13岗迁移、Full Stack业务、新source组合 | 分步以`multi-runtime-current13-acceptance.json`真实回执为准，整体验收未完成前不入池 | 不继承旧12批PASS |
+| 新13岗迁移、Full Stack业务、新source组合 | 分步以`multi-runtime-current13-acceptance.json`真实结果为准；已结清矩阵可逐项将真实PASS且当前runtime/CLI仍匹配的组合入池，失败组合排除 | 不继承旧12批PASS，不把完成带失败当整体PASS |
 | 生产切换、M2、UI、Cloud Apps、13岗业务、重启恢复 | NOT_RUN；生产旧12仍pinned | 不能由源码、配置、旧CLI样例或隔离fixture推定 |
+
+本批隔离实测已完成：Codex会员、DeepSeek/Claude Code、DeepSeek/OpenCode、MiniMax/OpenCode通过，MiniMax/Claude Code因180秒超时排除，矩阵为`COMPLETED_WITH_FAILURES`。独立QA的17项固定功能检查通过。真实Chief选择Full Stack Engineer、MiniMax及OpenCode，共享dispatch完成同任务负责人交接；执行阶段回传opaque临时令牌被原保护拒绝，随后沿同任务明确续接、复用已完成检查并成功收口。累计17/20个预算槽包含失败与预备调用，不代表17次模型成功，实际费用未知。
+
+上述模型运行使用冻结的`87e6998a98b96c8061aaf44675091653063b6f3b`执行器及有限验收脚本覆盖；原运行证明保留该真实来源。正常Coordinator接线另经相关检查，代码合并不等于生产13岗或普通新任务已验收。
 
 实际执行后记录candidate SHA、镜像/依赖身份、Native task/root/operation/run、CLI版本、provider/model、产物和测试、预算前后、fresh session、已闭合执行与用量。缺失费用/子工具退出码保持未知；保留原失败和known/unknown区别。不为补证据重跑已成功步骤或篡改旧计数。
 
 CLI的`total_cost_usd=0`等只可记录为Runtime估算；没有真实厂商计费证据时实际费用保持未知，不能据此声称套餐免费。
 
-新批次入口为`scripts/current13-runtime-acceptance.mjs --input <内盘私有输入>`，同Root新增具体需求：全栈微功能8项检查、同任务Backend HTTP扩展4项、MiniMax/Claude偏好模块5项、DeepSeek两种Runtime交叉检查及独立QA。`scripts/chief-runtime-routing-acceptance.mjs --input <私有输入> --cases /paperclip/control/research-pm/multi-runtime-current13-acceptance.json`只在新批次整体PASS后构池，由真实Chief先选唯一Owner再选模型/Runtime，控制器执行一次真实分派。父控制侧须提供300秒内的真实Mac源码/CLI指纹观察；共享槽可明确等待15分钟，模型运行上限仍为180秒。等待不新建Root、不重置已用预算，不停止其他任务。
+新批次入口为`scripts/current13-runtime-acceptance.mjs --input <内盘私有输入>`，同Root新增具体需求：全栈微功能8项检查、同任务Backend HTTP扩展4项、MiniMax/Claude偏好模块5项、DeepSeek两种Runtime交叉检查及独立QA。`scripts/chief-runtime-routing-acceptance.mjs --input <私有输入> --cases /paperclip/control/research-pm/multi-runtime-current13-acceptance.json`接受已结清的`PASS`或`COMPLETED_WITH_FAILURES`矩阵，只从逐项真实PASS且当前runtime/CLI匹配的组合构池，由真实Chief先选唯一Owner再选模型/Runtime。失败组合不入池；QA对现存partial字节运行17项功能检查，可如实给出`NEEDS_WORK`，不得为PASS补代码或把功能通过冒称失败Runtime已通过。父控制侧须提供300秒内的真实Mac源码/CLI指纹观察；共享槽可明确等待15分钟，模型运行上限仍为180秒。等待不新建Root、不重置已用预算，不停止其他任务。
 
 已成功且Host闭合的前缀可用`--finalize-current13-prefix`纯复核原证据和固定检查，不读取凭据或新增模型调用；`--resume-current13 --input <私有输入>`仅接续尚未启动的步骤。整合最新主线导致源码指纹改变时默认拒绝；只有显式增加`--allow-historical-source-transition`并提供固定Host侧transition描述、精确候选回归与独立评审证据才接受历史前缀继续。旧run及implementation proof保留原摘要，不能因此成为新源码组合池的PASS；缺失或漂移的证据仍拒绝。

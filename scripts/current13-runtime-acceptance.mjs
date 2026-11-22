@@ -11,7 +11,7 @@ import {AdmissionMeter} from '../bridge/admission.mjs';
 import {taskInputRevision} from '../bridge/task-input.mjs';
 import {createTaskRuntimeRoute,projectTaskRuntimeRoute} from '../bridge/task-runtime-routing.mjs';
 import {assertDelegatedAuth,publicRunEvidence,readAcceptanceArtifactJson,reserveAcceptanceTask,rehydrateAcceptancePlan} from './multi-runtime-acceptance.mjs';
-import {ACCEPTANCE_ROOT as ROOT,privateJson,writePrivate,archivePrivateSnapshot,createMultiRuntimeNativeFixture,validateCurrent13PreclaimRepairHistory} from '../tests/helpers/multi-runtime-native-fixture.mjs';
+import {ACCEPTANCE_ROOT as ROOT,privateJson,writePrivate,archivePrivateSnapshot,createMultiRuntimeNativeFixture,validateCurrent13PreclaimRepairHistory,validateCurrent13ClosedSubsetHistory} from '../tests/helpers/multi-runtime-native-fixture.mjs';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(value);
@@ -89,6 +89,13 @@ export function createCurrent13Acceptance({historical,historicalReportSha256,age
    ...(index===1?{handoffFromOperationId:firstOperationId}:{}),status:'NOT_RUN'}))};
 }
 
+const COMPAT_KEY='current-source-minimax-compatibility';
+const compatibilityGoal='这是一个新的只读当前源码兼容核验，不是对失败preferences任务的重试。只读当前cwd的current13-requirements.md、item-feature.mjs、item-http.mjs、item-preferences.mjs及三个固定test文件；不要扫描控制目录、Git或其它材料，不修改任何已有代码、测试或报告。实际调用一次本run host.project_inspect MCP（NOT_CONFIGURED如实记录），实际一次执行 node --test item-feature.test.mjs item-http.test.mjs item-preferences.test.mjs。仅写compatibility13.json，包含精确可信sources数组、facts/assumptions/unknowns数组和hostInspection:{tool:"host.project_inspect",...}，报告真实17项检查结果；明确这不改变minimax_claude失败结论。';
+export function createCurrent13CompatibilityStep(plan,{taskId=randomUUID(),operationId=randomUUID()}={}){
+ if(!uuid(taskId)||!uuid(operationId)||!uuid(plan?.agentIds?.['full-stack-engineer'])||plan.steps.some(step=>step.taskId===taskId||step.operationId===operationId))fail('CURRENT13_COMPATIBILITY_SCOPE_DENIED');
+ return{key:COMPAT_KEY,role:'full-stack-engineer',runtimeProfileId:'minimax_opencode',outputFile:'compatibility13.json',goal:compatibilityGoal,title:'Current source MiniMax OpenCode compatibility',
+  agentId:plan.agentIds['full-stack-engineer'],taskId,operationId,selection:{complexity:'routine',risk:'low',purpose:'execution',profileId:'minimax_opencode'},status:'NOT_RUN'};
+}
 export function validateCurrent13RunEvidence({step,run,transport,processCleanup,brokerCleanup,implementation,providerEvents}){
  const profile=RUNTIME_PROFILES[step?.runtimeProfileId];
  if(!profile||run?.id!==step.runId||run.issueId!==step.taskId||run.agentId!==step.agentId||run.status!=='succeeded'||run.exitCode!==0||!run.finishedAt||
@@ -97,7 +104,8 @@ export function validateCurrent13RunEvidence({step,run,transport,processCleanup,
  if(implementation?.runId!==run.id||implementation.profileId!==profile.id||implementation.modelId!==profile.providerModel||implementation.runtimeId!==profile.runtime||
   !digest(implementation.sourceSha256)||!digest(implementation.cliSha256)||implementation.freshSession!==true)fail('CURRENT13_IMPLEMENTATION_DENIED');
  const optional=event=>profile.runtime==='codex'&&event.code==='ROLE_PROXY_PATH_DENIED'&&event.path==='/backend-api/ps/plugins/tooling-state/turtle';
- if(!Array.isArray(providerEvents)||providerEvents.some(event=>!optional(event)&&/DENIED|UPSTREAM_HTTP_ERROR|UPSTREAM_UNKNOWN|UPSTREAM_ABORTED/.test(event.code??'')))fail('CURRENT13_BROKER_EVIDENCE_DENIED');
+ const blockedPath=event=>profile.runtime!=='codex'&&event.code==='ROLE_API_PATH_DENIED'&&event.status===403&&(event.runId===undefined||event.runId===run.id)&&(event.profileId===undefined||event.profileId===profile.id);
+ if(!Array.isArray(providerEvents)||providerEvents.some(event=>!optional(event)&&!blockedPath(event)&&/DENIED|UPSTREAM_HTTP_ERROR|UPSTREAM_UNKNOWN|UPSTREAM_ABORTED/.test(event.code??'')))fail('CURRENT13_BROKER_EVIDENCE_DENIED');
  let successful;
  if(profile.runtime==='codex')successful=providerEvents.filter(event=>event.code==='ROLE_PROXY_COMPLETED'&&event.path==='/backend-api/codex/responses'&&event.status===200);
  else{
@@ -109,6 +117,7 @@ export function validateCurrent13RunEvidence({step,run,transport,processCleanup,
  const optionalPluginDenials=providerEvents.filter(optional).length;
  return{runId:run.id,observed:true,profileId:profile.id,modelId:profile.providerModel,runtimeId:profile.runtime,requestCount:successful.length,
   ...(optionalPluginDenials?{optionalPluginState:'DENIED_AS_DESIGNED/NOT_RUN',optionalPluginDenials}:{}),
+  ...(providerEvents.some(blockedPath)?{blockedRequests:providerEvents.filter(blockedPath).map(event=>({code:event.code,status:403,path:event.path??'UNKNOWN',capability:'NOT_RUN',disposition:'blocked-request'}))}:{}),
   observationSource:profile.runtime==='codex'?'fixed-broker-model-guard-and-success':'broker-model-authorization-and-completion'};
 }
 function artifact(cwd,file,step){
@@ -146,6 +155,10 @@ export function validateCurrent13ActorClosure(proof,{taskId,agentId}){
  if(proof?.closed!==true||proof.taskId!==taskId||proof.agentId!==agentId||proof.nativeExecutionStopVerified!==true||
   !Array.isArray(proof.activeRunIds)||proof.activeRunIds.length||!Array.isArray(proof.proofs))fail('CURRENT13_PREVIOUS_OWNER_OPEN');
  return proof;
+}
+export function current13QaMaterials(plan,step){
+ const reviewedSteps=plan.steps.filter(prior=>prior!==step&&prior.status==='PASS');
+ return{reviewedSteps,reviewedArtifacts:reviewedSteps.flatMap(prior=>prior.artifacts??[]),partialSources:plan.steps.filter(prior=>prior.status==='FAILED_CLOSED').flatMap(prior=>(prior.artifacts??[]).map(ref=>({...ref,sourceStatus:'FAILED_CLOSED'})))};
 }
 /** Called only after this operation owns the shared lease and its Native task assignment. */
 export async function prepareCurrent13Wake({fixture,step,route,onSessionReset=()=>{}}){
@@ -204,7 +217,7 @@ export function validateCurrent13FrozenInputs({cwd,references}){
 }
 function hydrateCurrent13Plan(saved){
  if(saved?.schemaVersion!==1||saved.kind!=='isolated-native-current13'||saved.sourceRoleCount!==13||saved.maximumCalls!==20||saved.maximumResponsesPerRun!==64||saved.callsSpentBefore!==6||
-  saved.steps?.length!==6||!['companyId','projectId','workspaceId','rootTaskId'].every(key=>uuid(saved[key]))||!digest(saved.rootInputRevision)||
+  ![6,7].includes(saved.steps?.length)||saved.steps.length===7&&!saved.postExecutionSubsetContinuation||!['companyId','projectId','workspaceId','rootTaskId'].every(key=>uuid(saved[key]))||!digest(saved.rootInputRevision)||
   Object.keys(saved.agentIds??{}).length!==13||Object.keys(TEAM_ROLES).some(role=>!uuid(saved.agentIds[role]))||new Set(Object.values(saved.agentIds)).size!==13)fail('CURRENT13_RESUME_PLAN_CHANGED');
  const plan=structuredClone(saved);for(const[ index,spec]of stepSpecs.entries()){
   const [key,role,runtimeProfileId,outputFile,goal]=spec,step=plan.steps[index];
@@ -212,21 +225,24 @@ function hydrateCurrent13Plan(saved){
    step.agentId!==plan.agentIds[role]||!uuid(step.operationId)||!uuid(step.taskId)||
    !equal(step.selection,{complexity:index===1?'complex':'routine',risk:index===1?'high':'low',purpose:role==='research'?'cross-check':'execution',profileId:runtimeProfileId}))fail('CURRENT13_RESUME_PLAN_CHANGED');
   step.goal=goal;
+  if(role==='qa'&&plan.postExecutionSubsetContinuation)step.goal+='\n本批次minimax_claude运行已在180秒超时并FAILED_CLOSED，不能被功能测试通过改成Runtime PASS。请核对现存partial偏好代码的实际字节并运行17项功能检查；不得补代码。verdict可PASS或NEEDS_WORK，明确acceptanceScope:"fixed-functionality-only"和excludedRuntimeProfiles:["minimax_claude"]；发现问题如实写findings，不得为整体PASS改实现。';
  }
- if(plan.steps[0].taskId!==plan.steps[1].taskId||plan.steps[1].handoffFromOperationId!==plan.steps[0].operationId||new Set(plan.steps.map(step=>step.operationId)).size!==6||
+ if(plan.steps.length===7){const step=plan.steps[6];if(step.key!==COMPAT_KEY||step.role!=='full-stack-engineer'||step.runtimeProfileId!=='minimax_opencode'||step.agentId!==plan.agentIds['full-stack-engineer']||step.outputFile!=='compatibility13.json'||!uuid(step.taskId)||!uuid(step.operationId)||!equal(step.selection,{complexity:'routine',risk:'low',purpose:'execution',profileId:'minimax_opencode'})||plan.steps.slice(0,6).some(prior=>prior.taskId===step.taskId||prior.operationId===step.operationId))fail('CURRENT13_COMPATIBILITY_SCOPE_DENIED');step.goal=compatibilityGoal;}
+ if(plan.steps[0].taskId!==plan.steps[1].taskId||plan.steps[1].handoffFromOperationId!==plan.steps[0].operationId||new Set(plan.steps.map(step=>step.operationId)).size!==plan.steps.length||
   plan.steps[5].taskId!==plan.historicalMatrix?.steps?.find(step=>step.agentId===plan.agentIds.qa)?.taskId)fail('CURRENT13_RESUME_PLAN_CHANGED');
  return plan;
 }
 export function validateCurrent13ResumePlan(saved){
- const plan=hydrateCurrent13Plan(saved);if(!['PARTIAL_VALIDATED','PASS'].includes(plan.status))fail('CURRENT13_RESUME_NOT_VALIDATED');
- const preclaimAttempts=validateCurrent13PreclaimRepairHistory(plan);
- let prefix=0;while(plan.steps[prefix]?.status==='PASS')prefix++;
+ const plan=hydrateCurrent13Plan(saved);if(!['PARTIAL_VALIDATED','PASS','COMPLETED_WITH_FAILURES'].includes(plan.status))fail('CURRENT13_RESUME_NOT_VALIDATED');
+ const preclaimAttempts=validateCurrent13PreclaimRepairHistory(plan),closedFailures=validateCurrent13ClosedSubsetHistory(plan);
+ let prefix=0;while(['PASS','FAILED_CLOSED'].includes(plan.steps[prefix]?.status))prefix++;
  if(!prefix||plan.steps.slice(prefix).some(step=>step.status!=='NOT_RUN'||step.runId||step.nativeEvidence||step.nativeStatus||step.wakeAttemptedAt||step.startedAt)||
   plan.callsSpent!==6+prefix+preclaimAttempts||plan.rootCallsSpent!==plan.callsSpent||plan.budgetRecords?.length!==plan.callsSpent||
-  plan.steps.slice(0,prefix).some(step=>!uuid(step.runId)||!step.artifacts?.length||step.nativeEvidence?.status!=='succeeded'||!step.modelEvidence?.observed||!step.implementationProof||!Array.isArray(step.testing)))fail('CURRENT13_RESUME_PREFIX_DENIED');
+  plan.steps.slice(0,prefix).filter(step=>step.status==='PASS').some(step=>!uuid(step.runId)||!step.artifacts?.length||step.nativeEvidence?.status!=='succeeded'||!step.modelEvidence?.observed||!step.implementationProof||!Array.isArray(step.testing))||
+  (closedFailures===0&&plan.steps.some(step=>step.status==='FAILED_CLOSED')))fail('CURRENT13_RESUME_PREFIX_DENIED');
  return prefix;
 }
-const suitesFor=step=>step.key==='fullstack-feature'?['feature']:step.key==='backend-transfer'?['feature','http']:step.key==='minimax-claude-preferences'?['preferences']:step.role==='qa'?['feature','http','preferences']:[];
+const suitesFor=step=>step.key==='fullstack-feature'?['feature']:step.key==='backend-transfer'?['feature','http']:step.key==='minimax-claude-preferences'?['preferences']:step.role==='qa'||step.key===COMPAT_KEY?['feature','http','preferences']:[];
 function checkRecordedTesting(step,root){
  const suites=suitesFor(step);if(step.testing?.length!==suites.length)fail('CURRENT13_TEST_EVIDENCE_CHANGED');
  for(const[index,name]of suites.entries()){
@@ -242,7 +258,7 @@ export function revalidateCurrent13PassedStep({plan,step,current,ownerId,cwd,roo
  if(step.nativeEvidence?.resultSha256!==publicRunEvidence(current,RUNTIME_PROFILES[step.runtimeProfileId]).resultSha256||!equal(step.proofs,proof.references)||!equal(step.modelEvidence,{...observed,providerAudit:proof.references.providerAudit})||
   step.implementationProof?.sourceSha256!==proof.implementation.sourceSha256||step.implementationProof?.cliSha256!==proof.implementation.cliSha256)fail('CURRENT13_RESUME_PROOF_CHANGED');
  verifyReferences(cwd,step.artifacts);checkRecordedTesting(step,root);
- if(step.role==='research'){
+ if(step.role==='research'||step.key===COMPAT_KEY){
   if(!equal(step.hostToolEvidence,hostInspection(step.runId,root)))fail('CURRENT13_HOST_TOOL_MISSING');
   validateCurrent13CrossCheck(readAcceptanceArtifactJson({cwd,reference:step.artifacts.find(ref=>ref.file===step.outputFile)}),step.sources);
  }
@@ -269,13 +285,15 @@ export function finalizeCurrent13StepBoundary({plan,step,current,ownerId,cwd,bef
  if(step.key==='backend-transfer'&&fs.readFileSync(cwd+'/item-preferences.mjs','utf8')!==PREFERENCES_STUB)fail('CURRENT13_FUTURE_SCOPE_CHANGED');
  if(step.key==='fullstack-feature')plan.featureSha256=step.artifacts.find(ref=>ref.file==='item-feature.mjs').sha256;
  else if(sha(fs.readFileSync(cwd+'/item-feature.mjs'))!==plan.featureSha256)fail('CURRENT13_FULLSTACK_ARTIFACT_CHANGED');
- if(step.role==='research'){step.hostToolEvidence=hostInspection(step.runId,root);validateCurrent13CrossCheck(readAcceptanceArtifactJson({cwd,reference:step.artifacts[0]}),step.sources);}
+ if(step.role==='research'||step.key===COMPAT_KEY){step.hostToolEvidence=hostInspection(step.runId,root);validateCurrent13CrossCheck(readAcceptanceArtifactJson({cwd,reference:step.artifacts[0]}),step.sources);}
  try{step.testing=fixedChecks(cwd,step,suitesFor(step),root);}catch(error){if(error.checks)step.testing=error.checks;throw error;}
  for(const prior of plan.steps)if(prior.handoff){verifyCurrent13Handoff({cwd,receipt:prior.handoff});preserveBudget(prior.handoff.budget.records,budgetRecords(plan.rootTaskId,root));}
  if(step.role==='qa'){
   const qa=readAcceptanceArtifactJson({cwd,reference:step.artifacts[0]});
-  if(qa.verdict!=='PASS'||!Array.isArray(qa.findings)||qa.findings.length||!Array.isArray(qa.notRun)||!equal(qa.reviewedArtifacts,reviewedArtifacts))fail('CURRENT13_QA_DENIED');
-  verifyReferences(cwd,reviewedArtifacts);step.verdict='PASS';
+  const subset=Boolean(plan.postExecutionSubsetContinuation);
+  if(!(subset?['PASS','NEEDS_WORK']:['PASS']).includes(qa.verdict)||!Array.isArray(qa.findings)||qa.verdict==='PASS'&&qa.findings.length||!Array.isArray(qa.notRun)||!equal(qa.reviewedArtifacts,reviewedArtifacts)||
+   subset&&(qa.acceptanceScope!=='fixed-functionality-only'||!equal(qa.excludedRuntimeProfiles,['minimax_claude'])))fail('CURRENT13_QA_DENIED');
+  verifyReferences(cwd,reviewedArtifacts);step.verdict=qa.verdict;if(subset){step.acceptanceScope=qa.acceptanceScope;step.excludedRuntimeProfiles=qa.excludedRuntimeProfiles;plan.functionalityQaVerdict=qa.verdict;}
  }
  const file=step.key+'-evidence13.json',bytes=JSON.stringify({schemaVersion:1,origin:'trusted-current13-collector',taskId:step.taskId,runId:step.runId,
   profileId:step.runtimeProfileId,nativeEvidence:step.nativeEvidence,modelEvidence:step.modelEvidence,implementationProof:step.implementationProof,
@@ -383,17 +401,44 @@ async function repairPreclaimFromNative(){
  finally{await schema.closeRegisteredClients(url);}
 }
 
-export async function runCurrent13RuntimeAcceptance(inputFile,{afterAcceptance,resumeCurrent13=false,allowHistoricalSourceTransition=false}={}){
+/** Accept a closed failed combination as a failure, then prepare only the independently authorized remaining cases. */
+export async function continueCurrent13Subset({getRun,getActiveRuns,verifyNativeStopped,getRootTask,root=ROOT,cwd}={}){
+ if(process.platform!=='linux'||process.getuid()!==0||process.env.SUPER_AGENT_ISOLATED_MULTI_RUNTIME!=='1'||process.env.SUPER_AGENT_ISOLATED_DATABASE_URL!=='postgres://postgres@127.0.0.1:5432/sa_multi_runtime_acceptance'||
+  ![getRun,getActiveRuns,verifyNativeStopped,getRootTask].every(port=>typeof port==='function'))fail('CURRENT13_SUBSET_SCOPE_DENIED');
+ const file=root+'/multi-runtime-current13-acceptance.json',bytes=fs.readFileSync(file),plan=hydrateCurrent13Plan(privateJson(file)),registryBytes=fs.readFileSync(root+'/registry.json'),registry=JSON.parse(registryBytes),task=await getRootTask(plan.rootTaskId);
+ if(registry.companyId!==plan.companyId||registry.projectId!==plan.projectId||registry.taskId!==plan.rootTaskId||!equal(registry.team?.ids,plan.agentIds)||task?.id!==plan.rootTaskId||task.companyId!==plan.companyId||task.projectId!==plan.projectId||task.responsibleUserId!==registry.ownerId||taskInputRevision(task)!==plan.rootInputRevision)fail('CURRENT13_SUBSET_SCOPE_DENIED');
+ cwd??='/paperclip/instances/default/projects/'+plan.companyId+'/'+plan.projectId+'/_default';
+ const {verifyCurrent13ClosedSubset,projectCurrent13ClosedSubset}=await import('../tests/helpers/multi-runtime-native-fixture.mjs');
+ const proof=await verifyCurrent13ClosedSubset({current:plan,ports:{getRun,getActiveRuns,verifyNativeStopped},root,cwd,authorized:true});
+ validateCurrent13FrozenInputs({cwd,references:plan.fixedInputs});for(const step of plan.steps.slice(0,2))revalidateCurrent13PassedStep({plan,step,current:await getRun(step.runId),ownerId:registry.ownerId,cwd,root});
+ const next=projectCurrent13ClosedSubset(plan,proof,{compatibilityStep:createCurrent13CompatibilityStep(plan)}),failed=next.steps[2],release=privateJson(root+'/'+proof.releaseReceipt.file);
+ const partial=fs.readFileSync(cwd+'/item-preferences.mjs');if(sha(partial)!==release.artifactRefs.implementation.sha256)fail('CURRENT13_PARTIAL_ARTIFACT_CHANGED');
+ const summary={schemaVersion:1,origin:'trusted-operator-closed-failure',profileId:'minimax_claude',runId:failed.runId,taskId:failed.taskId,status:'FAILED_CLOSED',poolEligible:false,reason:'Native configured timeout after 180 seconds',lastUpstreamOutcome:'UNKNOWN',
+  implementationSha256:sha(partial),fixedChecks:{pass:5,fail:0,receipt:release.artifactRefs.testing},doesNotCertifyRuntime:true,releaseReceipt:proof.releaseReceipt};
+ const summaryFile='minimax-claude-failure13.json',summaryBytes=JSON.stringify(summary)+'\n';if(fs.existsSync(cwd+'/'+summaryFile)){if(fs.readFileSync(cwd+'/'+summaryFile,'utf8')!==summaryBytes)fail('CURRENT13_FAILURE_SUMMARY_CHANGED');}else fs.writeFileSync(cwd+'/'+summaryFile,summaryBytes,{flag:'wx',mode:0o600});
+ failed.artifacts=['item-preferences.mjs',summaryFile].map(file=>artifact(cwd,file,failed));failed.partialFunctionality={pass:5,fail:0,receipt:release.artifactRefs.testing,doesNotCertifyRuntime:true};
+ next.postExecutionSubsetContinuation.previousReport=release.artifactRefs.report;
+ validateCurrent13ResumePlan(next);if(sha(fs.readFileSync(file))!==sha(bytes)||sha(fs.readFileSync(root+'/registry.json'))!==sha(registryBytes))fail('CURRENT13_SUBSET_CONCURRENT_CHANGE');
+ writePrivate(file,{...next,steps:next.steps.map(({goal,...step})=>step)});return{status:next.status,budgetSpent:next.callsSpent,modelCallsAdded:0,failedProfile:'minimax_claude',failedRuntimeStatus:'FAILED_CLOSED',compatibilityTaskId:next.steps[6].taskId,compatibilityOperationId:next.steps[6].operationId};
+}
+async function continueSubsetFromNative(){
+ const url=process.env.SUPER_AGENT_ISOLATED_DATABASE_URL;if(url!=='postgres://postgres@127.0.0.1:5432/sa_multi_runtime_acceptance'||process.env.SUPER_AGENT_ISOLATED_MULTI_RUNTIME!=='1')fail('CURRENT13_SUBSET_SCOPE_DENIED');
+ const schema=await import('/opt/paperclip/node_modules/@paperclipai/db/dist/index.js'),orm=await import('/opt/paperclip/node_modules/drizzle-orm/index.js'),db=schema.createDb(url),{agentExecutionsHaveStopped}=await import('/opt/paperclip/node_modules/@paperclipai/server/dist/services/agent-execution-stop.js');
+ try{return await continueCurrent13Subset({getRun:async id=>(await db.select().from(schema.heartbeatRuns).where(orm.eq(schema.heartbeatRuns.id,id)))[0],getActiveRuns:()=>db.select().from(schema.heartbeatRuns).where(orm.inArray(schema.heartbeatRuns.status,['running','queued','scheduled_retry'])),verifyNativeStopped:agentId=>agentExecutionsHaveStopped(db,[agentId]),getRootTask:async id=>(await db.select().from(schema.issues).where(orm.eq(schema.issues.id,id)))[0]});}finally{await schema.closeRegisteredClients(url);}
+}
+
+export async function runCurrent13RuntimeAcceptance(inputFile,{afterAcceptance,resumeCurrent13=false,allowHistoricalSourceTransition=false,allowClosedRuntimeSubset=false}={}){
  if(process.platform!=='linux'||process.getuid()!==0||process.env.SUPER_AGENT_ISOLATED_MULTI_RUNTIME!=='1')fail('CURRENT13_ISOLATED_OPERATOR_REQUIRED');
  if(allowHistoricalSourceTransition&&!resumeCurrent13)fail('CURRENT13_SOURCE_TRANSITION_REQUIRES_RESUME');
  if(resumeCurrent13?!fs.existsSync(reportFile):fs.existsSync(reportFile))fail('CURRENT13_ALREADY_STARTED_RECONCILE_OR_READ');
  const input=privateJson(inputFile);assertDelegatedAuth(input.codexAuth);
  const saved=resumeCurrent13?privateJson(reportFile):null;if(saved)validateCurrent13ResumePlan(saved);
+ if(saved?.postExecutionSubsetContinuation&&allowClosedRuntimeSubset!==true||allowClosedRuntimeSubset&&!resumeCurrent13)fail('CURRENT13_SUBSET_EXPLICIT_FLAG_REQUIRED');
  const baseBytes=fs.readFileSync(ROOT+'/multi-runtime-acceptance.json'),fixturePlan=rehydrateAcceptancePlan(JSON.parse(baseBytes));
  const historicalBytes=resumeCurrent13?fs.readFileSync(ROOT+'/'+saved.historicalMatrix.archive.file):baseBytes,historical=JSON.parse(historicalBytes);
  if(saved&&sha(historicalBytes)!==saved.historicalMatrix.reportSha256)fail('CURRENT13_HISTORY_CHANGED');
  const fixture=await createMultiRuntimeNativeFixture(fixturePlan,input,{resumeCompleted:true,migrateRoster:!resumeCurrent13,
-  ...(resumeCurrent13?{resumeCurrent13:true,allowHistoricalSourceTransition:allowHistoricalSourceTransition===true,current13:{validateRunEvidence:validateCurrent13RunEvidence,fixedInputs:current13FixedInputHashes()}}:{})});
+  ...(resumeCurrent13?{resumeCurrent13:true,allowHistoricalSourceTransition:allowHistoricalSourceTransition===true,allowClosedRuntimeSubset:allowClosedRuntimeSubset===true,current13:{validateRunEvidence:validateCurrent13RunEvidence,fixedInputs:current13FixedInputHashes()}}:{})});
  let plan=saved?hydrateCurrent13Plan(saved):undefined,meter,safeToClose=true;
  const save=()=>writePrivate(reportFile,{...plan,steps:plan.steps.map(({goal,...step})=>step)});
  try{
@@ -411,16 +456,17 @@ export async function runCurrent13RuntimeAcceptance(inputFile,{afterAcceptance,r
    plan.fixedInputs=current13FixedInputHashes();
   }else validateCurrent13FrozenInputs({cwd,references:plan.fixedInputs});
   const seen=new Set();for(const step of plan.steps)if(!seen.has(step.taskId)){
-   seen.add(step.taskId);if(!await fixture.issue(step.taskId)){if(resumeCurrent13)fail('CURRENT13_RESUME_TASK_MISSING');await fixture.ensureAcceptanceTask(step);}
+   seen.add(step.taskId);if(!await fixture.issue(step.taskId)){if(resumeCurrent13&&!(allowClosedRuntimeSubset&&step.key===COMPAT_KEY&&step.status==='NOT_RUN'))fail('CURRENT13_RESUME_TASK_MISSING');await fixture.ensureAcceptanceTask(step);}
   }
   const projectRegistry=change=>{const before=fixture.readRegistryBytes(),next=change(fixture.getRegistry());return fixture.setRegistryCAS(next,{expectedSha256:sha(before)});};
-  if(!resumeCurrent13)projectRegistry(registry=>({...registry,tasks:[...new Set([...registry.tasks,...plan.steps.map(step=>step.taskId)])],taskRoots:{...registry.taskRoots,...Object.fromEntries(plan.steps.map(step=>[step.taskId,plan.rootTaskId]))}}));
+  if(!resumeCurrent13||allowClosedRuntimeSubset)projectRegistry(registry=>({...registry,tasks:[...new Set([...registry.tasks,...plan.steps.map(step=>step.taskId)])],taskRoots:{...registry.taskRoots,...Object.fromEntries(plan.steps.map(step=>[step.taskId,plan.rootTaskId]))}}));
   meter=new AdmissionMeter({filename:fixture.admissionFile,allowedProjectIds:[plan.projectId],log:event=>fs.appendFileSync(ROOT+'/operator13.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600})});
   for(const step of plan.steps){
    if(step.status==='PASS'){revalidateCurrent13PassedStep({plan,step,current:await fixture.getRun(step.runId),ownerId:fixture.ownerId,cwd});continue;}
+   if(step.status==='FAILED_CLOSED'){if(!allowClosedRuntimeSubset||step!==plan.steps[2])fail('CURRENT13_SUBSET_SCOPE_DENIED');verifyReferences(cwd,step.artifacts??[]);continue;}
    if(fs.existsSync(ROOT+'/call.lock'))fail('CURRENT13_PREVIOUS_CALL_UNKNOWN');
    verifyReferences(cwd,oldArtifacts);verifyReferences(cwd,plan.fixedInputs);
-   const priorArtifacts=plan.steps.filter(prior=>prior.status==='PASS').flatMap(prior=>prior.artifacts??[]);verifyReferences(cwd,priorArtifacts);
+   const priorArtifacts=plan.steps.filter(prior=>['PASS','FAILED_CLOSED'].includes(prior.status)).flatMap(prior=>prior.artifacts??[]);verifyReferences(cwd,priorArtifacts);
    const beforeBudget=budgetRecords(plan.rootTaskId);preserveBudget(plan.budgetRecords,beforeBudget);
    if(beforeBudget.length!==plan.callsSpent||beforeBudget.length>=20)fail('CURRENT13_BUDGET_CHANGED');
    const task=await fixture.issue(step.taskId);if(!task||task.companyId!==plan.companyId||task.projectId!==plan.projectId)fail('CURRENT13_TASK_SCOPE_DENIED');
@@ -441,14 +487,17 @@ export async function runCurrent13RuntimeAcceptance(inputFile,{afterAcceptance,r
    const sourceNames=new Set(['item-feature.mjs','item-http.mjs','item-feature.test.mjs','item-http.test.mjs','current13-requirements.md','fullstack13.json','backend13.json']);
    const sources=plan.steps.slice(0,2).flatMap(prior=>prior.artifacts??[]).filter(ref=>sourceNames.has(path.basename(ref.file))).map(({file,sha256})=>({file,sha256}));
    if(step.role==='research')step.sources=sources;
-   const reviewedArtifacts=step.role==='qa'?plan.steps.filter(prior=>prior!==step).flatMap(prior=>prior.artifacts??[]):undefined;
+   if(step.key===COMPAT_KEY)step.sources=['current13-requirements.md','item-feature.mjs','item-http.mjs','item-preferences.mjs','item-feature.test.mjs','item-http.test.mjs','item-preferences.test.mjs'].map(file=>({file,sha256:sha(fs.readFileSync(path.join(cwd,file)))}));
+   const qaMaterials=step.role==='qa'?current13QaMaterials(plan,step):undefined,reviewedSteps=qaMaterials?.reviewedSteps??[],reviewedArtifacts=qaMaterials?.reviewedArtifacts;
+   if(qaMaterials)step.partialSources=qaMaterials.partialSources;
    const existingOperation=fixture.getRegistry().operations.find(operation=>operation.id===step.operationId);
    const route=existingOperation?step.taskRuntimeRoute:createTaskRuntimeRoute({taskId:step.taskId,rootTaskId:plan.rootTaskId,agentId:step.agentId,role:step.role,operationId:step.operationId,inputRevision:taskInputRevision(task),selection:step.selection,...(handoff?{handoff}:{})});
    if(existingOperation&&(!resumeCurrent13||!route||route.inputRevision!==taskInputRevision(task)||!equal(existingOperation.taskRuntimeRoute,route)))fail('CURRENT13_PREPARED_ROUTE_CHANGED');
    if(route.profileId!==step.runtimeProfileId)fail('CURRENT13_ROUTE_PROFILE_CHANGED');step.taskRuntimeRoute=route;
    const operation={id:step.operationId,kind:'run',taskId:step.taskId,agentId:step.agentId,role:step.role,projectId:plan.projectId,rootTaskId:plan.rootTaskId,rootInputRevision:plan.rootInputRevision,
-    inputRevision:route.inputRevision,phase:'work',outputFile:step.outputFile,additionalInput:step.goal+(step.handoff?'\n可信同任务交接：'+JSON.stringify(step.handoff):'')+(step.sources?'\n可信sources精确列表：'+JSON.stringify(step.sources):''),
-    taskRuntimeRoute:route,...(reviewedArtifacts?{reviewedArtifacts,reviewedTaskKeys:plan.steps.filter(prior=>prior!==step).map(prior=>prior.key)}:{})};
+    inputRevision:route.inputRevision,phase:'work',outputFile:step.outputFile,additionalInput:step.goal+(step.handoff?'\n可信同任务交接：'+JSON.stringify(step.handoff):'')+(step.sources?'\n可信sources精确列表：'+JSON.stringify(step.sources):'')+
+      (step.partialSources?.length?'\n失败组合的只读功能材料（不是成功reviewedArtifacts，不能认证其Runtime）：'+JSON.stringify(step.partialSources):''),
+    taskRuntimeRoute:route,...(reviewedArtifacts?{reviewedArtifacts,reviewedTaskKeys:reviewedSteps.map(prior=>prior.key)}:{})};
    if(existingOperation){
     if(Object.entries(operation).some(([key,value])=>!equal(value,existingOperation[key]))||['runId','startedAt','wakeAttemptedAt','finishedAt'].some(key=>existingOperation[key]!=null)||beforeBudget.some(record=>record.operationId===step.operationId))fail('CURRENT13_PREPARED_ROUTE_CHANGED');
    }else projectRegistry(registry=>projectTaskRuntimeRoute({...registry,operations:[...registry.operations,operation]},route));
@@ -469,7 +518,7 @@ export async function runCurrent13RuntimeAcceptance(inputFile,{afterAcceptance,r
    meter.release({taskId:step.taskId,nonce:lease.nonce,terminalEvidence:true});projectRegistry(registry=>{const next={...registry};delete next.lease;return next;});
    safeToClose=true;step.leaseReleased=true;step.status='PASS';plan.callsSpent=afterBudget.length;plan.rootCallsSpent=afterBudget.length;plan.budgetRecords=afterBudget;save();
   }
-  plan.status='PASS';save();if(afterAcceptance)await afterAcceptance({plan,fixture,meter,reportFile});return{...plan,steps:plan.steps.map(({goal,...step})=>step)};
+  plan.status=plan.postExecutionSubsetContinuation?'COMPLETED_WITH_FAILURES':'PASS';save();if(afterAcceptance)await afterAcceptance({plan,fixture,meter,reportFile});return{...plan,steps:plan.steps.map(({goal,...step})=>step)};
  }catch(error){
   if(plan){plan.status='FAILED';plan.errorCode=/^[A-Z0-9_]+$/.test(error.code??'')?error.code:'CURRENT13_ACCEPTANCE_FAILED';try{plan.callsSpent=budgetRecords(plan.rootTaskId).length;}catch{}save();}
   throw Object.assign(Error(/^[A-Z0-9_]+$/.test(error.code??'')?error.code:'CURRENT13_ACCEPTANCE_FAILED'),{code:/^[A-Z0-9_]+$/.test(error.code??'')?error.code:'CURRENT13_ACCEPTANCE_FAILED'});
@@ -478,8 +527,10 @@ export async function runCurrent13RuntimeAcceptance(inputFile,{afterAcceptance,r
 export function parseCurrent13AcceptanceArgs(args){
  if(args[0]==='--finalize-current13-prefix'&&(args.length===1||args.length===3&&args[1]==='--input'))return{mode:'finalize'};
  if(args[0]==='--repair-current13-preclaim'&&(args.length===1||args.length===3&&args[1]==='--input'))return{mode:'repair-preclaim'};
+ if(args[0]==='--continue-current13-subset'&&(args.length===1||args.length===3&&args[1]==='--input'))return{mode:'continue-subset'};
  if(args.length===3&&args[0]==='--resume-current13'&&args[1]==='--input')return{mode:'resume',inputFile:args[2],allowHistoricalSourceTransition:false};
  if(args.length===4&&args[0]==='--resume-current13'&&args[1]==='--allow-historical-source-transition'&&args[2]==='--input')return{mode:'resume',inputFile:args[3],allowHistoricalSourceTransition:true};
+ if(args.length===5&&args[0]==='--resume-current13'&&args[1]==='--allow-historical-source-transition'&&args[2]==='--allow-closed-runtime-subset'&&args[3]==='--input')return{mode:'resume',inputFile:args[4],allowHistoricalSourceTransition:true,allowClosedRuntimeSubset:true};
  if(args.length===2&&args[0]==='--input')return{mode:'run',inputFile:args[1]};
  fail('CURRENT13_ARGUMENT_DENIED');
 }
@@ -488,7 +539,8 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
   // The metadata-only branch intentionally does not read the credential input.
   if(args.mode==='finalize')result=await finalizePrefixFromNative();
   else if(args.mode==='repair-preclaim')result=await repairPreclaimFromNative();
-  else if(args.mode==='resume')result=await runCurrent13RuntimeAcceptance(args.inputFile,{resumeCurrent13:true,allowHistoricalSourceTransition:args.allowHistoricalSourceTransition});
+  else if(args.mode==='continue-subset')result=await continueSubsetFromNative();
+  else if(args.mode==='resume')result=await runCurrent13RuntimeAcceptance(args.inputFile,{resumeCurrent13:true,allowHistoricalSourceTransition:args.allowHistoricalSourceTransition,allowClosedRuntimeSubset:args.allowClosedRuntimeSubset});
   else result=await runCurrent13RuntimeAcceptance(args.inputFile);
   console.log(JSON.stringify(result));}
  catch(error){console.error(JSON.stringify({status:'FAILED',errorCode:error.code??'CURRENT13_ACCEPTANCE_FAILED'}));process.exitCode=1;}

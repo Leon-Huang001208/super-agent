@@ -129,8 +129,9 @@ export function createTaskRuntimeAcceptanceEvidence({readRun,readRunFile,listHos
   if(!audit.some(record=>['ROLE_PROXY_READY','ROLE_PROXY_TLS_READY'].includes(record.value.code)&&record.value.runId===runId))fail('BROKER_RUN_NOT_PROVEN');
   const optionalPath='/backend-api/ps/plugins/tooling-state/turtle';
   const denials=audit.filter(({value})=>typeof value.code==='string'&&/DENIED|AUTH_REQUIRED|EXPIRED/.test(value.code));
-  if(denials.some(({value})=>profile.runtime!=='codex'||value.code!=='ROLE_PROXY_PATH_DENIED'||value.path!==optionalPath||
-   value.runId!==undefined&&value.runId!==runId||value.profileId!==undefined&&value.profileId!==profileId))fail('AUDIT_DENIAL');
+  const optionalDenial=value=>profile.runtime==='codex'&&value.code==='ROLE_PROXY_PATH_DENIED'&&value.path===optionalPath;
+  const blockedPath=value=>profile.runtime!=='codex'&&value.code==='ROLE_API_PATH_DENIED'&&value.status===403;
+  if(denials.some(({value})=>!optionalDenial(value)&&!blockedPath(value)||value.runId!==undefined&&value.runId!==runId||value.profileId!==undefined&&value.profileId!==profileId))fail('AUDIT_DENIAL');
   const completions=audit.filter(record=>profile.runtime==='codex'?record.value.code==='ROLE_PROXY_COMPLETED'&&record.value.path==='/backend-api/codex/responses':record.value.code==='ROLE_API_COMPLETED');
   if(!completions.length||completions.length>64||completions.some(({value})=>!Number.isInteger(value.status)||value.status<200||value.status>=300||!Number.isInteger(value.requestCount)||value.requestCount<1||value.requestCount>64||
    profile.runtime!=='codex'&&(value.runId!==runId||value.profileId!==profileId||value.model!==profile.providerModel||value.provider!==profile.provider))||
@@ -158,8 +159,9 @@ export function createTaskRuntimeAcceptanceEvidence({readRun,readRunFile,listHos
    brokerCleanup:store('broker-cleanup.json',{runId,status:'terminated',sourceFileSha256:sourceSha('broker-process-cleanup.json'),sourceProcessSha256:sourceSha('broker-process.json')}),
    model:store('model.json',{runId,profileId,modelId:profile.providerModel,runtimeId:profile.runtime,observed:true,sourceAuditSha256:sourceSha('proxy-audit/provider.jsonl'),
     sourceEventSha256:completions.map(record=>record.sha256),guardSourceSha256:implementation.sourceSha256,
-    ...(denials.length?{optionalMetadata:[{code:'ROLE_PROXY_PATH_DENIED',path:optionalPath,status:'NOT_RUN',disposition:'denied-as-designed',count:denials.length,
-     sourceEventSha256:denials.map(record=>record.sha256)}]}:{})}),
+    ...(denials.some(record=>optionalDenial(record.value))?{optionalMetadata:[{code:'ROLE_PROXY_PATH_DENIED',path:optionalPath,status:'NOT_RUN',disposition:'denied-as-designed',count:denials.length,
+     sourceEventSha256:denials.map(record=>record.sha256)}]}:{}),
+    ...(denials.some(record=>blockedPath(record.value))?{blockedRequests:denials.filter(record=>blockedPath(record.value)).map(record=>({code:record.value.code,status:403,path:record.value.path??'UNKNOWN',capability:'NOT_RUN',disposition:'blocked-request',sourceEventSha256:record.sha256}))}:{})}),
    usage:store('usage.json',{runId,inputTokens:last.inputTokens,outputTokens:last.outputTokens,unknownCost:true,sourceNativeRunSha256:sha(JSON.stringify(lastRun))}),
    implementation:store('implementation.json',{runId,profileId,modelId:profile.providerModel,runtimeId:profile.runtime,
     ...Object.fromEntries(['sourceSha256','cliSha256','argsSha256','configSha256','npmCacheVerified','freshSession'].map(key=>[key,implementation[key]])),sourceFileSha256:sourceSha('implementation-proof.json'),sourceNativeProofSha256:sourceSha('native-proof.json')}),tools:[]};

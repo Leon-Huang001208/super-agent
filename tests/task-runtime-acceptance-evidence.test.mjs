@@ -136,3 +136,10 @@ test('other auth/model/path denials or a different runtime never inherit the opt
  const api=fixture();api.audit.push({code:'ROLE_PROXY_PATH_DENIED',path});api.updateAudit();
  await assert.rejects(createTaskRuntimeAcceptanceEvidence(api.ports)(api.input),hasCode('TASK_RUNTIME_ACCEPTANCE_AUDIT_DENIAL'));
 });
+test('completed API work can retain an unknown blocked path observation without granting a capability',async()=>{
+ const f=fixture('deepseek_claude'),blocked={code:'ROLE_API_PATH_DENIED',status:403,runId:f.runId,profileId:f.profileId};f.audit.push(blocked);f.updateAudit();
+ const built=await createTaskRuntimeAcceptanceEvidence(f.ports)(f.input),model=JSON.parse(built.files.find(file=>file.file===built.receipt.evidence.model.file).bytes);
+ assert.equal(model.observed,true);assert.equal(model.blockedRequests[0].path,'UNKNOWN');assert.equal(model.blockedRequests[0].capability,'NOT_RUN');assert.ok(!built.receipt.tools.some(tool=>tool.includes('UNKNOWN')));
+ for(const change of [{runId:randomUUID()},{profileId:'minimax_claude'},{code:'ROLE_API_TOKEN_DENIED'}]){const bad=fixture('deepseek_claude');bad.audit.push({...blocked,runId:bad.runId,profileId:bad.profileId,...change});bad.updateAudit();await assert.rejects(createTaskRuntimeAcceptanceEvidence(bad.ports)(bad.input),hasCode('TASK_RUNTIME_ACCEPTANCE_AUDIT_DENIAL'));}
+ const missing=fixture('deepseek_claude');missing.audit.splice(1);missing.audit.push({...blocked,runId:missing.runId,profileId:missing.profileId});missing.updateAudit();await assert.rejects(createTaskRuntimeAcceptanceEvidence(missing.ports)(missing.input));
+});
