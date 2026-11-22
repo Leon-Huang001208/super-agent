@@ -47,6 +47,97 @@ function fixture(){
   return {binding,catalog,project,agentIds,data,locks,published,calls,tx,db,database,services,options,task};
 }
 
+function closedChiefHistory(t){
+  const f=fixture(),root=fs.mkdtempSync(path.join(os.tmpdir(),'sa-context-chief-history-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const op={id:randomUUID(),kind:'run',role:'chief',phase:'plan',taskId:f.task.id,rootTaskId:f.task.id,projectId:f.task.projectId,
+    projectWorkspaceId:randomUUID(),agentId:f.binding.chiefAgentId,contextVersion:1,inputRevision:taskInputRevision(f.task)};op.artifactGeneration=op.id;
+  const contextSnapshot={roleOperationId:op.id,inputRevision:op.inputRevision,projectId:op.projectId};
+  const initial={id:randomUUID(),companyId:f.task.companyId,issueId:f.task.id,agentId:op.agentId,responsibleUserId:f.binding.nativeOwnerId,
+    status:'failed',exitCode:1,signal:null,retryOfRunId:null,scheduledRetryAttempt:0,startedAt:'2026-11-20T00:00:00Z',finishedAt:'2026-11-20T00:01:00Z',
+    errorCode:'NATIVE_ROLE_WORKSPACE_SCOPE_DENIED',error:'NATIVE_ROLE_WORKSPACE_SCOPE_DENIED',stdoutExcerpt:'',stderrExcerpt:'',logBytes:0,logSha256:sha(''),
+    lastOutputSeq:0,lastOutputAt:null,lastOutputStream:null,lastOutputBytes:null,nativeSessionId:null,sessionIdBefore:null,sessionIdAfter:null,
+    processPid:null,processGroupId:null,processStartedAt:null,contextSnapshot:structuredClone(contextSnapshot),
+    resultJson:{stopReason:'adapter_failed',timeoutFired:false,configFreshness:{session:{taskSessionAvailable:false,taskSessionReused:false}},executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
+  const refusal={...structuredClone(initial),id:randomUUID(),retryOfRunId:initial.id,scheduledRetryAttempt:1,startedAt:'2026-11-20T00:02:00Z',finishedAt:'2026-11-20T00:03:00Z',
+    errorCode:'TEAM_NATIVE_RETRY_BOOTSTRAP_CHIEF_WORKSPACE_SUCCESSOR_NOT_PRISTINE',error:'The controlled Native intake or retry did not admit this execution.',
+    usageJson:{accountingReceiptReady:true,ledgerScope:{issueId:f.task.id,projectId:f.task.projectId}}};
+  refusal.resultJson.executionRecovery={kind:'reconciliation',providerWorkStarted:null};
+  const success={...structuredClone(refusal),id:randomUUID(),status:'succeeded',exitCode:0,errorCode:null,error:null,retryOfRunId:refusal.id,scheduledRetryAttempt:2,
+    startedAt:'2026-11-20T00:04:00Z',finishedAt:'2026-11-20T00:05:00Z',sessionIdAfter:randomUUID(),stdoutExcerpt:'Successful plan',logBytes:100,logSha256:sha('Successful plan'),resultJson:{}};
+  f.data.heartbeatRuns.push(initial,refusal,success);
+  const put=(name,value)=>{const file=path.join(root,name);fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});fs.writeFileSync(file,JSON.stringify(value)+'\n',{mode:0o600});return file;};
+  const registry={companyId:f.task.companyId,ownerId:f.binding.nativeOwnerId,team:{ids:{chief:op.agentId},enabled:true},
+    policy:{maxRootRoleCalls:20},agents:[{profile:{agentId:op.agentId,role:'chief'}}],operations:[op],lease:{taskId:randomUUID(),nonce:randomUUID()}};
+  put('registry.json',registry);
+  const mapping={operationId:op.id,taskId:f.task.id,agentId:op.agentId,runId:success.id};
+  put('budget/'+f.task.id+'/'+op.id+'.json',op);put('operations/'+op.id+'.json',mapping);
+  for(let index=0;index<7;index++){
+    const call={...op,id:randomUUID(),contextVersion:undefined,artifactGeneration:undefined},run={...structuredClone(success),id:randomUUID(),retryOfRunId:null,scheduledRetryAttempt:0,contextSnapshot:{roleOperationId:call.id,inputRevision:op.inputRevision}};
+    f.data.heartbeatRuns.push(run);put('budget/'+f.task.id+'/'+call.id+'.json',call);put('operations/'+call.id+'.json',{operationId:call.id,taskId:call.taskId,agentId:call.agentId,runId:run.id});
+  }
+  const observe=args=>observeContextCallEvidence({...args,root});
+  const read=async()=>{const repository=await createChiefContextPaperclipRepository({...f.options,observeLocalExecution:observe});return repository.transaction('closed-chief-execution',tx=>tx.readExecution(f.task.id),{db:f.tx});};
+  const evidence=()=>fs.readdirSync(root+'/budget/'+f.task.id).sort().map(name=>[name,sha(fs.readFileSync(root+'/budget/'+f.task.id+'/'+name))]);
+  return{...f,root,op,registry,initial,refusal,success,mapping,put,observe,read,evidence};
+}
+
+test('the repository closes only the physically bound successful retry family without rewriting its Native null',async t=>{
+  const f=closedChiefHistory(t),before=structuredClone(f.data),budget=f.evidence();
+  const local=f.observe({task:f.task,ids:[f.task.id],runs:f.data.heartbeatRuns});assert.equal(local.unknown,false);
+  const view=await f.read();assert.equal(view.active,false);assert.equal(view.unknown,false);
+  assert.deepEqual(view.settledFailedRunIds,[f.refusal.id]);assert.equal(view.budgetUsed,8);assert.equal(view.budgetMaximum,20);
+  assert.equal(f.refusal.resultJson.executionRecovery.providerWorkStarted,null);assert.deepEqual(f.data,before);assert.deepEqual(f.evidence(),budget);
+  assert.equal(f.calls.wake,0);assert.equal(f.calls.create,0);assert.equal(f.calls.transactions,0);
+});
+
+test('closed historical input remains settled after a new input generation without an active phase or resume claim',async t=>{
+  const f=closedChiefHistory(t);f.task.description='A newer owner supplement';assert.notEqual(taskInputRevision(f.task),f.op.inputRevision);
+  f.registry.team.enabled=false;f.put('registry.json',f.registry);
+  const before=structuredClone(f.registry.lease),view=await f.read();
+  assert.equal(view.unknown,false);assert.deepEqual(view.settledFailedRunIds,[f.refusal.id]);assert.equal(view.budgetUsed,8);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.root+'/registry.json')).lease,before);
+});
+
+test('an arbitrary later success, broken lineage or provider evidence never closes a controlled failure',async t=>{
+  const mutations=[f=>{f.success.retryOfRunId=f.initial.id;},f=>{f.success.scheduledRetryAttempt=1;},f=>{f.refusal.retryOfRunId=randomUUID();},
+    f=>{f.success.contextSnapshot.roleOperationId=randomUUID();},f=>{f.refusal.contextSnapshot.inputRevision=sha('foreign input');},f=>{f.refusal.contextSnapshot.projectId=randomUUID();},
+    f=>{f.refusal.agentId=randomUUID();},f=>{f.refusal.responsibleUserId='foreign-owner';},f=>{f.success.status='failed';},
+    f=>{f.success.exitCode=1;},f=>{f.success.signal='SIGTERM';},f=>{f.success.contextSnapshot.inputRevision=sha('different successful input');},
+    f=>{f.refusal.errorCode='ARBITRARY_FAILURE';},f=>{f.refusal.nativeSessionId=randomUUID();},f=>{f.refusal.logBytes=5;},
+    f=>{f.refusal.resultJson.executionRecovery.providerWorkStarted=true;},f=>{f.initial.resultJson.executionRecovery.providerWorkStarted=null;},
+    f=>{f.put('operations/'+f.op.id+'.json',{...f.mapping,runId:randomUUID()});},
+    f=>{fs.unlinkSync(f.root+'/budget/'+f.task.id+'/'+f.op.id+'.json');},
+    f=>{f.put('permits/'+f.initial.id+'.json',{});},
+    ...['permits/','claims/','results/','transport/'].map(prefix=>f=>{f.put(prefix+f.refusal.id+(prefix==='transport/'?'/result.json':'.json'),{});})];
+  for(const mutate of mutations){const f=closedChiefHistory(t);mutate(f);const view=await f.read();assert.equal(view.unknown,true);assert.ok(!view.settledFailedRunIds.includes(f.refusal.id));assert.equal(f.calls.wake,0);}
+});
+
+test('foreign scope is never added to the settled failure projection',t=>{
+  for(const key of ['companyId','issueId']){const f=closedChiefHistory(t);f.refusal[key]=randomUUID();const local=f.observe({task:f.task,ids:[f.task.id],runs:f.data.heartbeatRuns});assert.ok(!local.settledFailedRunIds.includes(f.refusal.id));}
+});
+
+test('the owner continue reader uses only the unique authenticated Native intent for this transaction source',async()=>{
+  const f=fixture(),key=sha('original owner continue'),intent={schemaVersion:1,sourceKey:key,operationId:randomUUID(),kind:'continue',taskId:f.task.id,originalText:'/chief continue LEO-50',bodySha256:sha('/chief continue LEO-50')};
+  f.data.activityLog.push({id:randomUUID(),companyId:f.binding.companyId,actorType:'user',actorId:f.binding.nativeOwnerId,action:'team.context.intent',entityId:f.task.id,details:intent});
+  const repository=await createChiefContextPaperclipRepository(f.options),before=structuredClone(f.data);
+  await repository.transaction(key,async tx=>{
+    assert.equal(typeof tx.readOwnerContinueIntent,'function');const saved=await tx.readOwnerContinueIntent();assert.deepEqual(saved,intent);
+    saved.originalText='another message';assert.equal(f.data.activityLog[0].details.originalText,intent.originalText);
+  },{db:f.tx});
+  assert.deepEqual(f.data,before);assert.equal(f.calls.transactions,0);assert.equal(f.calls.wake,0);assert.equal(f.calls.create,0);
+});
+
+test('the owner continue reader rejects system, foreign, duplicate, missing and non-continue intents',async()=>{
+  const mutations=[f=>{f.row.actorType='system';f.row.actorId='super-agent-context-m2';},f=>{f.row.actorId='foreign';},
+    f=>{f.row.companyId=randomUUID();},f=>{f.row.details.sourceKey=sha('another source');},f=>{f.row.details.kind='new';},
+    f=>{f.data.activityLog.push(structuredClone(f.row));},f=>{f.data.activityLog.length=0;}];
+  for(const mutate of mutations){const f=fixture(),key=sha('owned continue');f.row={id:randomUUID(),companyId:f.binding.companyId,actorType:'user',actorId:f.binding.nativeOwnerId,action:'team.context.intent',entityId:f.task.id,details:{schemaVersion:1,sourceKey:key,operationId:randomUUID(),kind:'continue',taskId:f.task.id}};f.data.activityLog.push(f.row);mutate(f);
+    const repository=await createChiefContextPaperclipRepository(f.options);
+    await assert.rejects(repository.transaction(key,tx=>tx.readOwnerContinueIntent(),{db:f.tx}),/CHIEF_CONTEXT_(?:OWNER_CONTINUE_INTENT_REQUIRED|NATIVE_EVENT_DENIED)/);
+    assert.equal(f.calls.wake,0);assert.equal(f.calls.create,0);
+  }
+});
+
 test('existing Native transaction is reused for a read-only context guard',async()=>{
   const f=fixture(),repo=await createChiefContextPaperclipRepository(f.options);
   await repo.transaction('context-sync:'+f.task.id,async tx=>{

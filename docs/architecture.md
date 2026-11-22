@@ -115,6 +115,8 @@ flowchart LR
 
 调用已启动而结果未知时保留原 attempt 和租约，核对 Native run、journal、PR 和通知回执后再决定下一步；不能自动恢复许可、重跑模型或重复发布。CI 等待释放执行资源与重新取得写入许可必须有真实证据。
 
+当前执行未知与已闭合的失败历史分别判定。受控Chief前置拒绝只有原生直接重试谱系、同一历史操作/输入/身份、成功后继的真实预算及操作映射、失败方零执行文件全部闭合时，才进入既有`settledFailedRunIds`；旧Native的`provider=null`不改写。本人已入站却因核对门拒绝的continue可由认证Owner在关闭派发且排空时沿原Native intent事务对账，不制造新入站、目标或调用；该事务先于恢复coordinator，避免待应用补充先改变原请求输入，也不回退后来本人的项目或任务选择。
+
 Native内置重试队列拥有后继run。`role-native-retry.mjs`只在该run进入原Adapter执行前，按数据库的`retryOfRunId`和`scheduledRetryAttempt`绑定新的物理调用operation；不创建任务、run或另一个重试队列。父run必须已失败结束，私有host传输必须明确非unknown、未超时、未取消且stdout/stderr摘要匹配，原操作预算、输入、根/子任务、锁和已释放的Native环境租约逐项对应。证据缺失或存在其他活动执行时拒绝，不清理未知锁。
 
 Native真实dispatch在adapter前会补写ledger归属、初始accounting receipt及预算reservation等管理字段；它们不能按scheduled快照要求全空，也不能单独证明Provider已执行或未执行。未启动证明只接受安装版固定合同的最窄管理结构，并按可信任务/运行身份核对；实际会话、进程、输出、Provider结果或未知证据仍拒绝。无模型合同须经过原生dispatch准备路径，不能只把scheduled副本status改成running。
