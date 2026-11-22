@@ -91,6 +91,8 @@ Native HTTPS、每 run 证书/信任、TLS ready 与 MCP CA 传播的合同及�
 | 受管 PR 复用 | `scripts/existing-pr-runner.mjs` | 精确候选、同仓库同基线、拒绝其他动作和 SHA 条件合并；真实保护、CI 与评审状态仍必需 |
 | 项目工程运行时 | `scripts/project-runtime.mjs`、`scripts/vendor/leon-engineering/` | 固定 0.19.4 模块与来源校验，显式 Harness 和交付入口，旧回执续接；`tests/project-runtime.test.mjs` 和 `tests/management/project-runtime-git.mjs` |
 
+宿主检查环境与工作树交接由`tests/role-host-capabilities.test.mjs`覆盖：真实登记脚本及直接Git检查保留各自通配语义，父进程四种pathspec污染不进入登记命令，Host的显式文件Git操作仍只处理所选字面路径。inspect核验当前bootstrap与动态HEAD的区别、原回执字节摘要/白名单、配置命令身份及缺失原始退出码，不重跑workspace准备或查询会合并的delivery status。
+
 业务验收沿用固定 `gpt-6.1-sol` / `low`，预检拒绝旧 xhigh 配置。M2 首轮本地 Docker 全量为 515/515（`logs/m2-full-first.log`，加入配置工具前），不表示最终总数、Mini 激活或真实业务通过；后续精确候选须另留回执。
 
 `role-instruction-paths.mjs`把Managed入口与company、Agent、role绑定，复用Native已登记的本run材料副本及baseline；按当前或历史manifest匹配当次摘要。调用门和宿主传输使用完整路径及内容摘要，不再用同名文件的basename定位。网页后续保存不修改已经固定的Native副本。旧UUID许可的原路径合同继续保留。

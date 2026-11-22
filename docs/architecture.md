@@ -18,6 +18,8 @@ RWB普通开发按项目自身持续授权及已登记的交付范围执行，�
 
 已登记的`workspace.prepare`、`delivery.prepareCandidate`及交付命令在宿主执行时复用`hostProxyEnvironment`，读取现有代理环境或macOS系统loopback HTTPS代理，并保留本地服务的`NO_PROXY`。这覆盖模型启动前的GitSafety源码准备，不依赖随后模型broker的代理初始化；项目命令范围、超时、退出码和脱敏处理仍沿原合同。
 
+宿主登记脚本不继承四种Git全局pathspec选择变量；仅Host内部处理模型文件路径的Git调用显式使用literal语义，避免影响项目脚本自身的通配枚举或check-ignore。`host.project_inspect`只读投影当前模型启动前的工作树核验、目录身份及原受管回执白名单与摘要；登记prepare的命令身份属于配置，不是历史执行记录。`started`是工作树准备后的正常阶段，实施后才产生integration候选；未保存的历史prepare原始退出码明确为`NOT_RECORDED`，不借整体模型transport成功补证，也不据此授予阶段外写入权限。
+
 代码任务区分三个位置：Native登记的只读源码输入目录、固定`/paperclip/.../_default`产物目录，以及宿主原GitSafety创建的隔离`codeHostPath`。输入目录由fresh Native DB工作区和Owner登记共同绑定，按实际`paperclipWorkspace.workspaceId/projectId/cwd`核验；不能直接用请求cwd作为许可，也不把源码目录的Git校验当作产物目录验收。产物执行投影、permit和Host cwd继续固定，`/workspace/project`单独映射代码工作树。
 
 计划中的产物basename沿执行器、采集和归档的同一合同：stem最多111字符，扩展名仅md/json，无路径。代际前缀`team-<rootUUID>-<generationUUID>-`共79字符，可容纳最长32字符task key。Native收存仍按可信outputPrefix检查代际，文件名长度通过不产生跨Root或跨代权限；已成功的模型计划可由原控制器复读，不为格式合同修复重跑模型。
