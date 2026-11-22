@@ -4,6 +4,122 @@ import { createNativeRoleAdapter, NATIVE_ROLE_MANAGED_ARGS } from '../bridge/nat
 import {assertRolePermitSize,ROLE_PERMIT_MAX_BYTES} from '../bridge/role-permit-contract.mjs';
 import * as roleRuntime from '../bridge/native-role-runtime.mjs';
 import * as contextApi from '../bridge/role-project-context.mjs';
+import {getRoleRuntimeProfile,DEFAULT_ROLE_RUNTIME_ASSIGNMENTS} from '../bridge/role-runtime-profiles.mjs';
+
+// Mechanical current bindings for adapter contracts, not the task selection policy.
+const API_BINDING_FIXTURE=Object.freeze({...DEFAULT_ROLE_RUNTIME_ASSIGNMENTS,research:'deepseek_opencode',devops:'minimax_opencode'});
+
+function opencodeDispatchFixture(role='research',runtimeProfileId){
+ const assignments={...API_BINDING_FIXTURE,...(runtimeProfileId?{[role]:runtimeProfileId}:{})};
+ const f=dispatchFixture(role),selected=getRoleRuntimeProfile(role,assignments);
+ const executionPolicy={executor:'macos_native',sandbox:'none',approvalPolicy:'never',docker:'on_demand'};
+ f.registration.runtimeAssignments=assignments;
+ Object.assign(f.registration.profile,{engine:selected.adapterType,model:selected.model,reasoningEffort:null,
+  dangerouslySkipPermissions:true,sandbox:'none',executionPolicy,tools:['read_materials','shell']});
+ f.ctx.config={engine:'cli',command:'/opt/super-agent/bin/'+selected.runtime,model:selected.model,
+  ...(selected.runtime==='claude'?{maxTurnsPerRun:64}:{}),
+  dangerouslySkipPermissions:true,extraArgs:[],args:[],instructionsFilePath:'/materials/instructions.md'};
+ const events=[];let calls=0,output,preparedInput;
+ const prepare=async registration=>{
+  preparedInput=registration;
+  return {binding:registration.binding,adapterType:selected.adapterType,sessionMode:'new',knowledge:[{text:'Private knowledge {{not-a-template}}'}],
+   config:{model:selected.model,reasoningEffort:null,instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslySkipPermissions:true}};
+ };
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Perform assigned role',log:event=>events.push(event),
+  readRegistration:async()=>f.registration,prepareRole:prepare,nativeExecute:async value=>{calls++;output=value;return{exitCode:0};}});
+ return {...f,selected,events,prepare,execute,getCalls:()=>calls,getOutput:()=>output,getPreparedInput:()=>preparedInput};
+}
+
+test('Claude Native dispatch binds both API providers while retaining fresh session and all common guards',async()=>{
+ for(const runtimeProfileId of ['deepseek_claude','minimax_claude']){
+  const f=opencodeDispatchFixture('devops',runtimeProfileId);await f.execute(f.ctx);
+  assert.equal(f.getCalls(),1);assert.equal(f.getOutput().config.command,'/opt/super-agent/bin/claude');
+  assert.equal(f.getOutput().config.model,f.selected.model);assert.equal(f.getOutput().config.maxTurnsPerRun,64);
+  for(const change of [{chrome:true},{effort:'high'},{maxTurnsPerRun:65},{extraArgs:['--resume','old']},
+   {env:{ANTHROPIC_CUSTOM_HEADERS:'Host: untrusted'}},{env:{CLAUDE_CONFIG_DIR:'/tmp/untrusted'}}]){
+   const bad=opencodeDispatchFixture('devops',runtimeProfileId);Object.assign(bad.ctx.config,change);
+   await assert.rejects(bad.execute(bad.ctx),{code:'NATIVE_ROLE_SCOPE_DENIED'});assert.equal(bad.getCalls(),0);
+  }
+ }
+});
+
+test('OpenCode Native dispatch forwards the explicit assignment and preserves original callbacks and context',async()=>{
+ for(const role of ['research','devops']){
+  const f=opencodeDispatchFixture(role),before=structuredClone(f.ctx),onLog=()=>{},signal=new AbortController().signal;
+  f.ctx.onLog=onLog;f.ctx.signal=signal;
+  assert.equal((await f.execute(f.ctx)).exitCode,0);
+  const output=f.getOutput();assert.equal(output.config.command,'/opt/super-agent/bin/opencode');
+  assert.equal(output.config.model,f.selected.model);assert.equal(output.config.dangerouslySkipPermissions,true);
+  assert.deepEqual(output.config.extraArgs,[]);assert.equal(Object.hasOwn(output.config,'search'),false);
+  assert.equal(Object.hasOwn(output.config,'dangerouslyBypassApprovalsAndSandbox'),false);
+  assert.equal(output.onLog,onLog);assert.equal(output.signal,signal);assert.deepEqual(output.context,before.context);
+  assert.deepEqual(f.getPreparedInput().runtimeAssignments,API_BINDING_FIXTURE);
+  assert.match(output.config.promptTemplate,/Private knowledge/);assert.doesNotMatch(output.config.promptTemplate,/\{\{not-a-template\}\}/);
+  assert.equal(f.getCalls(),1);
+ }
+});
+
+test('OpenCode Native dispatch rejects stale Codex flags, argument overrides and sessions before original execute',async()=>{
+ const mutations=[f=>{delete f.registration.runtimeAssignments;},f=>{delete f.registration.runtimeAssignments.qa;},
+  f=>{f.ctx.config.command='/real/opencode';},f=>{f.ctx.config.model='other/model';},f=>{f.registration.profile.model='other/model';},
+  f=>{f.ctx.config.dangerouslySkipPermissions=false;},f=>{f.ctx.config.dangerouslyBypassApprovalsAndSandbox=true;},
+  f=>{f.ctx.config.dangerouslyBypassSandbox=true;},f=>{f.ctx.config.search=true;},f=>{f.ctx.config.extraArgs=['--session','old'];},
+  f=>{f.ctx.config.args=['--model','other'];},f=>{f.ctx.config.variant='high';},f=>{f.ctx.config.modelReasoningEffort='low';},
+  f=>{f.ctx.runtime.sessionId='old';},f=>{f.ctx.runtime.sessionParams={sessionId:'old'};},
+  f=>{f.ctx.executionTransport={remoteExecution:{}};},f=>{f.ctx.context.projectId='foreign';},
+  f=>{delete f.registration.profile.executionPolicy;f.registration.profile.sandbox='workspace-write';f.ctx.config.dangerouslySkipPermissions=false;}];
+ for(const mutate of mutations){
+  const f=opencodeDispatchFixture();mutate(f);await assert.rejects(f.execute(f.ctx),{code:'NATIVE_ROLE_SCOPE_DENIED'});assert.equal(f.getCalls(),0);
+ }
+ const f=opencodeDispatchFixture();delete f.ctx.config.args;f.ctx.config.variant='';await f.execute(f.ctx);assert.equal(f.getCalls(),1);
+});
+
+test('OpenCode preparation, trusted assignment changes and model credential overrides still block dispatch',async()=>{
+ const secret='PRIVATE_OVERRIDE_DO_NOT_LOG';
+ for(const name of ['OPENAI_API_KEY','DEEPSEEK_API_KEY','MINIMAX_API_KEY','ANTHROPIC_API_KEY','ANTHROPIC_BASE_URL','OPENCODE_CONFIG_CONTENT','OPENCODE_PERMISSION']){
+  const f=opencodeDispatchFixture();f.ctx.config.env={[name]:secret};
+  await assert.rejects(f.execute(f.ctx),{code:'NATIVE_ROLE_SCOPE_DENIED'});assert.equal(f.getCalls(),0);assert.equal(JSON.stringify(f.events).includes(secret),false);
+ }
+ const f=opencodeDispatchFixture();let calls=0,reads=0;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Assigned',log(){},readRegistration:async()=>{
+  const registration=structuredClone(f.registration);if(++reads>1)registration.runtimeAssignments.devops='deepseek_opencode';return registration;},
+  prepareRole:f.prepare,nativeExecute:async()=>{calls++;return{exitCode:0};}});
+ await assert.rejects(execute(f.ctx),{code:'NATIVE_ROLE_REGISTRATION_CHANGED'});assert.equal(calls,0);
+ const badPrepared=createNativeRoleAdapter({basePromptTemplate:'Assigned',log(){},readRegistration:async()=>f.registration,
+  prepareRole:async registration=>({...await f.prepare(registration),adapterType:'codex_local'}),nativeExecute:async()=>{calls++;}});
+ await assert.rejects(badPrepared(f.ctx),{code:'NATIVE_ROLE_PREPARATION_UNCONFIRMED'});assert.equal(calls,0);
+ const missingMaterial=createNativeRoleAdapter({basePromptTemplate:'Assigned',log(){},readRegistration:async()=>f.registration,
+  prepareRole:async()=>{throw Object.assign(Error(),{code:'ROLE_MATERIAL_DIGEST_MISMATCH'});},nativeExecute:async()=>{calls++;}});
+ await assert.rejects(missingMaterial(f.ctx),{code:'ROLE_MATERIAL_DIGEST_MISMATCH'});assert.equal(calls,0);
+});
+
+test('OpenCode accepts only its Agent-specific controller auth marker without reading it',async()=>{
+ for(const role of ['research','devops']){
+  const f=opencodeDispatchFixture(role);
+  const marker='/paperclip/control/research-pm/opencode-clients/'+f.registration.binding.agentId+'/config.json';
+  f.ctx.config.env={OPENCODE_CONFIG:marker,SUPER_AGENT_ROLE_PROVIDER_API_KEY:'CONTROL_ONLY_FIXTURE_VALUE'};
+  assert.equal((await f.execute(f.ctx)).exitCode,0);
+  assert.equal(f.getOutput().config.env.OPENCODE_CONFIG,marker);
+  assert.equal(f.getOutput().config.env.SUPER_AGENT_ROLE_PROVIDER_API_KEY,'CONTROL_ONLY_FIXTURE_VALUE');
+  assert.equal(JSON.stringify(f.events).includes('CONTROL_ONLY_FIXTURE_VALUE'),false);
+ }
+});
+
+test('OpenCode controller marker does not allow other Agents, path forms or content overrides',async()=>{
+ const prefix='/paperclip/control/research-pm/opencode-clients/qa-agent/';
+ for(const marker of ['/tmp/config.json',prefix+'../config.json',prefix+'config.json/other',prefix+'config.json?override=1',
+  '/paperclip/control/research-pm/opencode-clients/other-agent/config.json','',null]){
+  const f=opencodeDispatchFixture();f.ctx.config.env={OPENCODE_CONFIG:marker};
+  await assert.rejects(f.execute(f.ctx),{code:'NATIVE_ROLE_SCOPE_DENIED'});assert.equal(f.getCalls(),0);
+ }
+ for(const name of ['OPENCODE_CONFIG_DIR','OPENCODE_CONFIG_CONTENT']){
+  const f=opencodeDispatchFixture();f.ctx.config.env={OPENCODE_CONFIG:prefix+'config.json',[name]:'untrusted-override'};
+  await assert.rejects(f.execute(f.ctx),{code:'NATIVE_ROLE_SCOPE_DENIED'});assert.equal(f.getCalls(),0);
+ }
+ const f=opencodeDispatchFixture();f.registration.binding.agentId='../other';f.ctx.agent.id='../other';
+ f.ctx.config.env={OPENCODE_CONFIG:'/paperclip/control/research-pm/opencode-clients/../other/config.json'};
+ await assert.rejects(f.execute(f.ctx),{code:'NATIVE_ROLE_SCOPE_DENIED'});assert.equal(f.getCalls(),0);
+});
 
 test('oversize permit failure survives the actual adapter and no-provider boundary without logging content',async()=>{
  const f=dispatchFixture('document-specialist'),events=[],marker='private-permit-content',permit={padding:marker+'x'.repeat(ROLE_PERMIT_MAX_BYTES)};

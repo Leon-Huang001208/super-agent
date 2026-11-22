@@ -2,12 +2,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {createRequire} from 'node:module';
 import {spawn,spawnSync} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {roleExecutionPolicy,isMacNative} from '../bridge/role-execution-policy.mjs';
 import {NATIVE_ROLE_EXTRA_ARGS} from '../bridge/native-role-adapter.mjs';
 import {validateRoleCall} from '../docker/role-codex-gate.mjs';
+import {validateOpenCodeRoleCall as validateRoleOpenCodeCall} from '../docker/role-opencode-gate.mjs';
+import {validateClaudeRoleCall} from '../docker/role-claude-gate.mjs';
+import {RUNTIME_PROFILES} from '../bridge/role-runtime-profiles.mjs';
+import {createRoleOpenCodeLaunch} from './role-opencode-config.mjs';
+import {createRoleClaudeLaunch} from './role-claude-config.mjs';
+import {taskRuntimeImplementationFiles,computeTaskRuntimeImplementationBinding} from '../bridge/task-runtime-router.mjs';
 import {validateRoleMaterialSnapshot} from '../bridge/role-material-snapshot.mjs';
 import {hostRoleInstructionPath} from '../bridge/role-instruction-paths.mjs';
 import {createRoleMaterialProjection} from './role-container-transport.mjs';
@@ -26,6 +33,22 @@ const ROOT=DATA+'/state/control/research-pm';
 const fail=code=>{throw Object.assign(Error(code),{code});};
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const uuid=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
+/** Bind npm's Codex launcher and its resolved platform binary; native CLIs bind their actual executable bytes. */
+export function roleHostCliIdentity(command){
+ const entry=fs.realpathSync(command),entrySha256=sha(fs.readFileSync(entry));
+ if(path.basename(entry)==='codex.js'&&path.basename(path.dirname(entry))==='bin'){
+  const pkg=path.join(path.dirname(entry),'..','package.json');
+  if(JSON.parse(fs.readFileSync(pkg)).name==='@openai/codex'){
+   const triple=process.arch==='arm64'?'aarch64-apple-darwin':process.arch==='x64'?'x86_64-apple-darwin':null;
+   if(!triple||process.platform!=='darwin')fail('ROLE_HOST_CLI_IDENTITY_DENIED');
+   let vendor;try{vendor=path.join(path.dirname(createRequire(entry).resolve('@openai/codex-darwin-'+process.arch+'/package.json')),'vendor');}
+   catch{vendor=path.join(path.dirname(entry),'..','vendor');}
+   const binary=fs.realpathSync(path.join(vendor,triple,'bin','codex'));
+   return{cliSha256:sha(JSON.stringify({entrySha256,binarySha256:sha(fs.readFileSync(binary))}))};
+  }
+ }
+ return{cliSha256:entrySha256};
+}
 function read(filename,maximumBytes=16*1024*1024){
  const stat=fs.lstatSync(filename);if(!stat.isFile()||stat.isSymbolicLink()||stat.uid!==process.getuid()||stat.nlink!==1||(stat.mode&0o077)||stat.size>maximumBytes)fail('ROLE_HOST_FILE_DENIED');
  return fs.readFileSync(filename);
@@ -156,13 +179,19 @@ async function waitBroker(readyFile,child,runId){
   await new Promise(resolve=>setTimeout(resolve,50));
  }fail('ROLE_HOST_BROKER_READY_TIMEOUT');
 }
-export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/leon/.local/bin/codex',platform=process.platform,npmCacheOptions={},pluginCacheOptions={}}={}){
+export async function runHostTransport(runId,{dataRoot=DATA,transportRoot,codexPath='/Users/leon/.local/bin/codex',opencodePath='/Users/leon/.npm-global/bin/opencode',claudePath='/Users/leon/.local/bin/claude',platform=process.platform,npmCacheOptions={},pluginCacheOptions={}}={}){
  if(platform!=='darwin'||!uuid.test(runId??''))fail('ROLE_HOST_TRANSPORT_ARGUMENT_DENIED');
- const root=path.join(dataRoot,'state/control/research-pm'),dir=root+'/transport/'+runId;
+ const root=path.join(dataRoot,'state/control/research-pm'),selectedTransport=transportRoot??root+'/transport';
+ if(typeof selectedTransport!=='string'||!path.isAbsolute(selectedTransport)||path.normalize(selectedTransport)!==selectedTransport||fs.realpathSync(selectedTransport)!==selectedTransport)fail('ROLE_HOST_TRANSPORT_ROOT_DENIED');
+ const dir=path.join(selectedTransport,runId);
  const log=event=>fs.appendFileSync(root+'/host-transport.jsonl',JSON.stringify({at:new Date().toISOString(),runId,...event})+'\n',{mode:0o600});
  const request=JSON.parse(read(dir+'/request.json')),permitBytes=read(root+'/permits/'+runId+'.json',ROLE_PERMIT_MAX_BYTES),permit=JSON.parse(permitBytes),claim=JSON.parse(read(root+'/claims/'+runId+'.json'));
  if(transportExecutor(request,permit)!=='macos_native')fail('ROLE_HOST_EXECUTION_POLICY_DENIED');
- validateRoleCall({permit,args:request.args,cwd:request.cwd,now:Date.now(),env:{PAPERCLIP_RUN_ID:permit.runId,PAPERCLIP_AGENT_ID:permit.agentId,PAPERCLIP_COMPANY_ID:permit.companyId,PAPERCLIP_TASK_ID:permit.taskId,CODEX_HOME:request.home}});
+ const runtimeProfile=permit.runtimeProfileId===undefined?RUNTIME_PROFILES.codex_subscription:RUNTIME_PROFILES[permit.runtimeProfileId];
+ if(!runtimeProfile||permit.model!==runtimeProfile.model)fail('ROLE_HOST_RUNTIME_PROFILE_DENIED');
+ const api=runtimeProfile.runtime!=='codex',claude=runtimeProfile.runtime==='claude';
+ if(api&&request.runtimeProfileId!==runtimeProfile.id)fail('ROLE_HOST_RUNTIME_PROFILE_DENIED');
+ (claude?validateClaudeRoleCall:api?validateRoleOpenCodeCall:validateRoleCall)({permit,args:request.args,cwd:request.cwd,now:Date.now(),env:{PAPERCLIP_RUN_ID:permit.runId,PAPERCLIP_AGENT_ID:permit.agentId,PAPERCLIP_COMPANY_ID:permit.companyId,PAPERCLIP_TASK_ID:permit.taskId,CODEX_HOME:request.home}});
  if(request.runId!==runId||request.taskId!==permit.taskId||claim.runId!==runId||claim.permitSha256!==sha(permitBytes)||request.inputSha256!==sha(read(dir+'/stdin'))||fs.existsSync(dir+'/host.claim.json')||fs.existsSync(dir+'/cancel.json'))fail('ROLE_HOST_TRANSPORT_BINDING_DENIED');
  const originalMaterial=hostRoleInstructionPath(permit.instructionsFilePath,dataRoot);
  if(sha(read(originalMaterial))!==permit.materialSha256)fail('ROLE_HOST_MATERIAL_CHANGED');
@@ -170,7 +199,8 @@ export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/le
  durable(dir+'/host.claim.json',{runId,executor:'macos_native',executionPolicy:permit.executionPolicy,at:new Date().toISOString()});
  const client=dir+'/client',proxy=dir+'/proxy',audit=dir+'/proxy-audit';for(const folder of [client,proxy,audit,client+'/home'])fs.mkdirSync(folder,{mode:0o700});
  const npmCache=await prepareNativeNpmCache({...npmCacheOptions,home:client+'/home'});log({code:'ROLE_NATIVE_NPM_CACHE_CONFIGURED',cacheRoot:npmCache.proof.cacheRoot});
- const pluginCache=await prepareNativePluginCache({...pluginCacheOptions,codexHome:client});log({code:'ROLE_NATIVE_PLUGIN_CACHE_CONFIGURED',cacheRoot:pluginCache.proof.cacheRoot});
+ const pluginCache=api?{verify(){},proof:{status:'not_applicable',runtime:runtimeProfile.runtime}}:await prepareNativePluginCache({...pluginCacheOptions,codexHome:client});
+ if(!api)log({code:'ROLE_NATIVE_PLUGIN_CACHE_CONFIGURED',cacheRoot:pluginCache.proof.cacheRoot});
  const snapshot=validateRoleMaterialSnapshot(permit);
  const materialProjection=snapshot?createRoleMaterialProjection({permit,materialRoot:root+'/materials',snapshotRoot:dir+'/material-snapshot',clientRoot:client,log}):null;
  const nativeProjection=snapshot?.nativeInstructions?createRoleMaterialProjection({permit,kind:'native-instructions',materialRoot:hostRoleInstructionPath(permit.materialRoot,dataRoot),snapshotRoot:dir+'/native-instructions',clientRoot:client,log}):null;
@@ -198,38 +228,59 @@ export async function runHostTransport(runId,{dataRoot=DATA,codexPath='/Users/le
  const controller=new AbortController(),hostExecutor=advanced?createHostCapabilityExecutor({permit,workspace,controlRoot:root,executionPolicy:permit.executionPolicy,signal:controller.signal,log}):null;
  const hostTools=hostExecutor?.listTools()??[],key=randomBytes(32).toString('hex');
  const releaseTimeouts=rwbReleaseTimeoutPolicy(permit);
+ const subscriptionAuth=api?null:JSON.parse(read(dir+'/provider/auth.json'));
+ const delegatedExpiresAt=subscriptionAuth?.delegatedExpiresAt;
+ if(delegatedExpiresAt!==undefined&&(!Number.isSafeInteger(delegatedExpiresAt)||delegatedExpiresAt<=Date.now()||delegatedExpiresAt>Date.now()+1800000))fail('ROLE_HOST_DELEGATED_AUTH_EXPIRED');
  const {companySkillSnapshot:_privateSkillSnapshot,...brokerCapabilities}=permit.effectiveCapabilities??{};
- durable(proxy+'/config.json',{runId,key,expiresAt:Date.now()+(releaseTimeouts?.brokerMs??660000),role:advanced?permit.role:undefined,companyId:permit.companyId,rootTaskId:permit.rootTaskId,authorizedHostActions:permit.authorizedHostActions,taskId:permit.taskId,projectId:permit.projectId,projectContext:permit.projectContext,
+ durable(proxy+'/config.json',{runId,key,expiresAt:Math.min(Date.now()+(releaseTimeouts?.brokerMs??660000),delegatedExpiresAt??Infinity),...(api?{runtimeProfileId:runtimeProfile.id}:{}),role:advanced?permit.role:undefined,companyId:permit.companyId,rootTaskId:permit.rootTaskId,authorizedHostActions:permit.authorizedHostActions,taskId:permit.taskId,projectId:permit.projectId,projectContext:permit.projectContext,
   readOnlyToolsOnly:Boolean(snapshot&&permit.projectContext?.delivery?.maximumAction==='artifact'),additionalCapabilities:permit.additionalCapabilities??[],effectiveCapabilities:permit.effectiveCapabilities?brokerCapabilities:undefined,hostTools,mcpAllowedTools:permit.effectiveCapabilities?.mcpAllowedTools??[]});
- const auth=JSON.parse(read(dir+'/provider/auth.json')),claims=JSON.parse(Buffer.from(auth.tokens.id_token.split('.')[1],'base64url'));
+ if(!api){
+ const auth=subscriptionAuth,claims=JSON.parse(Buffer.from(auth.tokens.id_token.split('.')[1],'base64url'));
  const account=auth.tokens.account_id??claims['https://api.openai.com/auth']?.chatgpt_account_id;if(typeof account!=='string'||!account)fail('ROLE_HOST_PROVIDER_ACCOUNT_DENIED');
  const payload={iss:'https://auth.openai.com',sub:'role-'+runId,exp:Math.floor(Date.now()/1000)+3600,iat:Math.floor(Date.now()/1000),email:'role@local.invalid','https://api.openai.com/auth':{chatgpt_account_id:account,chatgpt_user_id:'role-'+runId,chatgpt_plan_type:'plus'}};
  const token=Buffer.from('{"alg":"RS256","typ":"JWT"}').toString('base64url')+'.'+Buffer.from(JSON.stringify(payload)).toString('base64url')+'.eA';
  durable(client+'/auth.json',{auth_mode:'chatgpt',tokens:{access_token:key,refresh_token:'role-no-refresh',id_token:token,account_id:account},last_refresh:new Date().toISOString()});
  const models=JSON.parse(read(root+'/models-current.json'));if(!models.models?.some(value=>value.slug==='gpt-6.1-sol'))fail('ROLE_HOST_CATALOG_DENIED');durable(client+'/models.json',models);
+ }
  const skillModule=await import('../bridge/role-skill-bundles.mjs');
  const skillAssetRoot=fileURLToPath(new URL('../assets/role-skills/',import.meta.url));
  const roleSkills=permit.effectiveCapabilities?skillModule.materializeEffectiveRoleSkills({codexHome:client,effectiveCapabilities:permit.effectiveCapabilities,assetRoot:skillAssetRoot,packageRoot:permit.effectiveCapabilities.companySkillSnapshot?dir+'/skill-packages':skillAssetRoot}):null;
  if(roleSkills)durable(dir+'/role-skills.json',{...roleSkills,runId});
  let input=read(dir+'/stdin').toString();
- const mappings=[[permit.instructionsFilePath,instructionPath],...(evidenceRoot?[['/qa-evidence',evidenceRoot]]:[]),...(nativeProjection?[[nativeProjection.target,nativeProjection.source]]:[]),...(materialProjection?[[materialProjection.target,materialProjection.source]]:[]),['/workspace/project',workspace.codeHostPath??cwd],['/opt/role-skill-packages',roleSkills?.packageRoot??skillAssetRoot]];
+ const mappings=[[permit.instructionsFilePath,instructionPath],...(evidenceRoot?[['/qa-evidence',evidenceRoot]]:[]),...(nativeProjection?[[nativeProjection.target,nativeProjection.source]]:[]),...(materialProjection?[[materialProjection.target,materialProjection.source]]:[]),[permit.cwd,cwd],['/workspace/project',workspace.codeHostPath??cwd],['/opt/role-skill-packages',roleSkills?.packageRoot??skillAssetRoot]];
  for(const [from,to]of mappings)input=input.replaceAll(from,to);
  // Native instructions already have an immutable run copy. Preserve the original stdio and record only its digest.
  fs.writeFileSync(dir+'/host-stdin',input,{flag:'wx',mode:0o600});
  const tls=createNativeRoleTls({proxyRoot:proxy,clientRoot:client});
  const readyFile=proxy+'/ready.json',runtime=fileURLToPath(new URL('../',import.meta.url));let broker,brokerGroup,hostTimer,terminal=false;
  try{
-  broker=spawn(process.execPath,[runtime+'docker/role-provider-proxy.mjs'],{detached:true,stdio:['ignore','ignore','ignore'],env:{PATH:process.env.PATH,...proxyEnvironment(),SUPER_AGENT_ROLE_PROXY_ROOT:proxy,SUPER_AGENT_ROLE_PROXY_AUDIT:audit,SUPER_AGENT_ROLE_PROXY_AUTH_FILE:dir+'/provider/auth.json',SUPER_AGENT_ROLE_PROXY_LISTEN_HOST:'127.0.0.1',SUPER_AGENT_ROLE_PROXY_PORT:'0',SUPER_AGENT_ROLE_PROXY_TLS_PORT:'0',SUPER_AGENT_ROLE_PROXY_READY_PROTOCOL:'https',SUPER_AGENT_ROLE_PROXY_READY_FILE:readyFile}});
+  broker=spawn(process.execPath,[runtime+'docker/role-provider-proxy.mjs'],{detached:true,stdio:['ignore','ignore','ignore'],env:{PATH:process.env.PATH,...proxyEnvironment(),SUPER_AGENT_ROLE_PROXY_ROOT:proxy,SUPER_AGENT_ROLE_PROXY_AUDIT:audit,SUPER_AGENT_ROLE_PROXY_AUTH_FILE:dir+'/provider/auth.json',...(api?{SUPER_AGENT_ROLE_API_AUTH_FILE:dir+'/provider/api-auth.json'}:{}),SUPER_AGENT_ROLE_PROXY_LISTEN_HOST:'127.0.0.1',SUPER_AGENT_ROLE_PROXY_PORT:'0',SUPER_AGENT_ROLE_PROXY_TLS_PORT:'0',SUPER_AGENT_ROLE_PROXY_READY_PROTOCOL:'https',SUPER_AGENT_ROLE_PROXY_READY_FILE:readyFile}});
   await new Promise((resolve,reject)=>{broker.once('spawn',resolve);broker.once('error',()=>reject(Object.assign(Error('ROLE_HOST_BROKER_LAUNCH_FAILED'),{code:'ROLE_HOST_BROKER_LAUNCH_FAILED'})));});
   brokerGroup=ownedProcessGroup(broker,{directory:dir,prefix:'broker-process',command:process.execPath});durable(dir+'/broker-process.json',brokerGroup.record);
   const endpoint=await waitBroker(readyFile,broker,runId);
   if(hostExecutor)hostTimer=setInterval(()=>void serveHostCapabilityCalls({root:audit+'/host-calls',permit,executor:hostExecutor,log}).catch(error=>{log({code:'HOST_CALL_QUEUE_FAILED',errorCode:error.code??'HOST_CALL_QUEUE_FAILED'});controller.abort();}),50);
   const documentEnvironment=prepareDocumentRuntimeEnvironment({role:permit.role,runDirectory:client});
   if(permit.role==='document-specialist')documentEnvironment.PAPERCLIP_DOCUMENT_ENGINEERING_RULES=path.join(skillAssetRoot,'shared','engineering.md');
-  const result=await runNativeRoleProcess({command:codexPath,args:nativeRoleCliArgs({permit,client,instructionPath,endpoint,hostTools}),directory:dir,inputFile:dir+'/host-stdin',cwd,timeoutMs:releaseTimeouts?.processMs??600000,
-   env:{PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:client+'/home',CODEX_HOME:client,CODEX_CONNECTORS_TOKEN:key,ROLE_HOST_MCP_ENDPOINT:endpoint+'/role-host-mcp',...(releaseTimeouts?{ROLE_HOST_RWB_RELEASE:'1'}:{}),SSL_CERT_FILE:tls.trustFile,CODEX_CA_CERTIFICATE:tls.trustFile,NODE_EXTRA_CA_CERTS:tls.caFile,...proxyEnvironment(),...documentEnvironment,...npmCache.environment},redactValues:[key],onCancel:()=>controller.abort()});
+  const launch=claude?createRoleClaudeLaunch({permit,client,cwd,instructionPath,endpoint,key,hostTools,connectors:Boolean(permit.effectiveCapabilities?.mcpAllowedTools?.length),...(releaseTimeouts?{mcpTimeoutMs:releaseTimeouts.mcpSeconds*1000}:{})}):api?createRoleOpenCodeLaunch({permit,client,cwd,endpoint,key,hostTools,skillPaths:roleSkills?[client+'/skills']:[],connectors:Boolean(permit.effectiveCapabilities?.mcpAllowedTools?.length),...(releaseTimeouts?{mcpTimeoutMs:releaseTimeouts.mcpSeconds*1000}:{})}):null;
+  if(launch){
+   const cacheParent=path.join(path.dirname(npmCache.proof.cacheRoot),runtimeProfile.runtime),cache=path.join(cacheParent,runId);
+   fs.mkdirSync(cacheParent,{recursive:true,mode:0o700});
+   const stat=fs.lstatSync(cacheParent);
+   if(fs.realpathSync(cacheParent)!==cacheParent||!stat.isDirectory()||stat.uid!==process.getuid()||(stat.mode&0o022))fail('ROLE_HOST_CACHE_PATH_DENIED');
+   fs.mkdirSync(cache,{mode:0o700});launch.env.XDG_CACHE_HOME=cache;
+   if(claude){fs.mkdirSync(launch.env.CLAUDE_CONFIG_DIR,{recursive:true,mode:0o700});durable(launch.settingsPath,launch.settings);durable(launch.mcpConfigPath,launch.mcpConfig);}
+   else durable(launch.env.OPENCODE_CONFIG,launch.config);
+  }
+  const command=claude?claudePath:api?opencodePath:codexPath,args=launch?.args??nativeRoleCliArgs({permit,client,instructionPath,endpoint,hostTools});
+  const implementationRoot=fileURLToPath(new URL('../',import.meta.url));
+  const binding=computeTaskRuntimeImplementationBinding({profileId:runtimeProfile.id,files:taskRuntimeImplementationFiles(runtimeProfile.id).map(file=>({file,sha256:sha(fs.readFileSync(path.join(implementationRoot,file)))})),...roleHostCliIdentity(command)});
+  const implementation={runId,profileId:runtimeProfile.id,modelId:runtimeProfile.providerModel,runtimeId:runtimeProfile.runtime,...binding,argsSha256:sha(JSON.stringify(args)),
+   configSha256:sha(launch?claude?Buffer.concat([fs.readFileSync(launch.settingsPath),fs.readFileSync(launch.mcpConfigPath)]):fs.readFileSync(launch.env.OPENCODE_CONFIG):JSON.stringify(args)),npmCacheVerified:npmCache.proof.volumeVerified===true,freshSession:!args.some(value=>['resume','--resume','--session','--continue'].includes(value))};
+  const result=await runNativeRoleProcess({command,args,directory:dir,inputFile:dir+'/host-stdin',cwd,timeoutMs:releaseTimeouts?.processMs??600000,
+   env:{PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:client+'/home',CODEX_HOME:client,CODEX_CONNECTORS_TOKEN:key,ROLE_HOST_MCP_ENDPOINT:endpoint+'/role-host-mcp',...(releaseTimeouts?{ROLE_HOST_RWB_RELEASE:'1'}:{}),SSL_CERT_FILE:tls.trustFile,CODEX_CA_CERTIFICATE:tls.trustFile,NODE_EXTRA_CA_CERTS:tls.caFile,...proxyEnvironment(),...documentEnvironment,...npmCache.environment,...(launch?.env??{})},redactValues:[key],onCancel:()=>controller.abort()});
   pluginCache.verify();
-  durable(dir+'/native-proof.json',{schemaVersion:1,runId,executor:'macos_native',platform:process.platform,codexPath,cwd,executionPolicy:permit.executionPolicy,skillManifestSha256:roleSkills?.sha256,inputSha256:sha(input),process:JSON.parse(read(dir+'/process.json')),npmCache:npmCache.proof,pluginCache:pluginCache.proof,...(permit.role==='document-specialist'?{documentRuntime:{status:documentEnvironment.PAPERCLIP_DOCUMENT_RUNTIME_STATUS,python:documentEnvironment.PAPERCLIP_DOCUMENT_PYTHON,soffice:documentEnvironment.PAPERCLIP_DOCUMENT_SOFFICE,fontConfig:documentEnvironment.FONTCONFIG_FILE}}:{}),at:new Date().toISOString()});
+  durable(dir+'/implementation-proof.json',implementation);
+  durable(dir+'/native-proof.json',{schemaVersion:1,runId,executor:'macos_native',platform:process.platform,...(api?{runtimeProfileId:runtimeProfile.id,runtime:runtimeProfile.runtime,...(claude?{claudePath}:{opencodePath})}:{codexPath}),cwd,executionPolicy:permit.executionPolicy,skillManifestSha256:roleSkills?.sha256,inputSha256:sha(input),process:JSON.parse(read(dir+'/process.json')),npmCache:npmCache.proof,pluginCache:pluginCache.proof,...(permit.role==='document-specialist'?{documentRuntime:{status:documentEnvironment.PAPERCLIP_DOCUMENT_RUNTIME_STATUS,python:documentEnvironment.PAPERCLIP_DOCUMENT_PYTHON,soffice:documentEnvironment.PAPERCLIP_DOCUMENT_SOFFICE,fontConfig:documentEnvironment.FONTCONFIG_FILE}}:{}),at:new Date().toISOString()});
   await stopOwnedGroup(brokerGroup);brokerGroup=null;
   for(const filename of [client+'/auth.json',proxy+'/config.json'])if(fs.existsSync(filename))fs.unlinkSync(filename);
   durable(dir+'/result.json',{runId,...result,executor:'macos_native',stdoutSha256:sha(fs.readFileSync(dir+'/stdout')),stderrSha256:sha(fs.readFileSync(dir+'/stderr')),at:new Date().toISOString()});terminal=true;log({code:'ROLE_HOST_TRANSPORT_COMPLETED',exitCode:result.exitCode});return result;

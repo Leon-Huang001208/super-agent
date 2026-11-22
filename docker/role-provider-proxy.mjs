@@ -7,27 +7,93 @@ import {resolveRoleCapabilities} from '../bridge/role-capabilities.mjs';
 import {assertRoleMcpCall,filterMcpTools,transformMcpCatalogBody} from '../bridge/role-mcp-policy.mjs';
 import {requestHostCapability,hostCapabilityTimeoutMs} from '../bridge/role-host-call-queue.mjs';
 import {rwbReleaseBrokerLifetimeMs} from '../bridge/rwb-release.mjs';
+import {RUNTIME_PROFILES} from '../bridge/role-runtime-profiles.mjs';
+import {createRoleApiRequestAuthorizer} from '../bridge/role-api-routing.mjs';
 const configRoot=process.env.SUPER_AGENT_ROLE_PROXY_ROOT??'/proxy';
 const auditRoot=process.env.SUPER_AGENT_ROLE_PROXY_AUDIT??'/audit';
 const config=JSON.parse(fs.readFileSync(configRoot+'/config.json','utf8'));
-const auth=JSON.parse(fs.readFileSync(process.env.SUPER_AGENT_ROLE_PROXY_AUTH_FILE??configRoot+'/auth.json','utf8'));
 const fail=(res,status,code)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:code,type:'role_scope'}}));};
-const audit=event=>fs.appendFileSync(auditRoot+'/provider.jsonl',JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});
-const claims=JSON.parse(Buffer.from(auth.tokens.id_token.split('.')[1],'base64url').toString());
-const account=auth.tokens.account_id??claims['https://api.openai.com/auth']?.chatgpt_account_id;
-if(!account||!auth.tokens.access_token)throw Error('ROLE_PROXY_AUTH_REQUIRED');
+const auditSecrets=new Set();
+const audit=event=>{let line=JSON.stringify({at:new Date().toISOString(),...event});for(const value of auditSecrets)line=line.replaceAll(JSON.stringify(value).slice(1,-1),'[redacted]');fs.appendFileSync(auditRoot+'/provider.jsonl',line+'\n',{mode:0o600});};
+const startupFail=code=>{audit({code});throw Object.assign(Error(code),{code});};
+const profileId=config.runtimeProfileId===undefined?'codex_subscription':config.runtimeProfileId;
+if(typeof profileId!=='string'||!Object.hasOwn(RUNTIME_PROFILES,profileId))startupFail('ROLE_PROXY_PROFILE_DENIED');
+const apiProfile=['opencode','claude'].includes(RUNTIME_PROFILES[profileId].runtime);
+if(apiProfile&&typeof config.key==='string'&&config.key)auditSecrets.add(config.key);
 let session=null,count=0,mcpCount=0;
 const admittedTools=[...(config.effectiveCapabilities?.mcpAllowedTools??config.mcpAllowedTools??[])];
+let auth=null,account,apiCredential=null,authorizeApi=null;
+const authFile=process.env.SUPER_AGENT_ROLE_PROXY_AUTH_FILE??configRoot+'/auth.json';
+if(fs.existsSync(authFile)){
+ try{
+  auth=JSON.parse(fs.readFileSync(authFile,'utf8'));
+  if(apiProfile)for(const field of ['access_token','refresh_token','id_token'])if(typeof auth.tokens?.[field]==='string'&&auth.tokens[field])auditSecrets.add(auth.tokens[field]);
+  const claims=JSON.parse(Buffer.from(auth.tokens.id_token.split('.')[1],'base64url').toString());
+  account=auth.tokens.account_id??claims['https://api.openai.com/auth']?.chatgpt_account_id;
+  if(!account||!auth.tokens.access_token)throw Error();
+ }catch{startupFail(apiProfile?'ROLE_PROXY_APPS_AUTH_REQUIRED':'ROLE_PROXY_AUTH_REQUIRED');}
+}
+if(!auth&&(!apiProfile||admittedTools.length||config.mcpAllowedTools?.length))startupFail(apiProfile?'ROLE_PROXY_APPS_AUTH_REQUIRED':'ROLE_PROXY_AUTH_REQUIRED');
+if(apiProfile){
+ const filename=process.env.SUPER_AGENT_ROLE_API_AUTH_FILE??configRoot+'/api-auth.json';
+ try{
+  const info=fs.lstatSync(filename);
+  if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1||(info.mode&0o077)||info.uid!==process.getuid())throw Error();
+  apiCredential=JSON.parse(fs.readFileSync(filename,'utf8'));
+ }catch(error){startupFail(error.code==='ENOENT'?'ROLE_API_AUTH_REQUIRED':'ROLE_API_AUTH_DENIED');}
+ if(apiCredential?.runId!==config.runId||apiCredential?.runtimeProfileId!==profileId)startupFail('ROLE_API_AUTH_DENIED');
+ if(typeof apiCredential.apiKey==='string'&&apiCredential.apiKey)auditSecrets.add(apiCredential.apiKey);
+ try{authorizeApi=createRoleApiRequestAuthorizer({profileId,runId:config.runId,key:config.key,apiKey:apiCredential.apiKey,expiresAt:config.expiresAt});}
+ catch(error){startupFail(/^ROLE_API_[A-Z_]+$/.test(error.code??'')?error.code:'ROLE_API_AUTH_DENIED');}
+}
 let allowedTools=config.readOnlyToolsOnly===true?[]:[...admittedTools];
 for(const tool of config.hostTools??[])if(!allowedTools.includes(tool.name))allowedTools.push(tool.name);
+const apiControllers=new Set();
+async function handleApiRequest(req,res){
+ const bearer=req.headers.authorization,apiToken=req.headers['x-api-key'];
+ if((bearer===undefined&&apiToken===undefined)||(bearer!==undefined&&bearer!=='Bearer '+config.key)||(apiToken!==undefined&&apiToken!==config.key))return fail(res,403,'ROLE_API_TOKEN_DENIED');
+ if(req.headers['x-paperclip-run-id']!==config.runId)return fail(res,403,'ROLE_API_RUN_DENIED');
+ const controller=new AbortController(),abort=()=>controller.abort(),closed=()=>{if(!res.writableEnded)abort();};
+ const stopInput=()=>{if(!req.complete)req.destroy();};
+ controller.signal.addEventListener('abort',stopInput,{once:true});apiControllers.add(controller);
+ req.once('aborted',abort);res.once('close',closed);
+ const timer=setTimeout(abort,Math.max(0,config.expiresAt-Date.now()));timer.unref();
+ let authorized;
+ try{
+  let body=Buffer.alloc(0);
+  for await(const chunk of req){if(body.length+chunk.length>4*1024*1024)return fail(res,413,'ROLE_API_INPUT_LIMIT');body=Buffer.concat([body,chunk]);}
+  if([...auditSecrets].some(value=>body.includes(value)))throw Object.assign(Error('ROLE_API_BODY_SECRET_DENIED'),{code:'ROLE_API_BODY_SECRET_DENIED',statusCode:403});
+  authorized=authorizeApi({method:req.method,path:req.url,headers:req.headers,body});audit(authorized.audit);
+  const upstream=await fetch(authorized.url,{method:authorized.method,headers:authorized.headers,body:authorized.body,signal:controller.signal,redirect:'manual'});
+  if(!upstream.ok){
+   await upstream.body?.cancel().catch(()=>{});
+   audit({...authorized.audit,code:'ROLE_API_UPSTREAM_HTTP_ERROR',status:upstream.status});
+   return fail(res,upstream.status,'ROLE_API_UPSTREAM_HTTP_ERROR');
+  }
+  const out={};for(const[k,v]of upstream.headers){
+   if(!['content-encoding','transfer-encoding','content-length','connection','set-cookie','authorization','x-api-key'].includes(k)&&![...auditSecrets].some(value=>v.includes(value)))out[k]=v;
+  }
+  res.writeHead(upstream.status,out);
+  if(upstream.body)for await(const bytes of upstream.body){if(res.destroyed){abort();break;}res.write(Buffer.from(bytes));}
+  res.end();audit({...authorized.audit,code:'ROLE_API_COMPLETED',status:upstream.status});
+ }catch(error){
+  const code=/^ROLE_API_[A-Z_]+$/.test(error.code??'')?error.code:controller.signal.aborted?'ROLE_API_UPSTREAM_ABORTED':'ROLE_API_UPSTREAM_UNKNOWN';
+  const status=/^ROLE_API_[A-Z_]+$/.test(error.code??'')?error.statusCode:controller.signal.aborted?504:502;
+  audit({...(authorized?.audit??{runId:config.runId,profileId}),code,status});
+  if(!res.destroyed){if(!res.headersSent)fail(res,status??502,code);else res.destroy();}
+ }finally{
+  clearTimeout(timer);req.off('aborted',abort);res.off('close',closed);controller.signal.removeEventListener('abort',stopInput);apiControllers.delete(controller);
+ }
+}
 const publicIp=ip=>/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)&&
  !/^(?:0\.|10\.|127\.|169\.254\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|224\.|255\.)/.test(ip);
 const handler=async(req,res)=>{
  try{
   if(!req.url?.startsWith('/'))return fail(res,403,'ROLE_PROXY_ABSOLUTE_URL_DENIED');
+  const url=new URL(req.url,'http://local');
+  if(apiProfile&&url.pathname.startsWith('/backend-api/model/'))return await handleApiRequest(req,res);
   if(req.headers.authorization!=='Bearer '+config.key){audit({code:'ROLE_PROXY_TOKEN_DENIED',method:req.method,path:new URL(req.url,'http://local').pathname});return fail(res,403,'ROLE_PROXY_TOKEN_DENIED');}
   if(Date.now()>config.expiresAt)return fail(res,403,'ROLE_PROXY_EXPIRED');
-  const url=new URL(req.url,'http://local');
   const modelPath=req.method==='POST'&&url.pathname==='/backend-api/codex/responses';
   const hostMcpPath=req.method==='POST'&&url.pathname==='/backend-api/role-host-mcp';
   const mcpPath=hostMcpPath||['GET','POST','DELETE'].includes(req.method)&&url.pathname==='/backend-api/ps/mcp';
@@ -36,7 +102,9 @@ const handler=async(req,res)=>{
     (req.method==='GET'&&['/backend-api/ps/plugins/suggested/codex','/backend-api/wham/settings/user',
       '/backend-api/ps/plugins/installed','/backend-api/ps/plugins/list','/backend-api/plugins/featured'].includes(url.pathname));
   if(req.method==='POST'&&url.pathname==='/backend-api/codex/analytics-events/events'){res.writeHead(204);res.end();return;}
+  if(apiProfile&&modelPath)return fail(res,403,'ROLE_API_PATH_DENIED');
   if(!modelPath&&!metadata&&!mcpPath){audit({code:'ROLE_PROXY_PATH_DENIED',path:url.pathname});return fail(res,403,'ROLE_PROXY_PATH_DENIED');}
+  if(!auth&&(metadata||mcpPath&&!hostMcpPath))return fail(res,403,'ROLE_PROXY_APPS_AUTH_REQUIRED');
   if(url.pathname.endsWith('/responses')){
    const current=req.headers['session-id']??req.headers.session_id??req.headers['x-codex-session-id'];
    if(typeof current!=='string'||!current||session&&session!==current){
@@ -85,10 +153,13 @@ const handler=async(req,res)=>{
   }
   const headers={...req.headers,authorization:'Bearer '+auth.tokens.access_token,'chatgpt-account-id':account};
   for(const key of ['host','connection','content-length','transfer-encoding'])delete headers[key];
+  if(apiProfile)delete headers['x-api-key'];
   const controller=new AbortController();req.once('aborted',()=>controller.abort());
   const upstream=await fetch('https://chatgpt.com'+url.pathname+url.search,{method:req.method,headers,
-    ...(body.length?{body}:{}),signal:controller.signal,redirect:'error'});
-  const out={};for(const [k,v]of upstream.headers)if(!['content-encoding','transfer-encoding','content-length','connection','set-cookie'].includes(k))out[k]=v;
+    ...(body.length?{body}:{}),signal:controller.signal,redirect:apiProfile?'manual':'error'});
+  if(apiProfile&&!upstream.ok){await upstream.body?.cancel().catch(()=>{});audit({code:'ROLE_PROXY_APPS_UPSTREAM_HTTP_ERROR',status:upstream.status});return fail(res,upstream.status,'ROLE_PROXY_APPS_UPSTREAM_HTTP_ERROR');}
+  const out={};for(const [k,v]of upstream.headers)if(!['content-encoding','transfer-encoding','content-length','connection','set-cookie'].includes(k)&&
+    (!apiProfile||!['authorization','x-api-key'].includes(k)&&![...auditSecrets].some(value=>v.includes(value))))out[k]=v;
   if(mcpMessage?.method==='tools/list'&&upstream.ok){
    const text=transformMcpCatalogBody(await upstream.text(),upstream.headers.get('content-type'),message=>{
     if(!Array.isArray(message.result?.tools))return message;
@@ -136,8 +207,9 @@ tls?.listen(tlsPort,listenHost,()=>{
  if(readyProtocol==='https'&&process.env.SUPER_AGENT_ROLE_PROXY_READY_FILE)fs.writeFileSync(process.env.SUPER_AGENT_ROLE_PROXY_READY_FILE,JSON.stringify({runId:config.runId,protocol:'https:',host:listenHost,port:address.port})+'\n',{mode:0o600,flag:'wx'});
 });
 for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{
+ for(const controller of apiControllers)controller.abort();
  const listeners=[server,tls].filter(listener=>listener?.listening);let remaining=listeners.length;
  if(!remaining)process.exit(0);
  for(const listener of listeners)listener.close(()=>{if(--remaining===0)process.exit(0);});
 });
-setTimeout(()=>process.exit(1),rwbReleaseBrokerLifetimeMs(config)).unref();
+setTimeout(()=>{for(const controller of apiControllers)controller.abort();process.exit(1);},rwbReleaseBrokerLifetimeMs(config)).unref();

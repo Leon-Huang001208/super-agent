@@ -6,6 +6,16 @@
 
 原summary文本、摘要、Native评论、归档、outbox key和投递UUID继续保留；`sent`复用原回执，`unknown`仍须对账。本改动不重发历史通知、不创建模型调用或新的消息通道，运行应用与真实飞书新消息另行验收。
 
+## 任务级多 Runtime 候选：隔离验收先行
+
+[候选合同](plans/task-runtime-routing.md)将当前绑定快照与新任务选型分开：`role-runtime-profiles`定义五个canonical执行档位并验证绑定，`task-runtime-policy`按可信任务的角色、复杂度、风险和用途选择；不将执行岗位永久绑定到API或Codex。核心Chief/PM/Architect/独立QA在本切片使用Codex会员，复杂、高风险及未知任务同样保守使用Codex。
+
+用户最新新增[Full Stack Engineer](plans/full-stack-engineer.md)，形成13岗候选。Chief先确定全栈或专业岗位的唯一执行范围，再分别选模型与Runtime；全栈承担有界小功能、简单前后端联动和Bug+tests，向Architect汇报，开发测试权限不超过现前后端，不含发布/网络/资源新能力。全栈升档或交专业岗沿原task/root、产物、预算和证据，仍交独立QA。生产旧12岗固定源码、Agent身份及旧五次成功运行不变；新13源码/Native登记/Skill材料/registry须同批迁移，旧PASS不自动授权新源码池。
+
+候选沿用Native任务/run/材料、全局单执行、原根20次与每run64 responses、独立QA及outbox。显式handoff须由已知成功且执行闭合的原run进入，保留同task/root、版本化产物和已用预算，以fresh session继续；未知结果不触发模型切换。API分支使用固定官方endpoint和每run opaque key broker，真实Key留在受限控制侧，不交给模型进程。模型选择不扩大岗位权限或改变现Mac原生执行政策。
+
+本节描述候选合同，不是生产激活证据。当前生产状态、自动调度/M2、UI、Cloud Apps和12岗业务验收均须另行核验；本轮隔离runner不会取得生产共享写窗口，也不部署升级生产服务。
+
 ## 2026-11-22：20次原根预算与开发接线
 
 普通原任务的Chief、执行、QA及续接共享20次外层调用；可信历史12次和第七次QA专项继续可读，显式Owner授额可提高原根而不改写已花调用。业务交付和预算登记是不同事实，运行切换与实际续接另取现场证据。
@@ -16,7 +26,7 @@ RWB采用与直接Codex相同的项目开发授权：源码、独立worktree、�
 
 ## 当前执行合同
 
-Paperclip继续拥有任务、运行、会话及正式重试。当前业务模型使用Mac原生Codex、个人订阅gpt-6.1-sol/low、无沙盒和approvalPolicy=never；Docker保留App、依赖、离线测试及按需项目执行。下方标注早期Docker基线的记录不代表当前模型执行位置。全局单执行、原调用计数和未知结果核对保留。
+Paperclip继续拥有任务、运行、会话及正式重试。既有生产路径的执行合同为Mac原生Codex、个人订阅gpt-6.1-sol/low、无沙盒和approvalPolicy=never；本轮任务级多Runtime属于上方独立候选范围，不据源码推定生产已切换。Docker保留App、依赖、离线测试及按需项目执行。下方标注早期Docker基线的记录不代表当前模型执行位置。全局单执行、原调用计数和未知结果核对保留。
 
 真实工作中发现的岗位、工具和流程缺口沿[Agent迭代](agent-iteration.md)修复。普通QA NEEDS_WORK由既有Native推进流程回交同一执行任务，再由独立QA复核，不创建第二个调度器或重置根预算。普通原根默认20次，历史显式12次及QA专项按可信绑定保留；两轮质量修复与每run64 responses限制不变。
 
