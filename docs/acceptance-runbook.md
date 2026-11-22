@@ -10,6 +10,8 @@ queued retry续接须另验协调器整tick：原operation的初始wake指向att
 
 RWB开发接线另验App内Git可读、宿主worktree隔离、真实规则/checks、Native QA精确候选、PR及项目规则允许的合并。缺注册入口或检查/评审时仍拒绝发布，不因移除PR-only身份限制放宽项目门。
 
+代际计划收存须用真实79字符outputPrefix及最长32字符key，111 stem通过、112 stem和路径拒绝；foreign prefix仍由Native收存guard拒绝。以已成功source run、原计划hash和Root in_review/旧phase已释放为起点，核原coordinator收存/创建children、重复tick不重复对象或Chief调用，首child由正式Meter获取新nonce。旧registry lease映射不代表仍held；不能据日志去重后的ADMISSION拒绝推断tick停住，也不能为修文件名重写SQL/旧nonce或重跑成功模型。
+
 ## 真实交付中的持续迭代
 
 非Git任务另验Native真实校验目录与模型最终cwd，不能用旧Git pilot通过校验后改写cwd来证明产物目录本身正确。正式non_git_path例外只消除对应缺Git分支；已装Native函数的其他错误与代码仓库Git检查必须继续拒绝。运行时新任务应固定实际projectWorkspace/executionWorkspace/Native run和角色许可，源码hook通过不等于已执行任务。
