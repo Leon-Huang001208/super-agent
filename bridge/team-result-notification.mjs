@@ -13,11 +13,17 @@ function notificationDate(createdAt){
  const parts=Object.fromEntries(new Intl.DateTimeFormat('en',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).map(part=>[part.type,part.value]));
  return parts.year+'-'+parts.month+'-'+parts.day;
 }
+function notificationTitle(task){
+ const title=typeof task.title==='string'?task.title.replace(/\s+/gu,' ').trim():'';
+ if(!title)return'任务标题未提供';
+ const characters=Array.from(title);return characters.length>120?characters.slice(0,120).join('')+'…':title;
+}
 /** Presentation is independent of the preserved technical summary and delivery key. */
 export function renderTeamResultNotification({task,summary,presentation={},createdAt}){
  const label=typeof task.identifier==='string'&&/^[A-Z][A-Z0-9]*-\d+$/.test(task.identifier)?task.identifier:'当前任务';
  const blocked=presentation.kind==='quality-blocked';
- const lines=[label+'｜'+(blocked?'需要修复，已暂停':'本轮结果已汇总'),''];
+ const progress=blocked?'质量复核未通过，后续自动推进已暂停。':presentation.kind==='result'?'本轮结果已汇总，具体执行与验收状态见任务记录。':'未提供可信阶段信息，请查看任务记录。';
+ const lines=[notificationTitle(task)+'（'+label+'）｜'+(blocked?'需要修复，已暂停':'本轮结果已汇总'),'','当前进度：'+progress,''];
  if(blocked){
   const result=(Object.hasOwn(qualityReasons,presentation.reasonCode)?qualityReasons[presentation.reasonCode]:null)??{reason:'质量检查未通过，需要先核对任务记录中的返修意见。',next:'沿原任务核对未通过项，再继续处理。'};
   lines.push('原因：'+result.reason);if(result.detail)lines.push(result.detail);
