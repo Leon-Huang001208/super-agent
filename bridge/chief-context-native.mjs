@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { chiefFeishuOperation } from './chief-feishu-native.mjs';
-import { contextMemoryId } from './chief-context-commands.mjs';
+import { contextMemoryId,parseChiefContextCommand } from './chief-context-commands.mjs';
 import { taskInputRevision } from './task-input.mjs';
 import { ROLE_KEYS } from './role-labels.mjs';
 import {isOfficialRecoveredGoal} from './chief-official-message-recovery.mjs';
@@ -31,6 +31,14 @@ function sourceDigest(snapshot){return sha({bodySha256:snapshot.bodySha256,comma
   messageId:snapshot.messageId,chatId:snapshot.chatId,sourceParams:snapshot.sourceParams});}
 
 export const chiefContextFingerprint=sourceDigest;
+
+export function chiefCommandReconcileRequest(value){
+ const fields=['schemaVersion','taskId','companyId','projectId','sourceKey','operationId','expectedInputRevision','expectedControlRevision','expectedFingerprint','expectedBodySha256'];
+ if(!object(value)||Object.keys(value).length!==fields.length||Object.keys(value).some(key=>!fields.includes(key))||value.schemaVersion!==1||
+  !['taskId','companyId','projectId','operationId'].every(key=>uuid.test(value[key]??''))||
+  !['sourceKey','expectedInputRevision','expectedFingerprint','expectedBodySha256'].every(key=>digest.test(value[key]??''))||!recordVersion(value.expectedControlRevision))fail('CHIEF_CONTEXT_RECONCILE_REQUEST_INVALID');
+ return frozen(value);
+}
 
 /** Same source identity as the existing M1 intake; action namespaces remain separate. */
 export const chiefContextSourceKey=chiefFeishuOperation;
@@ -370,10 +378,11 @@ export function createChiefContextController({binding,catalog,repository,knowled
       replyText:'已保留旧计划快照，按当前输入在原任务内重新规划；原 hash 和累计预算保留。'})};
   }
 
-  async function nativeCommand(message,intent){
-    return transact(intent.sourceKey,message,async tx=>{
+  async function nativeCommandTransaction(tx,message,intent,{preserveLaterChatSelection=false}={}){
       const prior=await tx.readState('result');if(prior)return prior;
       let chat=chatOf(await tx.readChat(),message),value;
+      // Failed commands never consumed their prospective sequence. Equality can already be a later successful selection.
+      const keepSelection=preserveLaterChatSelection&&chat.sequence>=intent.sequence;
       if(intent.kind==='help'||intent.kind==='projects'){
         const projects=catalog.list().map(p=>({key:p.key,aliases:p.aliases,projectId:p.projectId,maximumAction:p.maximumAction}));
         value=receipt(intent,{projects,replyText:intent.kind==='help'?'使用 /chief project、status、add、continue、remember、correct 或 new。':'已登记项目：'+projects.map(p=>p.key).join('、')});
@@ -430,12 +439,61 @@ export function createChiefContextController({binding,catalog,repository,knowled
               }
             }else fail('CHIEF_CONTEXT_COMMAND_INVALID');
             if(!isDeepStrictEqual(actual.control,control))await tx.writeControl(task.id,control);
-            chat=nextChat(chat,{projectId:task.projectId,taskId:task.id,projectTasks:{...chat.projectTasks,[task.projectId]:task.id},pendingGoalOperationId:null});await tx.writeChat(chat);
+            if(!keepSelection){chat=nextChat(chat,{projectId:task.projectId,taskId:task.id,projectTasks:{...chat.projectTasks,[task.projectId]:task.id},pendingGoalOperationId:null});await tx.writeChat(chat);}
           }
         }
       }
       await tx.append('result',value);return value;
-    });
+  }
+
+  async function nativeCommand(message,intent){return transact(intent.sourceKey,message,tx=>nativeCommandTransaction(tx,message,intent));}
+
+  function persistedContinueSource(intent,request){
+    const p=intent?.sourceParams,s=intent?.source,required=['source','eventType','appId','tenantKey','ownerOpenId','messageId','chatId','bodySha256'],allowed=[...required,'eventId','createdAt'];
+    if(!object(intent)||intent.schemaVersion!==1||intent.kind!=='continue'||intent.sourceKey!==request.sourceKey||intent.operationId!==request.operationId||intent.taskId!==request.taskId||
+      intent.project?.companyId!==actor.companyId||intent.project.projectId!==request.projectId||intent.project.ownerId!==actor.ownerId||
+      intent.baseInputRevision!==request.expectedInputRevision||intent.controlRevision!==request.expectedControlRevision||intent.fingerprint!==request.expectedFingerprint||
+      intent.bodySha256!==request.expectedBodySha256||typeof intent.originalText!=='string'||sha(intent.originalText)!==intent.bodySha256||
+      !object(p)||required.some(key=>!Object.hasOwn(p,key))||Object.keys(p).some(key=>!allowed.includes(key))||p.source!=='feishu'||p.eventType!=='im.message.receive_v1'||
+      p.appId!==trusted.appId||p.tenantKey!==trusted.tenantKey||p.ownerOpenId!==trusted.ownerOpenId||!messageId.test(p.messageId??'')||!chatId.test(p.chatId??'')||
+      p.bodySha256!==intent.bodySha256||intent.chatId!==p.chatId||s?.messageId!==p.messageId||s.chatId!==p.chatId||s.bodySha256!==p.bodySha256||
+      s.eventId!==p.eventId||p.eventId!==undefined&&!opaque.test(p.eventId)||p.createdAt!==undefined&&s.createdAt!==p.createdAt)fail('CHIEF_CONTEXT_RECONCILE_SOURCE_DENIED');
+    let command;try{command=parseChiefContextCommand(intent.originalText);}catch{fail('CHIEF_CONTEXT_RECONCILE_SOURCE_DENIED');}
+    if(command.kind!=='continue'||!isDeepStrictEqual(command,intent.command))fail('CHIEF_CONTEXT_RECONCILE_SOURCE_DENIED');
+    // Match the fixed original intake schema, not JSONB object key order. This is a source proof, never a fabricated SDK event.
+    const sourceParams={source:p.source,eventType:p.eventType,appId:p.appId,tenantKey:p.tenantKey,ownerOpenId:p.ownerOpenId,messageId:p.messageId,chatId:p.chatId,
+      ...(p.eventId!==undefined&&{eventId:p.eventId}),bodySha256:p.bodySha256,...(p.createdAt!==undefined&&{createdAt:p.createdAt})};
+    const proof={bodySha256:intent.bodySha256,command,appId:trusted.appId,tenantKey:trusted.tenantKey,ownerOpenId:trusted.ownerOpenId,nativeOwnerId:actor.ownerId,
+      companyId:actor.companyId,chiefAgentId:trusted.chiefAgentId,messageId:p.messageId,chatId:p.chatId,sourceParams};
+    if(chiefFeishuOperation(proof)!==request.sourceKey||sourceDigest(proof)!==intent.fingerprint)fail('CHIEF_CONTEXT_RECONCILE_SOURCE_DENIED');
+    return {chatId:intent.chatId};
+  }
+
+  async function reconcileOwnerContinue({registry,request:raw,apply=false}={}){
+    const request=chiefCommandReconcileRequest(raw);
+    if(typeof apply!=='boolean'||request.companyId!==actor.companyId||registry?.team?.enabled!==false)fail('CHIEF_CONTEXT_RECONCILE_SCOPE_DENIED');
+    // Read the original chat identity, then recheck the immutable source under the same chat/key/task locks as normal commands.
+    const source=await repository.transaction(request.sourceKey,async tx=>{
+      if(typeof tx.readOwnerContinueIntent!=='function')fail('CHIEF_CONTEXT_RECONCILE_CONFIGURATION_INVALID');
+      return persistedContinueSource(await tx.readOwnerContinueIntent(),request);
+    },{actor:'controller'});
+    return repository.transaction(request.sourceKey,async tx=>{
+      if(typeof tx.readOwnerContinueIntent!=='function')fail('CHIEF_CONTEXT_RECONCILE_CONFIGURATION_INVALID');
+      const intent=await tx.readOwnerContinueIntent(),source=persistedContinueSource(intent,request);
+      const actual=await ownedTask(tx,request.taskId);registryProject(registry,actual.task);
+      if(actual.task.companyId!==request.companyId||actual.task.projectId!==request.projectId)fail('CHIEF_CONTEXT_RECONCILE_SCOPE_DENIED');
+      const result=await tx.readState('result');
+      if(result){if(result.kind!=='continue'||result.operationId!==intent.operationId||result.sourceKey!==intent.sourceKey||result.fingerprint!==intent.fingerprint||result.taskId!==intent.taskId||result.projectId!==request.projectId)fail('CHIEF_CONTEXT_RECONCILE_RESULT_CHANGED');
+        return frozen({mode:apply?'apply':'preview',status:'reused',taskId:intent.taskId,operationId:intent.operationId,sourceKey:intent.sourceKey,result,modelCalls:0,newTasks:0});}
+      if(await tx.readState('effect_claimed')||await tx.readState('effect_unknown')||await tx.readState('registered'))fail('CHIEF_CONTEXT_RECONCILE_EFFECT_PRESENT');
+      if(taskInputRevision(actual.task)!==request.expectedInputRevision||actual.control.inputRevision!==request.expectedInputRevision||actual.control.revision!==request.expectedControlRevision||
+        !actual.control.managed||['done','cancelled'].includes(actual.task.status))fail('CHIEF_CONTEXT_RECONCILE_INPUT_CHANGED');
+      const execution=await tx.readExecution(actual.task.id),canApply=object(execution)&&execution.active===false&&execution.unknown===false;
+      if(!apply)return frozen({mode:'preview',status:'preview',canApply,taskId:intent.taskId,operationId:intent.operationId,sourceKey:intent.sourceKey,modelCalls:0,newTasks:0});
+      if(!canApply)fail('CHIEF_CONTEXT_RECONCILIATION_REQUIRED');
+      const value=await nativeCommandTransaction(tx,source,intent,{preserveLaterChatSelection:true});
+      return frozen({mode:'apply',status:'applied',taskId:intent.taskId,operationId:intent.operationId,sourceKey:intent.sourceKey,result:value,modelCalls:0,newTasks:0});
+    },{taskId:request.taskId,chatId:source.chatId,actor:'controller'});
   }
 
   async function memoryRead(message,intent){
@@ -589,7 +647,7 @@ export function createChiefContextController({binding,catalog,repository,knowled
     return result;
   }
 
-  return Object.freeze({dispatchTrustedCommand,syncTask,checkpoint,validateTrustedMessage:input=>{messageOf(input);}});
+  return Object.freeze({dispatchTrustedCommand,syncTask,checkpoint,reconcileOwnerContinue,validateTrustedMessage:input=>{messageOf(input);}});
 }
 
 /** Preserve M1 loading: fixed Native packages are imported only after M2 activation. */
