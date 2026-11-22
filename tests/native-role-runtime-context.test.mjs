@@ -9,8 +9,20 @@ import {createProjectKnowledgeStore} from '../bridge/project-knowledge-store.mjs
 import {roleInstructions} from '../bridge/team-roles.mjs';
 import {renderRoleCapabilitiesMarkdown} from '../bridge/role-capabilities.mjs';
 import {createRoleInstructionStore} from '../bridge/role-instruction-store.mjs';
+import {hostRolePath} from '../scripts/role-host-transport.mjs';
 const sha=x=>createHash('sha256').update(x).digest('hex'),log=()=>{};
 const api=name=>{assert.equal(typeof runtime[name],'function',name+' is required');return runtime[name];};
+test('the production Native execution projection retains the artifact cwd used by its permit and host transport',()=>{
+ const binding={companyId:'company',projectId:'project'},cwd='/paperclip/instances/default/projects/company/project/_default';
+ const source='/registered-projects/rwb',checked={config:{cwd:source},context:{paperclipWorkspace:{cwd:source,workspaceId:'code-workspace',projectId:'project'}}};
+ const registration={binding,contextVersion:1,workspaceCwd:cwd,projectContext:{repository:{hostPath:'/source/repo'},
+  workspace:{hostPath:'/task/worktrees/root'},nativeSourceWorkspace:{id:'code-workspace',projectId:'project',cwd:source,sourceType:'local_path'}}};
+ const before=structuredClone(checked),execution=api('nativeRoleArtifactExecution')(checked,registration);
+ assert.equal(execution.config.cwd,cwd);assert.equal(execution.context.paperclipWorkspace.cwd,cwd);
+ assert.equal(hostRolePath(execution.config.cwd,'/host/data'),'/host/data/state/instances/default/projects/company/project/_default');
+ assert.equal(execution.context.paperclipWorkspace.workspaceId,'code-workspace');assert.deepEqual(checked,before);
+ assert.throws(()=>api('nativeRoleArtifactExecution')(checked,{...registration,workspaceCwd:source}),/NATIVE_ROLE_WORKSPACE_DENIED/);
+});
 test('the actual registered path accepts a legal private registry above 1 MiB and retains instruction readiness checks',{skip:process.getuid()!==0},t=>{
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'native-registry-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const agentId=randomUUID(),registry={enabled:true,companyId:randomUUID(),agents:[{profile:{agentId,role:'document-specialist'}}],padding:''};
@@ -86,12 +98,14 @@ test('a native-registered generic overlay retains its source proof after an owne
 });
 test('the M2 read-only catalog ceiling removes host write paths, actions and unproven write MCP despite Native delivery metadata',t=>{
  const f=fixture(t),original={schemaVersion:1,id:f.b,key:'beta',repository:{hostPath:'/source/private',url:'https://example.com/repo'},
+  nativeSourceWorkspace:{id:'code-workspace',projectId:f.b,cwd:'/registered-projects/rwb',sourceType:'local_path'},
   workspace:{hostPath:'/task/worktree'},checks:[{id:'write-test'}],delivery:{maximumAction:'deploy',commands:{deploy:{argv:['deploy']}}},
   hostActions:[{id:'mutate-host'}],hostMcpServers:[{id:'service',tools:['write']}],rules:[],services:{},stack:[]};
  const before=structuredClone(original),result=api('restrictNativeRoleAuthority')({registry:f.registry,task:f.task,projectContext:original,authorizedHostActions:['mutate-host'],
   effectiveCapabilities:{hostAllowedTools:['host.project_inspect','host.project_git','host.project_check','host.project_publish','host.network_observe','host.network_apply','host.mcp_call'],mcpAllowedTools:['read','write']},toolCatalog:[{name:'read',annotations:{readOnlyHint:true}},{name:'write'}],log});
  assert.equal(result.projectContext.delivery.maximumAction,'artifact');assert.equal(result.projectContext.repository.hostPath,null);
  assert.equal(result.projectContext.workspace.hostPath,null);assert.deepEqual(result.authorizedHostActions,[]);
+ assert.equal(result.projectContext.nativeSourceWorkspace,undefined);
  assert.deepEqual(result.projectContext.hostActions,[]);assert.deepEqual(result.projectContext.hostMcpServers,[]);
  assert.deepEqual(result.effectiveCapabilities.hostAllowedTools,['host.project_inspect','host.network_observe']);
  assert.deepEqual(result.effectiveCapabilities.mcpAllowedTools,['read']);assert.deepEqual(original,before);

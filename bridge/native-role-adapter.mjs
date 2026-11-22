@@ -42,10 +42,24 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
       const config = original.config;
       const native=isMacNative(profile),managedArgs=roleAdapterArgs(profile);
       const scoped=registration?.contextVersion===1;
-      if(scoped&&(registration.workspaceCwd!=='/paperclip/instances/default/projects/'+binding?.companyId+'/'+binding?.projectId+'/_default'||
-        (original.context?.paperclipWorkspace?.cwd&&original.context.paperclipWorkspace.cwd!==registration.workspaceCwd)||
-        (original.context?.paperclipWorkspace?.projectId&&original.context.paperclipWorkspace.projectId!==binding.projectId)||
-        (original.context?.projectWorkspaceId!==undefined&&original.context.projectWorkspaceId!==binding.projectWorkspaceId)))fail('NATIVE_ROLE_WORKSPACE_SCOPE_DENIED');
+      if(scoped){
+        const input=original.context?.paperclipWorkspace,project=registration.projectContext,source=project?.nativeSourceWorkspace;
+        const expectedId=binding?.projectWorkspaceId??project?.nativeWorkspaceId;
+        const sourceRegistered=Boolean(source&&source.id===binding?.projectWorkspaceId&&source.id===project.nativeWorkspaceId&&
+          source.projectId===binding?.projectId&&source.sourceType==='local_path'&&
+          project.repository?.hostPath&&project.workspace?.hostPath&&project.repository.hostPath!==project.workspace.hostPath);
+        const sourceSelected=sourceRegistered&&input?.workspaceId===source.id&&input?.projectId===source.projectId&&input?.cwd===source.cwd;
+        const checks={artifactCwd:registration.workspaceCwd==='/paperclip/instances/default/projects/'+binding?.companyId+'/'+binding?.projectId+'/_default',
+          sourceRegistration:!source||sourceRegistered,
+          inputCwd:!input?.cwd||input.cwd===registration.workspaceCwd||sourceSelected,
+          projectId:!input?.projectId||input.projectId===binding?.projectId,
+          workspaceId:input?.workspaceId===undefined||input.workspaceId===expectedId,
+          projectWorkspaceId:original.context?.projectWorkspaceId===undefined||original.context.projectWorkspaceId===binding?.projectWorkspaceId};
+        // Log trusted registered directories and boolean checks, never an arbitrary input cwd.
+        log({code:'NATIVE_ROLE_WORKSPACE_SCOPE_CHECK',runId:ctx?.runId,artifactCwd:registration.workspaceCwd,
+          sourceCwd:source?.cwd??null,checks});
+        if(!Object.values(checks).every(Boolean))fail('NATIVE_ROLE_WORKSPACE_SCOPE_DENIED');
+      }
       if (!binding || !config || (original.executionTarget && original.executionTarget.kind !== 'local') || original.executionTransport?.remoteExecution || binding.runId !== ctx.runId || binding.agentId !== ctx.agent?.id ||
           binding.companyId !== ctx.agent?.companyId || binding.taskId !== ctx.context?.issueId ||
           binding.projectId !== ctx.context?.projectId || binding.ownerId !== ctx.context?.responsibleUserId ||
@@ -109,6 +123,7 @@ export function createNativeRoleAdapter({ nativeExecute, prepareRole, readRegist
       // Keep Native identity, execution settings and callbacks from the checked snapshot. Never select another CLI
       // or implement an alternative credential/session store here.
       const projectedContext=scoped?{...original.context,
+        ...(original.context?.paperclipWorkspace?{paperclipWorkspace:{...original.context.paperclipWorkspace,cwd:registration.workspaceCwd}}:{}),
         ...(Array.isArray(original.context.paperclipWorkspaces)?{paperclipWorkspaces:original.context.paperclipWorkspaces.filter(value=>value?.projectId===binding.projectId&&value.cwd===registration.workspaceCwd)}:{}),
         ...(Array.isArray(original.context.paperclipRuntimeServiceIntents)?{paperclipRuntimeServiceIntents:original.context.paperclipRuntimeServiceIntents.filter(value=>value?.projectId===binding.projectId)}:{}),
         ...(Array.isArray(original.context.paperclipRuntimeServices)?{paperclipRuntimeServices:original.context.paperclipRuntimeServices.filter(value=>value?.projectId===binding.projectId)}:{})}:original.context;

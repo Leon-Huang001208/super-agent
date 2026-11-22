@@ -35,6 +35,14 @@ export function nativeRolePreflightFailure(error){
  return {exitCode:1,signal:null,timedOut:false,errorCode:code,errorMessage:code,
   resultJson:{executionRecovery:{kind:'bootstrap',providerWorkStarted:false}}};
 }
+/** Native source selection never changes the permit/CLI artifact working directory. */
+export function nativeRoleArtifactExecution(checked,registration){
+ const managedCwd='/paperclip/instances/default/projects/'+registration.binding.companyId+'/'+registration.binding.projectId+'/_default';
+ const executionCwd=registration.contextVersion===1?registration.workspaceCwd:managedCwd;
+ if(executionCwd!==managedCwd)fail('NATIVE_ROLE_WORKSPACE_DENIED');
+ return {...checked,config:{...checked.config,cwd:executionCwd},context:{...checked.context,
+  paperclipWorkspace:{...checked.context.paperclipWorkspace,cwd:executionCwd}}};
+}
 function json(file) {
   const stat=fs.lstatSync(file);
   if(!stat.isFile()||stat.isSymbolicLink()||stat.uid!==0||stat.nlink!==1||(stat.mode&0o077)||stat.size>1048576)fail('NATIVE_ROLE_PRIVATE_FILE_DENIED');
@@ -132,6 +140,7 @@ export function restrictNativeRoleAuthority({registry,task,projectContext,effect
   context.key=project.key;context.delivery={...context.delivery,maximumAction:levels[Math.min(nativeIndex,levels.indexOf(maximum))]};
   if(project.maximumAction==='read_only'){
     context.repository={...context.repository,hostPath:null};context.workspace={...context.workspace,hostPath:null};
+    delete context.nativeSourceWorkspace;
     context.delivery={maximumAction:'artifact'};context.checks=[];context.hostActions=[];context.hostMcpServers=[];
     authorizedHostActions=[];
     if(capabilities){
@@ -340,12 +349,8 @@ export async function installNativeRoles() {
       const wrapped=createNativeRoleAdapter({readRegistration,prepareRole,log,basePromptTemplate:utils.DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
         nativeExecute:async checked=>{
           const r=await readRegistration(),file=checked.config.instructionsFilePath;
-          const managedCwd='/paperclip/instances/default/projects/'+r.binding.companyId+'/'+r.binding.projectId+'/_default';
-          const executionCwd=r.contextVersion===1?r.workspaceCwd:managedCwd;
-          if(r.contextVersion===1?executionCwd!==managedCwd:executionCwd!==managedCwd&&executionCwd!==checked.config.cwd)fail('NATIVE_ROLE_WORKSPACE_DENIED');
+          const execution=nativeRoleArtifactExecution(checked,r),executionCwd=execution.config.cwd;
           fs.mkdirSync(executionCwd,{recursive:true});
-          const execution={...checked,config:{...checked.config,cwd:executionCwd},context:{...checked.context,
-            paperclipWorkspace:{...checked.context.paperclipWorkspace,cwd:executionCwd}}};
           const grantId=grantFor(checked.config.env?.CODEX_HOME,r.binding.companyId);
           if(r.contextVersion===1){
             const currentRegistry=registered(ctx.agent.id).registry;

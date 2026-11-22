@@ -102,3 +102,35 @@ test('Native domain metadata rejects malformed values and never reads domains fr
  const context=resolve({task:{id:'root-task',title:'enable content seo',domains:['content']}});
  assert.deepEqual(context.domains,[]);
 });
+
+test('fresh Native DB selection binds an owner registered local source independently of artifacts',async()=>{
+ const code=structuredClone(workspace);code.id='code-workspace';code.sourceType='local_path';code.cwd='/registered-projects/rwb';
+ code.metadata.superAgentProject.workspace={worktreeRoot:'/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees'};
+ const artifact={...structuredClone(workspace),id:'old-artifact',isPrimary:true};
+ const schema={projects:{id:'projects.id'},projectWorkspaces:{projectId:'workspaces.projectId'}};
+ const db={select:()=>({from:table=>({where:async()=>structuredClone(table===schema.projects?[projects[1]]:[artifact,code])})})};
+ const read=()=>readRoleProjectContext({db,schema,orm:{eq:(...args)=>args},companyId:'company',ownerId:'owner',
+  task:{id:'root-task',projectId:'rwb',projectWorkspaceId:code.id,cwd:'/untrusted-request'}});
+ const context=await read();
+ assert.deepEqual(context.nativeSourceWorkspace,{id:code.id,projectId:'rwb',cwd:'/registered-projects/rwb',sourceType:'local_path'});
+ assert.equal(context.nativeWorkspaceId,code.id);
+ assert.equal(context.workspace.hostPath,'/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees/root-task');
+ assert.notEqual(context.workspace.hostPath,code.cwd);
+ code.cwd='/registered-projects/updated';assert.equal((await read()).nativeSourceWorkspace.cwd,code.cwd);
+ assert.equal(context.nativeSourceWorkspace.cwd,'/registered-projects/rwb');
+});
+
+test('source and artifact separation requires explicit owner, local source and registered code paths',()=>{
+ const code=structuredClone(workspace);code.sourceType='local_path';code.cwd='/registered-projects/rwb';
+ code.metadata.superAgentProject.workspace={worktreeRoot:'/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees'};
+ assert.ok(resolve({workspace:code}).nativeSourceWorkspace);
+ for(const mutate of [value=>{delete value.metadata.superAgentProject.ownerId;},
+  value=>{delete value.metadata.superAgentProject.workspace;},value=>{value.metadata.superAgentProject.repository.hostPath=null;},
+  value=>{value.sourceType='git_repo';}]){
+  const unregistered=structuredClone(code);mutate(unregistered);
+  assert.equal(resolve({workspace:unregistered}).nativeSourceWorkspace,undefined);
+ }
+ for(const cwd of ['relative','/registered-projects/../other','/']){
+  assert.throws(()=>resolve({workspace:{...code,cwd}}),/ROLE_PROJECT_WORKSPACE_DENIED/);
+ }
+});

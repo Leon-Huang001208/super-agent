@@ -93,6 +93,77 @@ function dispatchFixture(role) {
   return {ctx,registration,reviewedArtifacts,execute,getDispatched:()=>dispatched,getCalls:()=>calls};
 }
 
+function codeWorkspaceFixture(){
+ const f=dispatchFixture('chief'),artifactCwd='/paperclip/instances/default/projects/company/project/_default';
+ f.registration.contextVersion=1;f.registration.workspaceCwd=artifactCwd;
+ f.registration.profile.executionPolicy={executor:'macos_native',sandbox:'none',approvalPolicy:'never',docker:'on_demand'};
+ f.ctx.config.extraArgs=[];f.ctx.config.dangerouslyBypassApprovalsAndSandbox=true;f.ctx.config.dangerouslyBypassSandbox=true;
+ f.registration.binding.projectWorkspaceId='code-workspace';
+ f.registration.projectContext={id:'project',nativeWorkspaceId:'code-workspace',
+  nativeSourceWorkspace:{id:'code-workspace',projectId:'project',cwd:'/registered-projects/rwb',sourceType:'local_path'},
+  repository:{hostPath:'/Volumes/WorkDisk/Projects/RWB/ResearchWorkbench'},
+  workspace:{hostPath:'/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees/root',containerPath:'/workspace/project'},
+  delivery:{maximumAction:'merge'}};
+ // Actual Native context uses workspaceId here and has no top-level projectWorkspaceId.
+ f.ctx.context.paperclipWorkspace={workspaceId:'code-workspace',projectId:'project',cwd:'/registered-projects/rwb',source:'project_primary',mode:'shared_workspace'};
+ f.ctx.context.paperclipWorkspaces=[{workspaceId:'code-workspace',cwd:'/registered-projects/rwb'},
+  {workspaceId:'old-artifact',cwd:artifactCwd},{workspaceId:'foreign',cwd:'/foreign'}];
+ f.ctx.config.cwd='/registered-projects/rwb';
+ const events=[];let output,calls=0;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Assigned role',log:event=>events.push(event),readRegistration:async()=>f.registration,
+  prepareRole:async()=>({binding:f.registration.binding,contextVersion:1,workspaceCwd:artifactCwd,sessionMode:'new',knowledge:[],
+   config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:true}}),
+  nativeExecute:async value=>{output=value;calls++;return{exitCode:0};}});
+ return {...f,execute,events,artifactCwd,getOutput:()=>output,getCalls:()=>calls};
+}
+
+test('actual Native local source shape is checked separately and dispatch cwd remains the artifact directory',async()=>{
+ const f=codeWorkspaceFixture(),before=structuredClone(f.ctx);
+ assert.equal((await f.execute(f.ctx)).exitCode,0);
+ const output=f.getOutput();assert.equal(output.config.cwd,f.artifactCwd);
+ assert.equal(output.context.paperclipWorkspace.cwd,f.artifactCwd);
+ assert.equal(output.context.paperclipWorkspace.workspaceId,'code-workspace');
+ assert.equal(output.context.projectWorkspaceId,undefined);assert.equal(output.context.projectId,'project');
+ assert.equal(output.config.promptTemplate.includes('/Volumes/WorkDisk/Projects/ResearchWorkbench/paperclip-worktrees/root'),true);
+ assert.deepEqual(f.ctx,before);assert.equal(f.getCalls(),1);
+ const scope=f.events.find(event=>event.code==='NATIVE_ROLE_WORKSPACE_SCOPE_CHECK');
+ assert.equal(scope.artifactCwd,f.artifactCwd);assert.equal(scope.sourceCwd,'/registered-projects/rwb');
+ assert.equal(Object.values(scope.checks).every(Boolean),true);
+});
+
+test('code source binding rejects wrong Native workspace, project, cwd and absent trusted code registration before execute',async()=>{
+ for(const mutate of [f=>{f.ctx.context.paperclipWorkspace.workspaceId='wrong';},f=>{f.ctx.context.paperclipWorkspace.projectId='wrong';},
+  f=>{f.ctx.context.paperclipWorkspace.cwd='/unregistered/private-content';},f=>{delete f.registration.projectContext.nativeSourceWorkspace;},
+  f=>{f.registration.projectContext.nativeSourceWorkspace.id='wrong';},f=>{f.registration.projectContext.nativeSourceWorkspace.projectId='wrong';},
+  f=>{f.registration.projectContext.repository.hostPath=null;},f=>{f.registration.projectContext.workspace.hostPath=null;},
+  f=>{f.ctx.context.projectWorkspaceId='wrong';},f=>{f.ctx.context.paperclipWorkspace={cwd:'/registered-projects/rwb'};}]){
+  const f=codeWorkspaceFixture();mutate(f);
+  await assert.rejects(f.execute(f.ctx),{code:'NATIVE_ROLE_WORKSPACE_SCOPE_DENIED'});
+  assert.equal(f.getCalls(),0);
+  const scope=f.events.find(event=>event.code==='NATIVE_ROLE_WORKSPACE_SCOPE_CHECK');
+  assert.ok(scope);assert.ok(Object.values(scope.checks).some(value=>value===false));
+  assert.equal(JSON.stringify(f.events).includes('/unregistered/private-content'),false);
+ }
+});
+
+test('legacy artifact context remains accepted while an explicit wrong workspace ID is rejected',async()=>{
+ const f=codeWorkspaceFixture();delete f.registration.projectContext.nativeSourceWorkspace;
+ f.ctx.context.paperclipWorkspace.cwd=f.artifactCwd;
+ await f.execute(f.ctx);assert.equal(f.getOutput().config.cwd,f.artifactCwd);
+ f.ctx.context.paperclipWorkspace.workspaceId='wrong';
+ await assert.rejects(f.execute(f.ctx),/NATIVE_ROLE_WORKSPACE_SCOPE_DENIED/);assert.equal(f.getCalls(),1);
+});
+
+test('changing the trusted source registration during preparation still prevents Native execution',async()=>{
+ const f=codeWorkspaceFixture();let calls=0,reads=0;
+ const execute=createNativeRoleAdapter({basePromptTemplate:'Assigned role',log(){},
+  readRegistration:async()=>{const value=structuredClone(f.registration);if(++reads>1)value.projectContext.nativeSourceWorkspace.cwd='/registered-projects/changed';return value;},
+  prepareRole:async()=>({binding:f.registration.binding,contextVersion:1,workspaceCwd:f.artifactCwd,sessionMode:'new',knowledge:[],
+   config:{instructionsFilePath:f.ctx.config.instructionsFilePath,dangerouslyBypassApprovalsAndSandbox:true}}),
+  nativeExecute:async()=>{calls++;return{exitCode:0};}});
+ await assert.rejects(execute(f.ctx),{code:'NATIVE_ROLE_REGISTRATION_CHANGED'});assert.equal(calls,0);
+});
+
 test('quality repair has a trusted new output file without rewriting the original task description',async()=>{
  const f=dispatchFixture('qa');f.registration.outputFile='team-root-quality-qa-r1.json';f.registration.reviewedTaskKeys=['implement'];
  await f.execute(f.ctx);const prompt=f.getDispatched().config.promptTemplate;

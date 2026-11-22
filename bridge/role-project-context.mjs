@@ -50,17 +50,25 @@ export function resolveRoleProjectContext({companyId,ownerId,project,workspace,l
  const delivery=entry.delivery??{maximumAction:hostPath?'pull_request':'artifact'};
  if(!object(delivery)||!['artifact','pull_request','merge','deploy'].includes(delivery.maximumAction))fail('ROLE_PROJECT_DELIVERY_INVALID');
  const rwbRelease=resolveRwbReleaseMetadata(entry.rwbRelease,{companyId,projectId:project.id,rootTaskId,repository});
- let worktreePath=null;
+ let worktreePath=null,nativeSourceWorkspace;
  if(hostPath){
   if(!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,127}$/.test(rootTaskId??''))fail('ROLE_PROJECT_ROOT_TASK_INVALID');
   const worktreeRoot=entry.workspace?.worktreeRoot??'/Volumes/WorkDisk/Projects/'+key+'/paperclip-worktrees';
   if(typeof worktreeRoot!=='string'||!path.posix.isAbsolute(worktreeRoot)||path.posix.normalize(worktreeRoot)!==worktreeRoot)fail('ROLE_PROJECT_WORKSPACE_DENIED');
   worktreePath=path.posix.join(worktreeRoot,rootTaskId);
+  // Only explicit Owner-registered local code may arrive from a Native source cwd.
+  // This describes the input workspace; plans/reviews still use the fixed artifact cwd.
+  if(entry.ownerId===ownerId&&workspace?.sourceType==='local_path'&&entry.workspace?.worktreeRoot){
+   if(!workspace.id||typeof workspace.cwd!=='string'||!path.posix.isAbsolute(workspace.cwd)||
+    path.posix.normalize(workspace.cwd)!==workspace.cwd||workspace.cwd==='/'||hostPath==='/'||
+    worktreeRoot==='/'||worktreeRoot===hostPath||worktreePath===hostPath)fail('ROLE_PROJECT_WORKSPACE_DENIED');
+   nativeSourceWorkspace={id:workspace.id,projectId:workspace.projectId,cwd:workspace.cwd,sourceType:workspace.sourceType};
+  }
  }
  return {schemaVersion:1,id:project.id,key,name:project.name??project.id,repository,
   workspace:{hostPath:worktreePath,containerPath:'/workspace/project',...(entry.workspace?.prepare?{prepare:entry.workspace.prepare}:{})},rules,checks,delivery,
   hostMcpServers:entry.hostMcpServers??[],hostActions:entry.hostActions??[],services:entry.services??{},stack:entry.stack??[],domains,...(rwbRelease?{rwbRelease}:{}),
-  nativeWorkspaceId:workspace?.id??null};
+  nativeWorkspaceId:workspace?.id??null,...(nativeSourceWorkspace?{nativeSourceWorkspace}:{})};
 }
 
 /** Resolve the current task's Native project on every preflight and recheck. */
