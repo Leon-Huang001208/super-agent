@@ -86,4 +86,3 @@ export function nativeFixture(t,f){
   assert.equal(company,f.registry.companyId);assert.equal(agent,f.operation.agentId);resumes.push(f.run.id);f.run.status='running';f.run.startedAt=new Date('2026-11-22T06:00:00.000Z');f.task.executionRunId=f.run.id;f.task.checkoutRunId=f.run.id;return[{id:f.run.id}];
  }}};
 }
-
