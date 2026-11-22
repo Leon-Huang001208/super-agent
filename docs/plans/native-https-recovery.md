@@ -1,5 +1,7 @@
 # Native HTTPS 与原 Chief 计划恢复
 
+2026-11-22额度说明：本页六次上限及“第三槽后剩三次”保留原HTTPS专项的历史预算背景。当前重试沿原根可信额度累计，普通默认20次，历史显式12次及QA专项按绑定保留，旧调用不退款；见[当前额度合同](../agent-iteration.md)，不能把历史算例当作新任务上限。
+
 ## 问题与范围
 
 2026-11-20 的真实 Mac 原生首计划恢复已经越过参数门与 Native bootstrap 绑定，但 Codex 0.169.1 报 `workspace backend must use an HTTPS origin without credentials`。当前执行器强制本地 HTTP broker 并把它传给 `chatgpt_base_url`；代理审计只有 metadata/MCP，模型 `/responses` 请求为零。CLI session 和运行预算占位不代表完成模型推理。

@@ -6,6 +6,8 @@
 
 `team-dispatch-control`纯规划与Owner CLI通过精确registry摘要、空执行面和CAS维护派发布尔值；`completed-team-resume`校验原flow、输入、已发通知、原件与workspace，归档旧代后写Native控制与同根恢复信封；`rwb-development-registration`通过Native API登记长期开发workspace、既有规则/检查和原GitSafety命令。对应测试分别为`team-dispatch-control`、`completed-team-resume`和`rwb-development-registration`，实际CLI、源切换、授额和新run仍需现场回执。
 
+Chief的`roleInstructions`与DevOps的`renderRoleCapabilitiesMarkdown`同步说明普通原根20次、历史可信额度保留及按项目自身授权交付，生成的两份`assets/role-profiles`逐字匹配；没有修改调用门、权限或Skill包摘要。`team-roles`、`role-capabilities`、`task-call-policy`和`role-profile-publication`既有回归分别检查模板一致性、受管通道、历史预算与人工内容保护。源码修正不等于Native材料已发布；实际更新仅在运行窗口交接后通过Owner/CAS进行，未执行时记为NOT_RUN。
+
 ## 真实任务驱动的迭代
 
 `native-role-runtime.registered`通过现有`readControl`读取registry，统一使用4 MiB控制文件上限，保留owner、私有mode、常规文件、symlink及hardlink检查；其它私有JSON仍沿原1 MiB读取器，不扩大凭据文件限制。`native-role-runtime-context`回归执行真实registered函数及instruction readiness，复现并验证大于1 MiB的合法registry，同时拒绝超4 MiB、宽权限和链接文件，不用截断旧operations或修改历史来通过。
