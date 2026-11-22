@@ -417,6 +417,12 @@ async function collectChild(p,r,flow,entry,task,context){
  return true;
 }
 
+function resultPresentation(r,root,kind,reasonCode){
+ const value={kind,...(reasonCode?{reasonCode}:{})};
+ if(fs.existsSync(R+'/budget/'+root.id))try{value.budget={used:budgetUsed(root.id),maximum:rootCallLimit(r,root.id)};}
+ catch{log({code:'TEAM_NOTIFICATION_BUDGET_UNAVAILABLE',taskId:root.id});}
+ return value;
+}
 async function finalizeSummary(p,r,flow,file,context){
  const rootTask=await p.issue.getById(flow.rootTaskId);if(!rootTask)fail('TEAM_NATIVE_ROOT_MISSING');r=scopeFlow(r,flow,rootTask);
  const[run]=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.eq(p.schema.heartbeatRuns.id,flow.summaryRunId));if(run?.status!=='succeeded')return;
@@ -433,7 +439,7 @@ async function finalizeSummary(p,r,flow,file,context){
   const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx);if(!receipt)await svc.addComment(current.id,body,{agentId:r.team.ids.chief,runId:run.id});return svc.update(current.id,{status:qualityAccepted?'done':'blocked'});
  });
  flow.summary={runId:run.id,sessionId:run.sessionIdAfter,file:a.file,sha256:a.sha256,qualityAccepted,...(a.archiveFile?{archiveFile:a.archiveFile}:{})};writeControl(file,flow);
- const{sendTeamResult}=await import('./team-result-notification.mjs');flow.notification=await sendTeamResult({task:root,summary:a,registry:r,sourceRunId:run.id});writeControl(file,flow);log({code:qualityAccepted?'TEAM_GOAL_COMPLETED':'TEAM_GOAL_NEEDS_OWNER',taskId:root.id,summaryRunId:run.id,messageId:flow.notification.messageId});
+ const{sendTeamResult}=await import('./team-result-notification.mjs');flow.notification=await sendTeamResult({task:root,summary:a,registry:r,sourceRunId:run.id,presentation:resultPresentation(r,root,qualityAccepted?'result':'quality-blocked')});writeControl(file,flow);log({code:qualityAccepted?'TEAM_GOAL_COMPLETED':'TEAM_GOAL_NEEDS_OWNER',taskId:root.id,summaryRunId:run.id,messageId:flow.notification.messageId});
 }
 async function resumeContextPlan(context,p,r,task,flow,file){
  if(!context)return null;const used=fs.existsSync(R+'/budget/'+task.id)?budgetUsed(task.id):0;
@@ -477,7 +483,7 @@ async function finalizeQaBlocked(p,r,flow,file,context){
   return service.update(current.id,{status:'blocked'});
  });
  flow.summary={kind:'controller-quality-block',runId:source.runId,file:summary.file,sha256:summary.sha256,archiveFile,qualityAccepted:false,noModelCall:true,sourceQaRunId:source.runId};writeControl(file,flow);
- const{sendTeamResult}=await import('./team-result-notification.mjs');flow.notification=await sendTeamResult({task:root,summary,registry:r,sourceRunId:source.runId});writeControl(file,flow);
+ const{sendTeamResult}=await import('./team-result-notification.mjs');flow.notification=await sendTeamResult({task:root,summary,registry:r,sourceRunId:source.runId,presentation:resultPresentation(r,root,'quality-blocked',block.code)});writeControl(file,flow);
  log({code:block.code,taskId:root.id,sourceQaRunId:source.runId,modelCalls:0});
 }
 
