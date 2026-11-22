@@ -10,6 +10,7 @@ const condition='!(await hasGitMetadata(effectiveCwd))) {';
 const replacement='!(await hasGitMetadata(effectiveCwd)) &&\n        !(await allowRoleArtifactWorkspace(input))) {';
 const prefix='import { allowRoleArtifactWorkspace } from '+JSON.stringify(new URL('../bridge/role-artifact-workspace.mjs',import.meta.url).href)+';\n';
 const fail=code=>{throw Object.assign(Error(code),{code});};
+const initializations=new Map();
 
 // An offline fixture may supply its hash; production installation is always pinned.
 export function patchRoleArtifactWorkspaceSource(source,{expectedSha256=ROLE_ARTIFACT_WORKSPACE_SOURCE_SHA256}={}){
@@ -31,4 +32,21 @@ export function installRoleArtifactWorkspaceHook({directory='/opt/paperclip',ena
   applied=true;return {...loaded,source};
  }});
  return {enabled:true,moduleUrls:[moduleUrl],verify(){if(!applied)fail('ROLE_ARTIFACT_WORKSPACE_HOOK_NOT_APPLIED');},close(){hook.deregister();}};
+}
+
+/** Warm before Native services can import heartbeat; reuse only this verified initialization. */
+export async function ensureRoleArtifactWorkspaceHook({directory='/opt/paperclip',enabled=true,installHook=installRoleArtifactWorkspaceHook}={}){
+ if(!enabled)return {enabled:false,moduleUrls:[],status:'disabled'};
+ const root=fs.realpathSync(path.join(directory,'node_modules','@paperclipai','server'));
+ if(initializations.has(root))return initializations.get(root);
+ const initialization=(async()=>{
+  const hook=installHook({directory});
+  try{
+   for(const url of hook.moduleUrls)await import(url);
+   hook.verify();
+   return Object.freeze({enabled:true,moduleUrls:Object.freeze([...hook.moduleUrls]),status:'verified'});
+  }finally{hook.close();}
+ })();
+ initializations.set(root,initialization);
+ return initialization;
 }

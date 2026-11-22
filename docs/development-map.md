@@ -2,7 +2,7 @@
 
 ## 真实任务驱动的迭代
 
-`bridge/role-artifact-workspace.mjs`与`docker/role-artifact-workspace-hook.mjs`按固定Native源摘要装配非Git产物目录支持；仅明确`non_git_path`、实际owner/role/run/项目/工作区/输入及artifact上界全部匹配时免除`.git`要求，其他Native工作区与代码Git保护保留。server-entry从完整role source动态装配，新建M2产物workspace使用该类型，旧local_path仅可重用，不自动获得例外。源码/真实Native函数分支测试与实机新任务分别取证，不创建假Git仓库。
+`bridge/role-artifact-workspace.mjs`与`docker/role-artifact-workspace-hook.mjs`按固定Native源摘要装配非Git产物目录支持；仅明确`non_git_path`、实际owner/role/run/项目/工作区/输入及artifact上界全部匹配时免除`.git`要求，其他Native工作区与代码Git保护保留。`role-preload`在instruction hook有效期间先加载、验证artifact补丁，再启动协调器和飞书服务；server-entry复用同一模块已验证的初始化结果，未知ESM缓存仍拒绝启动。`tests/role-preload-order.test.mjs`以fresh process覆盖飞书提前导入heartbeat、维护模式及未知缓存拒绝。新建M2产物workspace使用该类型，旧local_path仅可重用，不自动获得例外。源码/真实Native函数分支测试与实机新任务分别取证，不创建假Git仓库。
 
 `bridge/native-npm-cache.mjs`在Mac启动本run前校验WorkDisk卷身份、路径、归属和权限，写私有HOME中的纯cache `.npmrc`及`NPM_CONFIG_CACHE`。共享的是可再生npm下载缓存，HOME/CODEX_HOME、认证、会话和产物继续逐run分离；无配置或卷身份不符时不静默落内盘。`tests/native-npm-cache.test.mjs`与Mac transport fixture核对多HOME复用同一cache、拒绝覆盖/符号链接和缺卷零写；配置证明不冒称包或业务通过。
 
