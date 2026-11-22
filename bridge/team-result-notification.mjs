@@ -1,5 +1,6 @@
 import fs from'node:fs';import{createHash}from'node:crypto';import{createRequire}from'node:module';
 import{ROLE_ROOT as R,readControl,writeControl}from'./role-control-store.mjs';
+import{parseUserSummary}from'./team-user-summary.mjs';
 const require=createRequire('/opt/super-agent/bridge-dependencies/package.json');
 const qualityReasons={
  TEAM_QA_REPAIR_LIMIT:{reason:'质量检查仍未通过，已达到本任务的返修轮次上限。',next:'查看原任务中的未通过项和保留结果，再安排后续处理。'},
@@ -18,18 +19,34 @@ function notificationTitle(task){
  if(!title)return'任务标题未提供';
  const characters=Array.from(title);return characters.length>120?characters.slice(0,120).join('')+'…':title;
 }
+function notificationUserSummary(value){
+ if(!value||typeof value!=='object'||Array.isArray(value))return null;
+ try{return parseUserSummary('<!-- user-notification:v1\n'+JSON.stringify(value)+'\n-->');}
+ catch{return null;}
+}
+const resultStages={
+ 'documents-reviewed':'文档成果及质量复核完成',
+ 'artifacts-reviewed':'本轮产物及质量复核完成',
+ 'results-collected':'本轮结果已汇总，质量复核状态未确认。',
+};
 /** Presentation is independent of the preserved technical summary and delivery key. */
 export function renderTeamResultNotification({task,summary,presentation={},createdAt}){
  const label=typeof task.identifier==='string'&&/^[A-Z][A-Z0-9]*-\d+$/.test(task.identifier)?task.identifier:'当前任务';
- const blocked=presentation.kind==='quality-blocked';
- const progress=blocked?'质量复核未通过，后续自动推进已暂停。':presentation.kind==='result'?'本轮结果已汇总，具体执行与验收状态见任务记录。':'未提供可信阶段信息，请查看任务记录。';
- const lines=[notificationTitle(task)+'（'+label+'）｜'+(blocked?'需要修复，已暂停':'本轮结果已汇总'),'','当前进度：'+progress,''];
+ const view=presentation&&typeof presentation==='object'?presentation:{};
+ const blocked=view.kind==='quality-blocked',result=view.kind==='result';
+ const stage=blocked?'质量复核未通过，后续自动推进已暂停。':result?(Object.hasOwn(resultStages,view.stage)?resultStages[view.stage]:resultStages['results-collected']):'未提供可信阶段信息，请查看任务记录。';
+ const brief=result?notificationUserSummary(view.userSummary):null;
+ const headline=blocked?'需要修复，已暂停':result&&['documents-reviewed','artifacts-reviewed'].includes(view.stage)?resultStages[view.stage]:result?'本轮结果已汇总':'本轮状态待核对';
+ const lines=[notificationTitle(task)+'（'+label+'）｜'+headline,''];
  if(blocked){
-  const result=(Object.hasOwn(qualityReasons,presentation.reasonCode)?qualityReasons[presentation.reasonCode]:null)??{reason:'质量检查未通过，需要先核对任务记录中的返修意见。',next:'沿原任务核对未通过项，再继续处理。'};
-  lines.push('原因：'+result.reason);if(result.detail)lines.push(result.detail);
-  lines.push('','下一步：'+result.next);
- }else lines.push(summary.text.slice(0,2400));
- const budget=presentation.budget;
+  const reason=(Object.hasOwn(qualityReasons,view.reasonCode)?qualityReasons[view.reasonCode]:null)??{reason:'质量检查未通过，需要先核对任务记录中的返修意见。',next:'沿原任务核对未通过项，再继续处理。'};
+  lines.push('已完成：本轮任务记录已保存。','当前阶段：'+stage,'待完成：'+reason.reason+(reason.detail?' '+reason.detail:''),'下一步：'+reason.next);
+ }else{
+  lines.push('已完成：'+(brief?.completed??(result?'本轮完整记录已保存。':'完成内容尚未提供可信摘要。')),'当前阶段：'+stage,
+   '待完成：'+(brief?.pending??'简短用户摘要未提供或无法核对，具体后续状态待核对。'),
+   '下一步：'+(brief?.next??'查看原任务中的完整成果与验证记录。'));
+ }
+ const budget=view.budget;
  if(Number.isSafeInteger(budget?.used)&&budget.used>=0&&Number.isSafeInteger(budget.maximum)&&budget.maximum>0&&budget.used<=budget.maximum)lines.push('','本任务已用调用：'+budget.used+' / '+budget.maximum+' 次');
  lines.push('','通知日期：'+notificationDate(createdAt),'完整成果与验证记录请查看 Paperclip 任务'+(label==='当前任务'?'。':' '+label+'。'));
  return lines.join('\n');

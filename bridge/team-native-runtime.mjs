@@ -10,6 +10,7 @@ import{isInitialChiefPlan,isUnclaimedChiefGateFailure,bindChiefBootstrapRetry,wi
 import{isChiefTransportPlanRetry,readChiefTransportFailureEvidence,bindChiefTransportRetry,withChiefTransportEvidence,chiefTransportEvidenceCode}from'./chief-transport-retry.mjs';
 import{renderTeamTaskDescription,teamTaskDescriptionForIntent}from'./team-task-description.mjs';
 import{rootCallLimit}from'./task-call-policy.mjs';
+import{userSummaryInstructions,parseUserSummary,teamResultStage}from'./team-user-summary.mjs';
 import{teamChildOperation,qaReviewedArtifacts,qaRepairStep,validateQaRepairReopen,driveQaRepair}from'./team-qa-repair.mjs';
 import{teamContextEnabled,registryForContextRecord,projectForTask,projectForOperation,scopedRegistry,reconcileTeamDispatch,createTeamContextCoordinator,writeTeamArchive,buildTeamContinuationInput,observeTeamFlow,teamArtifactNames}from'./team-context.mjs';
 const P='/opt/paperclip/node_modules',sha=b=>createHash('sha256').update(b).digest('hex');
@@ -374,7 +375,7 @@ async function wakeRole(p,r,task,entry,{rootTaskId,phase='work',flow,file,stepKe
    if(fs.existsSync(R+'/team/isolation-fixtures.json')){const fixtures=readControl(R+'/team/isolation-fixtures.json');for(const f of fixtures.files){const stat=fs.lstatSync(f.path);if(!stat.isFile()||sha(fs.readFileSync(f.path))!==f.sha256)fail('TEAM_ISOLATION_FIXTURE_CHANGED');}additionalInput+='\nSynthetic private fixture existence verified by controller; values withheld: '+JSON.stringify(fixtures);}
   }
  }else if(phase==='summary'){
-  additionalInput='Summarize the following real Native child results into the trusted summaryFile. Do not create another plan.\n';for(const a of Object.values(flow.artifacts)){const value=flowArtifact(r,flow,a);if(value.sha256!==a.sha256)fail('TEAM_COLLECTED_ARTIFACT_CHANGED');additionalInput+='\n'+JSON.stringify(a)+'\n'+value.text;}
+  additionalInput='Summarize the following real Native child results into the trusted summaryFile. Do not create another plan.\n'+userSummaryInstructions();for(const a of Object.values(flow.artifacts)){const value=flowArtifact(r,flow,a);if(value.sha256!==a.sha256)fail('TEAM_COLLECTED_ARTIFACT_CHANGED');additionalInput+='\n'+JSON.stringify(a)+'\n'+value.text;}
  }
  if(flow)await rootAuthority(p,r,flow,async()=>{},context);
  const meter=meterFor(r);let lease;try{lease=meter.reserveTask({taskId:task.id,projectId:task.projectId,storageReceipt:JSON.parse(fs.readFileSync('/host-evidence/host-storage.json','utf8'))});}catch(e){if(e.code==='ADMISSION_BUSY')return null;throw e;}finally{meter.close();}
@@ -439,7 +440,8 @@ async function finalizeSummary(p,r,flow,file,context){
   const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx);if(!receipt)await svc.addComment(current.id,body,{agentId:r.team.ids.chief,runId:run.id});return svc.update(current.id,{status:qualityAccepted?'done':'blocked'});
  });
  flow.summary={runId:run.id,sessionId:run.sessionIdAfter,file:a.file,sha256:a.sha256,qualityAccepted,...(a.archiveFile?{archiveFile:a.archiveFile}:{})};writeControl(file,flow);
- const{sendTeamResult}=await import('./team-result-notification.mjs');flow.notification=await sendTeamResult({task:root,summary:a,registry:r,sourceRunId:run.id,presentation:resultPresentation(r,root,qualityAccepted?'result':'quality-blocked')});writeControl(file,flow);log({code:qualityAccepted?'TEAM_GOAL_COMPLETED':'TEAM_GOAL_NEEDS_OWNER',taskId:root.id,summaryRunId:run.id,messageId:flow.notification.messageId});
+ const presentation={...resultPresentation(r,root,qualityAccepted?'result':'quality-blocked'),userSummary:parseUserSummary(a.text),stage:teamResultStage(flow)};
+ const{sendTeamResult}=await import('./team-result-notification.mjs');flow.notification=await sendTeamResult({task:root,summary:a,registry:r,sourceRunId:run.id,presentation});writeControl(file,flow);log({code:qualityAccepted?'TEAM_GOAL_COMPLETED':'TEAM_GOAL_NEEDS_OWNER',taskId:root.id,summaryRunId:run.id,messageId:flow.notification.messageId});
 }
 async function resumeContextPlan(context,p,r,task,flow,file){
  if(!context)return null;const used=fs.existsSync(R+'/budget/'+task.id)?budgetUsed(task.id):0;
