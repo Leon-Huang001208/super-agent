@@ -82,7 +82,7 @@ function auditPort({permit,log,logRoot}={}){
 }
 
 /** All writes to the configured Mac mini disk require its actual UUID and APFS identity. */
-async function verifyHostVolume(target,{run}={}){
+export async function verifyHostVolume(target,{run=commandPort()}={}){
  if(!target.startsWith('/Volumes/WorkDisk/'))return true;
  let result;try{
   const info=await run(['/usr/sbin/diskutil','info','-plist','/Volumes/WorkDisk']);

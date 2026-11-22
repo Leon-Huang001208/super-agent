@@ -54,10 +54,19 @@ test('configuration apply creates only a nonprimary workspace and preserves exis
  assert.equal(result.status,'complete');assert.equal(f.calls(),1);assert.equal(f.projects[0].workspaces.length,0);
  const rwb=f.projects[1],created=rwb.workspaces.find(w=>w.id!==f.primary.id);assert.deepEqual(rwb.workspaces[0],f.primary);assert.equal(created.isPrimary,false);
  assert.equal(created.metadata.superAgentProject.delivery.maximumAction,'artifact');assert.equal(created.metadata.superAgentProject.key,'research-workbench');
+ assert.equal(created.sourceType,'non_git_path');
  assert.equal(r.context.catalog.projects.find(p=>p.key==='research-workbench').projectWorkspaceId,created.id);
  assert.deepEqual(f.agents,beforeAgents);assert.deepEqual(r.agents.map(e=>e.profile),f.registry.agents.map(e=>e.profile));
  assert.ok(r.agents.every(e=>e.manifest.scope==='generic'));assert.deepEqual(r.operations,f.registry.operations);
  assert.equal((await f.run({apply:true})).reused,true);assert.equal(f.calls(),1);assert.equal(f.writes(),1);
+});
+
+test('legacy local_path artifact registration is reused without silently changing its Native type',async t=>{
+ const f=fixture(t);await f.run({apply:true});const created=f.projects[1].workspaces.find(w=>w.id!==f.primary.id);created.sourceType='local_path';
+ f.request.operationId=randomUUID();const result=await f.run({apply:true});
+ assert.equal(result.status,'complete');assert.equal(f.calls(),1);assert.equal(created.sourceType,'local_path');
+ created.metadata.superAgentProject.repository={hostPath:'/source/repo'};f.request.operationId=randomUUID();
+ await assert.rejects(f.run({apply:true}),{code:'CONTEXT_CONFIG_WORKSPACE_METADATA_CHANGED'});
 });
 
 test('materials include PM six public files and never carry personal private content into the second project',async t=>{

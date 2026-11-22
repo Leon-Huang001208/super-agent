@@ -15,9 +15,10 @@ test('ChiefWeb and role AI hooks are installed together before shared route depe
  const events=[],urls=names=>names.map(name=>pathToFileURL(dist+'/'+name).href);
  const chiefHookFactory=()=>{events.push('chief.install');const expected=new Set(urls(['app.js','services/agent-conversations.js','services/heartbeat/queue.js'])),applied=new Set();const hook=registerHooks({load(url,context,next){const result=next(url,context);if(!expected.has(url))return result;events.push('chief.load');applied.add(url);return {...result,source:Buffer.from(result.source).toString()+'\nexport const chiefPatched=true;'};}});return {verify(){events.push('chief.verify');assert.equal(applied.size,3);},close(){events.push('chief.close');hook.deregister();}};};
  const aiHookFactory=()=>{events.push('ai.install');let applied=false;const hook=registerHooks({load(url,context,next){const result=next(url,context);if(url!==urls(['routes/agents.js'])[0])return result;events.push('ai.load');applied=true;return {...result,source:patchRoleAiBindingSource(Buffer.from(result.source).toString(),{expectedSha256:createHash('sha256').update(original).digest('hex')})};}});return {verify(){events.push('ai.verify');assert.equal(applied,true);},close(){events.push('ai.close');hook.deregister();}};};
- const {loadServer}=await import('../docker/server-entry.mjs');const server=await loadServer(d,{mountChiefWebPilot(){},settleChiefWebPilot(){},recoverChiefWebSkippedWake(){},chiefHookFactory,aiHookFactory});
+ const artifactHookFactory=()=>{events.push('artifact.install');return{verify(){events.push('artifact.verify');},close(){events.push('artifact.close');}};};
+ const {loadServer}=await import('../docker/server-entry.mjs');const server=await loadServer(d,{mountChiefWebPilot(){},settleChiefWebPilot(){},recoverChiefWebSkippedWake(){},chiefHookFactory,aiHookFactory,artifactHookFactory});
  assert.equal(server.dependencyHooksApplied,true);assert.equal(server.changed({mode:'responsible_user',provider:'openai',method:'subscription'},{runtimeConfig:{aiConnection:{mode:'responsible_user',method:'subscription',provider:'openai'}}}),false);
- assert.deepEqual(events.slice(0,2),['chief.install','ai.install']);assert.deepEqual(events.slice(-4),['chief.verify','ai.verify','ai.close','chief.close']);assert.equal(fs.readFileSync(dist+'/routes/agents.js','utf8'),original);
+ assert.deepEqual(events.slice(0,3),['chief.install','ai.install','artifact.install']);assert.deepEqual(events.slice(-6),['chief.verify','ai.verify','artifact.verify','artifact.close','ai.close','chief.close']);assert.equal(fs.readFileSync(dist+'/routes/agents.js','utf8'),original);
 });
 
 test('shared loader closes already installed hooks when later setup or import fails',async t=>{
@@ -26,5 +27,7 @@ test('shared loader closes already installed hooks when later setup or import fa
  const {loadServer}=await import('../docker/server-entry.mjs');let events=[];
  const chiefHookFactory=()=>({verify(){events.push('chief.verify');},close(){events.push('chief.close');}});
  await assert.rejects(loadServer(d,{mountChiefWebPilot(){},chiefHookFactory,aiHookFactory(){throw Error('fixture setup failed');}}),/fixture setup failed/);assert.deepEqual(events,['chief.close']);
- events=[];await assert.rejects(loadServer(d,{mountChiefWebPilot(){},chiefHookFactory,aiHookFactory:()=>({verify(){events.push('ai.verify');},close(){events.push('ai.close');}})}),/fixture import failed/);assert.deepEqual(events,['ai.close','chief.close']);
+ const aiHookFactory=()=>({verify(){events.push('ai.verify');},close(){events.push('ai.close');}});
+ events=[];await assert.rejects(loadServer(d,{mountChiefWebPilot(){},chiefHookFactory,aiHookFactory,artifactHookFactory(){throw Error('artifact setup failed');}}),/artifact setup failed/);assert.deepEqual(events,['ai.close','chief.close']);
+ events=[];await assert.rejects(loadServer(d,{mountChiefWebPilot(){},chiefHookFactory,aiHookFactory,artifactHookFactory:()=>({verify(){events.push('artifact.verify');},close(){events.push('artifact.close');}})}),/fixture import failed/);assert.deepEqual(events,['artifact.close','ai.close','chief.close']);
 });

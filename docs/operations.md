@@ -2,6 +2,14 @@
 
 ## Agent迭代发布
 
+### 产物工作区和再生缓存
+
+无代码产物目录明确登记为Native `sourceType=non_git_path`、可信owner及`delivery.maximumAction=artifact`、无repository.hostPath；远端fullName只供只读GitHub工具，不能据此把目录当作checkout。固定版本进程内hook仅对受管Mac角色与真实Native绑定全部成立的目录免除缺Git错误；持久工作区/CWD/项目一致性及代码/PR任务的Git检查仍保留。不得用创建假`.git`、改整个Native校验器或清M2 catalog绕过错误。旧local_path需在排空后由Owner明确改类型，配置工具不会悄悄迁移。
+
+Native npm缓存默认复用WorkDisk下项目专用工具缓存；本run HOME仅新增纯cache配置，不链接或复制宿主`.npmrc`，不混入token/认证，不更改package版本或执行安装。卷身份、canonical路径、UID及权限在写入前核对，已有用户配置拒绝覆盖。`native-proof.npmCache`仅记录配置与卷验证；实际依赖启动及业务结果另行验证。
+
+容量不足先由System Resource Engineer区分可再生缓存和业务状态。退休当前任务缓存需终态/租约/自有进程组及实际文件引用证明，独立副本读回后逐路径处置；活跃、未知或外部引用不按名称放行。lsof非零且有输出不能当完整无引用证明；用独立查询完成正向分类，部分失败沿同一intent和已删除清单对账。日志、会话、SQLite/WAL、预算、Skills和原产物保护，不降低准入门槛或重启整个VM。
+
 ### GitHub只读通道与原质量任务续接
 
 连接按[GitHub只读合同](github-read.md)配置。Native workspace远端身份经Owner接口登记，保留metadata原有内容、无代码hostPath及artifact上界；不因接通读通道开放GitHub写入。先修实际工具缺口，取得原操作的可核验证据，再在安全节点恢复原质量任务，避免继续花调用等待同一外部条件。

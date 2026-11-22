@@ -109,7 +109,7 @@ export async function configureContext({root=ROLE_ROOT,request:raw,native,source
     if(!workspaces.length)fail('CONTEXT_CONFIG_NONPRIMARY_UNAVAILABLE');
     const check=await native.executionState();if(check.active?.length||check.environmentLeases?.length||exists(root+'/call.lock'))fail('CONTEXT_CONFIG_EXECUTION_BUSY');
     intent.workspaces[p.projectId]={attempted:true};writeControl(intentFile,intent);
-    try{workspace=await native.createWorkspace(p.projectId,{name:entry.workspace.name,cwd:p.workspaceCwd,sourceType:'local_path',isPrimary:false,
+    try{workspace=await native.createWorkspace(p.projectId,{name:entry.workspace.name,cwd:p.workspaceCwd,sourceType:'non_git_path',isPrimary:false,
       metadata:{superAgentProject:{...entry.workspace.metadata.superAgentProject,contextSetupOperationId:plan.operationId}}});}
     catch{await log({code:'CONTEXT_CONFIG_WORKSPACE_UNKNOWN',operationId:plan.operationId,projectId:p.projectId});fail('CONTEXT_CONFIG_WORKSPACE_RECONCILIATION_REQUIRED');}
     if(!compatibleContextWorkspace(workspace,p,plan.ownerId))fail('CONTEXT_CONFIG_WORKSPACE_CHANGED');
