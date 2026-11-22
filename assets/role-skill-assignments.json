@@ -14,6 +14,7 @@
     "devops": {"skills": ["gh-fix-ci", "gh-address-comments", "engineering-delivery", "systematic-debugging", "read-docs"]},
     "network-engineer": {"skills": ["diagnosing-bugs", "systematic-debugging", "read-docs"]},
     "system-resource-engineer": {"skills": ["storage-analyzer", "systematic-debugging"]},
-    "document-specialist": {"skills": ["xlsx", "docx", "pptx", "pdf", "doc-coauthoring", "theme-factory"]}
+    "document-specialist": {"skills": ["xlsx", "docx", "pptx", "pdf", "doc-coauthoring", "theme-factory"]},
+    "full-stack-engineer": {"skills": ["frontend-design", "frontend-testing-debugging", "webapp-testing", "systematic-debugging", "test-driven-development", "property-based-testing"], "conditional": [{"skills": ["react-best-practices"], "stack": ["react", "next.js", "nextjs"]}, {"skills": ["shadcn"], "stack": ["shadcn", "shadcn/ui"]}, {"skills": ["supabase-postgres-best-practices"], "stack": ["postgres", "postgresql", "supabase"], "services": ["postgres", "postgresql", "supabase"]}]}
   }
 }

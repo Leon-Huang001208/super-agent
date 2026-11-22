@@ -2,6 +2,9 @@
 
 ## 现行规则与设计
 
+- [任务级模型与Runtime隔离候选](plans/task-runtime-routing.md)：保留原12岗身份与Codex会员，按任务选择模型/Runtime，同任务handoff与旧证据归属。
+- [Full Stack Engineer与13岗候选](plans/full-stack-engineer.md)：全栈/专业唯一负责人、开发测试权限、完整资料及同批Native迁移边界。
+
 - [Native HTTPS 与原 Chief 计划恢复](plans/native-https-recovery.md)：每 run 的 loopback TLS、可信 CA、原首计划第二次 Native 重试、预算与失败证据。
 
 - [Document Specialist](plans/document-specialist.md)：新增文档岗的职责、9项技能、现有工具链与单岗接入/验证边界。
@@ -35,7 +38,7 @@
 
 当前规范以项目规则及现行专题文档为准；代码证明实现，精确候选的回执证明验证，实时活动观察证明可否运行。冲突时记录未知并追查拥有该事实的来源，不把计划或旧 PASS 提升为现状。
 
-- [Team roles](team.md)：12岗英文全称、汇报关系及职责边界。
+- [Team roles](team.md)：13岗候选英文全称、原12岗身份保持、汇报关系及职责边界。
 - [Agent持续迭代](agent-iteration.md)：真实任务反馈、原任务返修、六阶段能力证据及材料发布。
 - [GitHub只读连接](github-read.md)：独立HOME、宿主认证只读工具和仓库身份登记。
 

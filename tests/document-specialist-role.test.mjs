@@ -17,14 +17,14 @@ const role='document-specialist';
 const legacyRoles=['chief','research','pm','designer','architect','frontend-engineer','backend-engineer','qa','devops','network-engineer','system-resource-engineer'];
 
 test('the document profession adds one Chief subordinate and keeps the established hierarchy',()=>{
- assert.deepEqual(ROLE_KEYS,[...legacyRoles,role]);
+ assert.deepEqual(ROLE_KEYS,[...legacyRoles,role,'full-stack-engineer']);
  assert.equal(ROLE_DISPLAY_NAMES[role],'Document Specialist');
  assert.equal(TEAM_ROLES[role].parent,'chief');
  assert.equal(TEAM_ROLES[role].nativeRole,'general');
  const rows=Object.values(TEAM_ROLES).map(r=>({key:r.key,id:randomUUID(),name:r.name,adapterType:'codex_local',model:'gpt-6.1-sol',reasoningEffort:'low',heartbeatEnabled:false,lifecycle:'ready',status:'idle'}));
  const ids=Object.fromEntries(rows.map(row=>[row.key,row.id]));
  for(const row of rows)row.reportsTo=TEAM_ROLES[row.key].parent?ids[TEAM_ROLES[row.key].parent]:null;
- assert.equal(validateTeamRoster(rows,{requireReady:true}).length,12);
+ assert.equal(validateTeamRoster(rows,{requireReady:true}).length,13);
  assert.equal(rows.find(row=>row.key==='qa').reportsTo,ids.chief);
  assert.equal(rows.find(row=>row.key==='frontend-engineer').reportsTo,ids.architect);
  assert.throws(()=>validateTeamRoster(rows.filter(row=>row.key!==role)),/ROSTER_INCOMPLETE/);

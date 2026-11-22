@@ -11,6 +11,7 @@ import{isChiefTransportPlanRetry,readChiefTransportFailureEvidence,bindChiefTran
 import{renderTeamTaskDescription,teamTaskDescriptionForIntent}from'./team-task-description.mjs';
 import{rootCallLimit}from'./task-call-policy.mjs';
 import{userSummaryInstructions,parseUserSummary,teamResultStage}from'./team-user-summary.mjs';
+import{createTeamTaskRuntimeController,teamRuntimeProposal}from'./team-task-runtime.mjs';
 import{teamChildOperation,qaReviewedArtifacts,qaRepairStep,validateQaRepairReopen,driveQaRepair}from'./team-qa-repair.mjs';
 import{teamContextEnabled,registryForContextRecord,projectForTask,projectForOperation,scopedRegistry,reconcileTeamDispatch,createTeamContextCoordinator,writeTeamArchive,buildTeamContinuationInput,observeTeamFlow,teamArtifactNames}from'./team-context.mjs';
 const P='/opt/paperclip/node_modules',sha=b=>createHash('sha256').update(b).digest('hex');
@@ -69,12 +70,17 @@ export async function admitChiefInput(ctx,{database}){
  r=scopeTask(r,task.projectId?task:{...task,projectId:r.team.projectId},contextControl?{contextVersion:1}:undefined);authorizeChiefOwnerInput({registry:r,task:task.projectId?task:{...task,projectId:r.team.projectId},run,wakeup,previousRuns});
  if(!task.projectId){const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(db);task=await svc.update(task.id,{projectId:r.team.projectId});}
  await readRoleProjectContext({db,schema:s,orm:o,task,companyId:r.companyId,ownerId:r.ownerId,legacyProfile:r.agents.find(a=>a.profile.role==='chief')?.profile,rootTaskId:task.id});
+ const routing=r.runtimeRouting?.mode==='task',controller=routing?createTeamTaskRuntimeController({native:{db,schema:s,orm:o},log}):null,operationId=randomUUID();
+ const proposal=routing?teamRuntimeProposal({registry:r,task,entry:{role:'chief'},rootTaskId:task.id,operationId,phase:'plan'}):null;
+ const acceptedPool=routing?await controller.preflight(proposal):null;
  const meter=meterFor(r,task.projectId);let lease;
  try{lease=meter.reserveTask({taskId:task.id,projectId:task.projectId,storageReceipt:JSON.parse(fs.readFileSync('/host-evidence/host-storage.json','utf8'))});}
  catch(e){if(e.code!=='ADMISSION_BUSY')throw e;const svc=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(db);writeControl(R+'/team/waiting/'+task.id+'.json',{taskId:task.id,runId:run.id,wakeupId:wakeup.id,inputRevision:taskInputRevision(task),...projectFields(r),at:new Date().toISOString()});await svc.update(task.id,{status:'todo',assigneeAgentId:null,assigneeUserId:r.ownerId});fail('NATIVE_ROLE_GLOBAL_SLOT_BUSY');}
  finally{meter.close();}
  if(!lease?.allowed)fail('TEAM_ADMISSION_RECONCILIATION_REQUIRED');
- const inputRevision=taskInputRevision(task),op=registration(r,task.id,run.agentId,'chief',{...lease,projectId:task.projectId},{phase:'plan',inputRevision,acceptedRunId:run.id});
+ const inputRevision=taskInputRevision(task),op=registration(r,task.id,run.agentId,'chief',{...lease,projectId:task.projectId},{phase:'plan',inputRevision,operationId,acceptedRunId:run.id,
+  ...(routing?{additionalInput:'Trusted taskRuntimeRouting enabled; accepted combinations:\n'+JSON.stringify(acceptedPool.pool.available.map(({profileId,modelId,runtimeId,tools,taskTypes})=>({profileId,modelId,runtimeId,tools,taskTypes})))}:{})});
+ if(routing)await controller.bindAcceptedChief({task,operation:op,run,proposal});
  log({code:'TEAM_CHIEF_OWNER_ADMITTED',taskId:task.id,runId:run.id,operationId:op.id,ownerWakeupId:wakeup.id});
  return {...ctx,context:{...ctx.context,issueId:task.id,taskId:task.id,projectId:task.projectId,responsibleUserId:r.ownerId,inputRevision,roleOperationId:op.id,taskGoal:task.description,conversationMode:false}};
 }
@@ -84,7 +90,7 @@ function artifact(r,name,{notBefore=0,runId,historicalTaskId}={}){
   else if(teamContextEnabled(r)){if(permit.projectId!==r.team.projectId||base!==workspace(r))fail('TEAM_ARTIFACT_WORKSPACE_DENIED');}else if(permit.companyId!==r.companyId||base!==workspace(r,permit.projectId)&&!Object.keys(TEAM_ROLES).some(k=>base===R+'/workspaces/'+k))fail('TEAM_ARTIFACT_WORKSPACE_DENIED');}
  if(!/^[a-z][a-z0-9-]{0,110}\.(md|json)$/.test(name??''))fail('TEAM_ARTIFACT_PATH_DENIED');const p=path.join(base,name),stat=fs.lstatSync(p);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size>262144||stat.mtimeMs+2000<notBefore)fail('TEAM_ARTIFACT_DENIED');const bytes=fs.readFileSync(p);if(bytes.includes(0))fail('TEAM_ARTIFACT_DENIED');return {file:name,sha256:sha(bytes),bytes:bytes.length,text:bytes.toString('utf8')};
 }
-async function ports(database){const data=await database();const issue=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(data.db);const heartbeat=(await import(P+'/@paperclipai/server/dist/services/heartbeat.js')).heartbeatService(data.db);return {...data,issue,heartbeat};}
+async function ports(database){const data=await database();const issue=(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(data.db);const heartbeat=(await import(P+'/@paperclipai/server/dist/services/heartbeat.js')).heartbeatService(data.db);const p={...data,issue,heartbeat};p.taskRuntime=createTeamTaskRuntimeController({native:p,log});return p;}
 async function getRunForOp(p,op){const file=R+'/operations/'+op.id+'.json';let id=op.acceptedRunId;if(fs.existsSync(file))id=readControl(file).runId;if(!id){const[w]=await p.db.select().from(p.schema.agentWakeupRequests).where(p.orm.eq(p.schema.agentWakeupRequests.idempotencyKey,'team-operation:'+op.id));id=w?.runId;}if(!id)return null;const[run]=await p.db.select().from(p.schema.heartbeatRuns).where(p.orm.eq(p.schema.heartbeatRuns.id,id));return run;}
 /** Keep the original Native project and flow generation; retired flows are evidence, not retry targets. */
 export function resolveNativeRetryScope({registry,task,rootTask,operation,existingOperation,flows,log:audit=log}){
@@ -291,7 +297,7 @@ async function releaseKnownIdle(p,r){
  }finally{if(readControl(lock).nonce!==nonce)fail('TEAM_RELEASE_FENCE_CHANGED');fs.unlinkSync(lock);}
  }finally{meter.close();}
 }
-async function nativeRoster(p,r){const rows=await p.db.select().from(p.schema.agents).where(p.orm.eq(p.schema.agents.companyId,r.companyId));return validateTeamRoster(rows.map(a=>({key:Object.keys(r.team.ids).find(k=>r.team.ids[k]===a.id),id:a.id,name:a.name,reportsTo:a.reportsTo,adapterType:a.adapterType,model:a.adapterConfig.model,reasoningEffort:a.adapterConfig.modelReasoningEffort,heartbeatEnabled:a.runtimeConfig.heartbeat?.enabled,status:a.status,lifecycle:a.lifecycleState})),{requireReady:true});}
+async function nativeRoster(p,r){const rows=await p.db.select().from(p.schema.agents).where(p.orm.eq(p.schema.agents.companyId,r.companyId));return validateTeamRoster(rows.map(a=>({key:Object.keys(r.team.ids).find(k=>r.team.ids[k]===a.id),id:a.id,name:a.name,reportsTo:a.reportsTo,adapterType:a.adapterType,model:a.adapterConfig.model,reasoningEffort:a.adapterConfig.modelReasoningEffort,heartbeatEnabled:a.runtimeConfig.heartbeat?.enabled,status:a.status,lifecycle:a.lifecycleState})),{requireReady:true,runtimeAssignments:r.runtimeAssignments});}
 async function appendOnce(p,issueId,marker,body,actor){
  await p.db.transaction(async tx=>{await tx.select({id:p.schema.issues.id}).from(p.schema.issues).where(p.orm.eq(p.schema.issues.id,issueId)).for('update');const[prior]=await tx.select({id:p.schema.issueComments.id}).from(p.schema.issueComments).where(p.orm.and(p.orm.eq(p.schema.issueComments.issueId,issueId),p.orm.eq(p.schema.issueComments.body,marker+'\n'+body))).limit(1);if(!prior)await(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx).addComment(issueId,marker+'\n'+body,actor);});
 }
@@ -310,7 +316,7 @@ async function dispatchPlan(p,r,op,run,context){
  const base=saved??{rootTaskId:task.id,projectId:task.projectId,sourceRunId:run.id,sourceOperationId:op.id,inputRevision:op.inputRevision,...projectFields(r),artifacts:{},
   ...(op.artifactGeneration?{artifactGeneration:op.artifactGeneration,planFile:op.planFile,summaryFile:op.summaryFile,outputPrefix:op.outputPrefix}:{})};
  const readStrictPlan=()=>{const value=base.planArtifact?flowArtifact(r,base,base.planArtifact):artifact(r,base.planFile??'chief-dispatch-'+task.id+'-'+op.inputRevision.slice(0,12)+'.json',{notBefore:Date.parse(run.startedAt),runId:run.id});
-  const strict=validateTeamPlan(JSON.parse(value.text),{remainingCalls:rootCallLimit(r,task.id)-budgetUsed(task.id)});if(base.artifactGeneration&&!strict.tasks.length)fail('TEAM_CONTEXT_REPLAN_EMPTY');for(const entry of strict.tasks){if(!entry.outputFile.startsWith(base.outputPrefix??'team-'+task.id+'-'))fail('TEAM_PLAN_OUTPUT_SCOPE_DENIED');if(teamContextEnabled(r)&&!r.contextProject.allowedRoles.includes(entry.role))fail('TEAM_CONTEXT_ROLE_DENIED');}return{artifact:value,plan:strict};};
+  const strict=validateTeamPlan(JSON.parse(value.text),{remainingCalls:rootCallLimit(r,task.id)-budgetUsed(task.id),taskRuntimeRouting:r.runtimeRouting?.mode==='task'&&Boolean(op.taskRuntimeRoute)&&!saved});if(base.artifactGeneration&&!strict.tasks.length)fail('TEAM_CONTEXT_REPLAN_EMPTY');for(const entry of strict.tasks){if(!entry.outputFile.startsWith(base.outputPrefix??'team-'+task.id+'-'))fail('TEAM_PLAN_OUTPUT_SCOPE_DENIED');if(teamContextEnabled(r)&&!r.contextProject.allowedRoles.includes(entry.role))fail('TEAM_CONTEXT_ROLE_DENIED');}return{artifact:value,plan:strict};};
  let read;if(context){read=readStrictPlan();const snapshot=snapshotArtifact(r,base,read.artifact,run.id);base.planArtifact={file:snapshot.file,sha256:snapshot.sha256,bytes:snapshot.bytes,runId:run.id,...(snapshot.archiveFile?{archiveFile:snapshot.archiveFile}:{})};}
  let control;
  if(context){const view=await context.inspect({registry:r,task,flow:base,file});task=view.task;r=view.registry;control=view.control;if(view.disposition==='superseded'){await resumeContextPlan(context,p,r,task,base,file);return;}if(!['ready','paused'].includes(view.disposition))return;}
@@ -351,13 +357,16 @@ async function wakeRole(p,r,task,entry,{rootTaskId,phase='work',flow,file,stepKe
  const budgetDirectory=R+'/budget/'+rootTaskId,used=fs.existsSync(budgetDirectory)?budgetUsed(rootTaskId):0;
  const disposition=await reconcileTeamDispatch({operation:existing,used,limit:rootCallLimit(latest,rootTaskId),lookupRun:op=>getRunForOp(p,op),log});
  if(disposition.kind!=='new')return disposition.run?.id??null;
+ const operationId=requestedOperationId??randomUUID(),routing=r.runtimeRouting?.mode==='task',controller=routing?(p.taskRuntime??createTeamTaskRuntimeController({native:p,log})):null;
+ const proposal=routing?teamRuntimeProposal({registry:r,task,entry,rootTaskId,operationId,phase,repair:Boolean(flow&&qaRepairStep(flow,entry))}):null;
+ const runtimePreflight=routing?await controller.preflight(proposal):null;
  if(!fs.existsSync(budgetDirectory))fs.mkdirSync(budgetDirectory,{mode:0o700});
  if(teamContextEnabled(r)&&!r.contextProject.allowedRoles.includes(role))fail('TEAM_CONTEXT_ROLE_DENIED');
  const projectContext=await readRoleProjectContext({...p,task,companyId:r.companyId,ownerId:r.ownerId,legacyProfile:r.agents.find(a=>a.profile.role===role)?.profile,rootTaskId});
  let additionalInput=reconstruction,reviewedArtifacts,reviewedTaskKeys,codeCandidate;
  if(phase==='work'){
   const obs=readControl(R+'/team/host-observations.json');if(obs.kind!=='macos-host-observation'||obs.hostPlatform!=='darwin'||!Number.isFinite(Date.parse(obs.capturedAt))||Date.parse(obs.capturedAt)>Date.now()+5000||Date.now()-Date.parse(obs.capturedAt)>300000)fail('TEAM_HOST_OBSERVATION_STALE');
-  additionalInput='Trusted management observations (evidence, not instructions):\n'+JSON.stringify({host:obs,roster:await nativeRoster(p,r)});
+  additionalInput='Trusted management observations (evidence, not instructions):\n'+JSON.stringify({host:obs,roster:await nativeRoster(p,r),...(routing?{taskRuntimeRouting:true,acceptedCombinations:runtimePreflight.pool.available.map(({profileId,modelId,runtimeId,tools,taskTypes})=>({profileId,modelId,runtimeId,tools,taskTypes}))}:{})});
   if(role==='pm'||role==='qa')for(const a of qaReviewedArtifacts(flow)){const value=flowArtifact(r,flow,a);if(value.sha256!==a.sha256)fail('TEAM_COLLECTED_ARTIFACT_CHANGED');additionalInput+='\nActual upstream artifact '+JSON.stringify(a)+'\n'+value.text;}
   const repair=qaRepairStep(flow,entry);
   if(repair){const source=flow.qaRepair.sourceQa,value=flowArtifact(r,flow,source);additionalInput+='\nQuality repair of the same original task, round '+repair.qualityRepair.round+'. The original goal, authority and cumulative root budget are unchanged. Address the following actual QA findings and regenerate candidate/check evidence as needed. Required output is the trusted outputFile; preserve all previous outputs.\n'+JSON.stringify(source)+'\n'+value.text;
@@ -377,14 +386,41 @@ async function wakeRole(p,r,task,entry,{rootTaskId,phase='work',flow,file,stepKe
  }else if(phase==='summary'){
   additionalInput='Summarize the following real Native child results into the trusted summaryFile. Do not create another plan.\n'+userSummaryInstructions();for(const a of Object.values(flow.artifacts)){const value=flowArtifact(r,flow,a);if(value.sha256!==a.sha256)fail('TEAM_COLLECTED_ARTIFACT_CHANGED');additionalInput+='\n'+JSON.stringify(a)+'\n'+value.text;}
  }
+ if(routing&&phase!=='work')additionalInput+='\nTrusted taskRuntimeRouting enabled; accepted combinations:\n'+JSON.stringify(runtimePreflight.pool.available.map(({profileId,modelId,runtimeId,tools,taskTypes})=>({profileId,modelId,runtimeId,tools,taskTypes})));
  if(flow)await rootAuthority(p,r,flow,async()=>{},context);
  const meter=meterFor(r);let lease;try{lease=meter.reserveTask({taskId:task.id,projectId:task.projectId,storageReceipt:JSON.parse(fs.readFileSync('/host-evidence/host-storage.json','utf8'))});}catch(e){if(e.code==='ADMISSION_BUSY')return null;throw e;}finally{meter.close();}
  if(!lease.allowed)fail('TEAM_CHILD_ADMISSION_UNKNOWN');
- const operationId=requestedOperationId??randomUUID(),inputRevision=taskInputRevision(task);
+ const inputRevision=taskInputRevision(task);
  if(flow){flow.dispatches??={};flow.dispatches[stepKey]={operationId,taskId:task.id,role,phase,inputRevision,...projectFields(r),additionalInputSha256:sha(additionalInput),leaseNonce:lease.nonce,at:new Date().toISOString()};writeControl(file,flow);}
  const repair=flow&&qaRepairStep(flow,entry);
  const op=registration(r,task.id,agentId,role,{...lease,projectId:task.projectId},{rootTaskId,rootInputRevision:flow?.inputRevision,phase,inputRevision,operationId,networkScope:entry.networkScope,resourceScope:entry.resourceScope,additionalInput,reviewedArtifacts,reviewedTaskKeys,artifactGeneration,outputFile:phase==='work'?entry.outputFile:undefined,qualityRepair:repair?.qualityRepair,additionalCapabilities:entry.capabilities??[],authorizedHostActions:entry.hostActions??[],codeCandidate,codeReview:codeReviewForTeamStep(flow,entry,phase)});
- const assign=async(tx)=>{const[current]=await tx.select().from(p.schema.issues).where(p.orm.eq(p.schema.issues.id,task.id)).for('update');if(!current||current.companyId!==r.companyId||current.projectId!==r.team.projectId||current.responsibleUserId!==r.ownerId||taskInputRevision(current)!==inputRevision||['done','cancelled','blocked'].includes(current.status))fail('TEAM_CHILD_AUTHORITY_CHANGED');if(context&&!flow)await context.assertCurrent({registry:r,task:current,flow:{rootTaskId,inputRevision,...projectFields(r),phase:'plan'},transaction:{db:tx}});await(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx).update(task.id,{assigneeAgentId:agentId,assigneeUserId:null,status:'todo'});};
+ const assign=async(tx,route)=>{const[current]=await tx.select().from(p.schema.issues).where(p.orm.eq(p.schema.issues.id,task.id)).for('update');if(!current||current.companyId!==r.companyId||current.projectId!==r.team.projectId||current.responsibleUserId!==r.ownerId||taskInputRevision(current)!==inputRevision||['done','cancelled','blocked'].includes(current.status))fail('TEAM_CHILD_AUTHORITY_CHANGED');
+  if(route?.handoff?.handoffKind==='role-transfer'&&!(current.assigneeAgentId===route.handoff.fromAgentId&&current.assigneeUserId==null||current.assigneeAgentId==null&&current.assigneeUserId===r.ownerId&&current.status==='in_review'))fail('TEAM_RUNTIME_OWNER_CHANGED');
+  if(context&&!flow)await context.assertCurrent({registry:r,task:current,flow:{rootTaskId,inputRevision,...projectFields(r),phase:'plan'},transaction:{db:tx}});await(await import(P+'/@paperclipai/server/dist/services/issues.js')).issueService(tx).update(task.id,{companyGuard:r.companyId,assigneeAgentId:agentId,assigneeUserId:null,status:'todo'});};
+ if(routing){
+  const readState=async()=>{const bytes=fs.readFileSync(R+'/registry.json'),current=JSON.parse(bytes),selected=current.operations.find(item=>item.id===op.id),nativeTask=await p.issue.getById(task.id);
+   const active=await p.db.select({id:p.schema.heartbeatRuns.id}).from(p.schema.heartbeatRuns).where(p.orm.inArray(p.schema.heartbeatRuns.status,['running','queued','scheduled_retry']));
+   return{registry:current,registrySha256:sha(bytes),task:nativeTask,operation:selected,budgetUsed:budgetUsed(rootTaskId),budgetLimit:rootCallLimit(current,rootTaskId),executionClosed:!fs.existsSync(R+'/call.lock'),activeRunIds:active.map(item=>item.id)};};
+  const handoff=async state=>{
+   const previous=(state.registry.taskRuntimeRoutes??[]).filter(item=>item.taskId===task.id&&item.operationId!==op.id).at(-1);
+   if(!previous||previous.profileId===runtimePreflight.choice.profileId&&previous.agentId===agentId)return undefined;
+   const old=state.registry.operations.find(item=>item.id===previous.operationId),run=old&&await getRunForOp(p,old),directory=R+'/transport/'+run?.id;
+   if(run?.status!=='succeeded'||!run.finishedAt)fail('TEAM_RUNTIME_HANDOFF_RESULT_UNKNOWN');
+   const transport=readControl(directory+'/result.json');for(const name of ['process-cleanup.json','broker-process-cleanup.json'])if(readControl(directory+'/'+name).status!=='terminated')fail('TEAM_RUNTIME_HANDOFF_OPEN');
+   const {agentExecutionsHaveStopped}=await import(P+'/@paperclipai/server/dist/services/agent-execution-stop.js');if(!await agentExecutionsHaveStopped(p.db,[previous.agentId]))fail('TEAM_RUNTIME_HANDOFF_OPEN');
+   const value=artifact(r,old.outputFile,{runId:run.id,notBefore:Date.parse(run.startedAt)}),material='team-runtime-handoff-'+op.id+'.json',cwd=readRolePermit(R+'/permits/'+run.id+'.json').cwd;
+   const body={taskId:task.id,rootTaskId,fromRunId:run.id,fromOperationId:old.id,toOperationId:op.id,inputRevision,budgetUsedBefore:state.budgetUsed,artifact:{file:value.file,sha256:value.sha256}};
+   const filename=path.join(cwd,material);if(fs.existsSync(filename)){if(!equal(readControl(filename),body))fail('TEAM_RUNTIME_HANDOFF_CHANGED');}else writeControl(filename,body);
+   return{previousRoute:previous,previousRun:run,transport,executionClosed:true,budgetUsedBefore:state.budgetUsed,artifacts:[{file:value.file,sha256:value.sha256,runId:run.id}],material:{file:material,sha256:sha(fs.readFileSync(filename))},
+    ...(previous.agentId!==agentId?{handoffKind:'role-transfer',actorScopeClosed:true}:{} )};
+  };
+  const assignRoute=route=>flow?rootAuthority(p,r,flow,tx=>assign(tx,route),context):p.db.transaction(tx=>assign(tx,route));
+  const dispatched=await controller.dispatch({proposal,readState:async()=>{const state=await readState(),h=await handoff(state);return{...state,...(h?{handoff:h}:{}),...(h?.handoffKind==='role-transfer'?{previousActor:{agentId:h.previousRoute.agentId,role:h.previousRoute.role,runId:h.previousRun.id,taskId:task.id,rootTaskId,scopeClosed:true,activeRunIds:[]}}:{})};},
+   handoff:async state=>state.handoff,assign:assignRoute,assignTaskOwnerCAS:async value=>assignRoute(value.route),
+   persistRoute:async value=>{if(budgetUsed(rootTaskId)!==value.budgetUsedBefore)fail('TEAM_RUNTIME_BUDGET_CHANGED');editRoleRegistry(current=>{if(sha(fs.readFileSync(R+'/registry.json'))!==value.previousRegistrySha256)fail('TEAM_RUNTIME_REGISTRY_CHANGED');return value.registry;});},
+   wakeup:async value=>{await p.heartbeat.resetRuntimeSession(agentId,{taskKey:task.id});return p.heartbeat.wakeup(agentId,{source:'on_demand',triggerDetail:'manual',manualUserWake:false,reason:'team_controlled_assignment',requestedByActorType:'agent',requestedByActorId:r.team.ids.chief,idempotencyKey:value.idempotencyKey,payload:{issueId:task.id},contextSnapshot:{...value.contextSnapshot,taskGoal:task.description}});}});
+  if(dispatched.status!=='WOKEN')fail(dispatched.code??'TEAM_RUNTIME_DISPATCH_RECONCILIATION_REQUIRED');log({code:'TEAM_NATIVE_ROLE_DISPATCHED',taskId:task.id,rootTaskId,agentId,role,runId:dispatched.runId,operationId:op.id});return dispatched.runId;
+ }
  if(flow)await rootAuthority(p,r,flow,assign,context);else await p.db.transaction(assign);
  await p.heartbeat.resetRuntimeSession(agentId,{taskKey:task.id});
  const result=await p.heartbeat.wakeup(agentId,{source:'on_demand',triggerDetail:'manual',manualUserWake:false,reason:'team_controlled_assignment',requestedByActorType:'agent',requestedByActorId:r.team.ids.chief,idempotencyKey:'team-operation:'+op.id,payload:{issueId:task.id},contextSnapshot:{issueId:task.id,taskId:task.id,projectId:task.projectId,responsibleUserId:r.ownerId,inputRevision,roleOperationId:op.id,taskGoal:task.description,forceFreshSession:true,conversationMode:false}});
@@ -557,6 +593,6 @@ export function startTeamCoordinator({database,contextRuntime,nativePorts=ports}
   for(const op of r.operations.filter(x=>x.kind==='run'&&x.role==='chief'&&x.phase==='plan')){const run=await getRunForOp(p,op);if(run?.status==='succeeded')await dispatchPlan(p,r,op,run,context);if((await activeRuns(p)).length)return;}
   r=readControl(R+'/registry.json');for(const name of fs.readdirSync(R+'/team/workflows').filter(x=>x.endsWith('.json'))){await driveFlow(p,r,R+'/team/workflows/'+name,context);if((await activeRuns(p)).length)return;}
   if(!fs.existsSync(R+'/call.lock'))await resumeWaiting(p,readControl(R+'/registry.json'),context);lastError='';
- }catch(e){const code=/^(?:TEAM|ROLE|ADMISSION|CONTEXT_PROJECT|CHIEF_CONTEXT|CONTEXT_NATIVE)_[A-Z_]+$/.test(e.code??e.message)?(e.code??e.message):'TEAM_RUNTIME_FAILED';if(code!==lastError){log({code,errorType:e.name,status:Number.isInteger(e.status)?e.status:undefined,site:e.stack?.split('\n')[1]?.match(/[^ /]+\.(?:js|mjs):\d+:\d+/)?.[0]});lastError=code;}}finally{busy=false;}};
+ }catch(e){const code=/^(?:TEAM|ROLE|TASK_ROUTER|TASK_RUNTIME|ADMISSION|CONTEXT_PROJECT|CHIEF_CONTEXT|CONTEXT_NATIVE)_[A-Z_]+$/.test(e.code??e.message)?(e.code??e.message):'TEAM_RUNTIME_FAILED';if(code!==lastError){log({code,errorType:e.name,status:Number.isInteger(e.status)?e.status:undefined,site:e.stack?.split('\n')[1]?.match(/[^ /]+\.(?:js|mjs):\d+:\d+/)?.[0]});lastError=code;}}finally{busy=false;}};
  const timer=setInterval(()=>void tick(),2000);timer.unref();log({code:'TEAM_COORDINATOR_INSTALLED',source:'native-services',modelCalls:0});return {tick,stop:()=>clearInterval(timer)};
 }
