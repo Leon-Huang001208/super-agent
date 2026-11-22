@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {taskInputRevision} from '../bridge/task-input.mjs';
-import {bindUnstartedChildRetry,childBootstrapOperation,childBootstrapEvidenceCode} from '../bridge/role-native-retry.mjs';
+import {bindUnstartedChildRetry,childBootstrapOperation,childBootstrapEvidenceCode,isChildBootstrapPreflightRefusal} from '../bridge/role-native-retry.mjs';
 import {bindNativeRetryAttempt,resolveNativeRetryScope} from '../bridge/team-native-runtime.mjs';
 import {teamRoleAdmissionFailure,prepareTeamRoleExecution} from '../bridge/chief-bootstrap-retry.mjs';
 
@@ -18,7 +18,7 @@ function fixture(t){
   status:'in_progress',assigneeAgentId:agentId,assigneeUserId:null,executionRunId:runId,checkoutRunId:runId};
  const workspaceCwd=path.join(root,'workspace');fs.mkdirSync(workspaceCwd,{mode:0o700});
  const operation={id:operationId,kind:'run',role:'document-specialist',phase:'work',agentId,taskId,rootTaskId:rootId,projectId,
-  inputRevision:taskInputRevision(task),rootInputRevision:taskInputRevision(rootTask),workspaceCwd,outputFile:'document-batch-fix-r1.md',
+  inputRevision:taskInputRevision(task),rootInputRevision:taskInputRevision(rootTask),outputFile:'document-batch-fix-r1.md',
   qualityRepair:{round:1,sourceQaRunId:randomUUID(),targetKey:'document-batch',qaKey:'independent-qa',phase:'fix'}};
  const registry={enabled:true,companyId,ownerId:'owner',team:{enabled:true,projectId,ids:{chief:chiefId,'document-specialist':agentId}},
   agents:[{profile:{role:'chief',agentId:chiefId}},{profile:{role:'document-specialist',agentId}}],operations:[operation],tasks:[rootId,taskId],taskRoots:{[rootId]:rootId,[taskId]:rootId},
@@ -35,10 +35,22 @@ function fixture(t){
  const ctx={runId,agent:{id:agentId},runtime:{sessionId:'actual-native-retry-session'},context:{...context,forceFreshSession:true}};
  const write=(name,value)=>{const file=path.join(root,name);fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});fs.writeFileSync(file,JSON.stringify(value)+'\n',{mode:0o600});};
  for(let i=0;i<3;i++)write('budget/'+rootId+'/'+randomUUID()+'.json',{rootTaskId:rootId,existing:true});
- return {root,ctx,registry,operation,rootTask,task,flow,parentRun,run,wakeup,activeRuns:[run],taskRuns:[parentRun,run],
+ return {root,ctx,registry,operation,rootTask,task,flow,workspaceCwd,parentRun,run,wakeup,activeRuns:[run],taskRuns:[parentRun,run],
   leases:[{heartbeatRunId:parentId,status:'failed',releasedAt:'2026-11-22T03:24:58.200Z',cleanupStatus:null}],write};
 }
 const bind=f=>bindUnstartedChildRetry({...f,verifyPhaseLease:lease=>{assert.deepEqual(lease,f.registry.lease);return true;},log(){}});
+function secondFixture(t){
+ const f=fixture(t),initialRun=f.parentRun,parentRun={...f.run,status:'failed',exitCode:1,signal:null,finishedAt:'2026-11-22T04:07:23.678Z',
+  errorCode:'TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_EVIDENCE_UNAVAILABLE',error:'The controlled Native intake or retry did not admit this execution.',
+  resultJson:{executionRecovery:{kind:'reconciliation',providerWorkStarted:null},stopReason:'adapter_failed',timeoutFired:false,
+   configFreshness:{session:{taskSessionAvailable:false,taskSessionReused:false}}},stdoutExcerpt:'',stderrExcerpt:'',logBytes:0,
+  logSha256:createHash('sha256').update('').digest('hex'),nativeSessionId:null,sessionIdBefore:null,sessionIdAfter:null,processPid:null,processGroupId:null};
+ const run={...f.run,id:randomUUID(),scheduledRetryAttempt:2,retryOfRunId:parentRun.id};
+ Object.assign(f,{initialRun,parentRun,run,ctx:{...f.ctx,runId:run.id},taskRuns:[initialRun,parentRun,run],activeRuns:[run]});
+ Object.assign(f.task,{executionRunId:run.id,checkoutRunId:run.id});
+ f.leases.push({heartbeatRunId:parentRun.id,status:'failed',releasedAt:'2026-11-22T04:07:23.800Z',cleanupStatus:null});
+ return f;
+}
 function bytes(directory){return fs.readdirSync(directory,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name)).flatMap(entry=>{
  const file=path.join(directory,entry.name);return entry.isDirectory()?bytes(file):[[file,fs.readFileSync(file).toString('base64')]];
 });}
@@ -56,10 +68,48 @@ test('scope resolution may clone the registry without invalidating the same orig
  Object.assign(f.operation,{contextVersion:1,projectKey:'rwb',workspaceCwd:cwd});Object.assign(f.flow,{contextVersion:1,projectKey:'rwb',workspaceCwd:cwd});
  f.registry.context={schemaVersion:1,enabled:true,catalog:{schemaVersion:1,defaultProjectKey:'rwb',projects:[{key:'rwb',aliases:[],companyId:f.registry.companyId,ownerId:'owner',
   projectId:f.task.projectId,adapterKey:'native-docs',allowedRoles:['document-specialist'],maximumAction:'read_only',workspaceCwd:cwd}]}};
- const scoped=resolveNativeRetryScope({...f,flows:[{file:'original',flow:f.flow}],log(){}}).registry;
+ const selected=resolveNativeRetryScope({...f,flows:[{file:'original',flow:f.flow}],log(){}}),scoped=selected.registry;
  assert.notEqual(scoped.operations[0],f.operation);
- assert.equal(bind({...f,registry:scoped}),f.ctx);
- assert.throws(()=>bind({...f,operation:{...f.operation,additionalCapabilities:['unauthorized']},registry:scoped}),/TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_AUTHORITY_CHANGED/);
+ assert.equal(bind({...f,registry:scoped,workspaceCwd:selected.workspaceCwd}),f.ctx);
+ assert.throws(()=>bind({...f,operation:{...f.operation,additionalCapabilities:['unauthorized']},registry:scoped,workspaceCwd:selected.workspaceCwd}),/TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_AUTHORITY_CHANGED/);
+});
+
+test('ordinary Native child resolves its managed artifact directory without M2-only operation fields',t=>{
+ const f=fixture(t),before=structuredClone(f.operation),selected=resolveNativeRetryScope({...f,flows:[{file:'original',flow:f.flow}],log(){}});
+ const cwd='/paperclip/instances/default/projects/'+f.registry.companyId+'/'+f.task.projectId+'/_default';
+ assert.equal(selected.workspaceCwd,cwd);assert.equal(f.operation.contextVersion,undefined);assert.equal(f.operation.workspaceCwd,undefined);
+ assert.equal(bind({...f,registry:selected.registry,workspaceCwd:selected.workspaceCwd}),f.ctx);assert.deepEqual(f.operation,before);
+ const lstat=fs.lstatSync;t.mock.method(fs,'lstatSync',(file,...args)=>file===path.join(cwd,f.operation.outputFile)?{isFile:()=>true}:lstat(file,...args));
+ assert.throws(()=>bind({...f,registry:selected.registry,workspaceCwd:selected.workspaceCwd}),/TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_PHYSICAL_EVIDENCE_PRESENT/);
+});
+
+test('an existing second Native retry reconciles a controlled preflight refusal without rewriting its unknown history',t=>{
+ const f=secondFixture(t),selected=resolveNativeRetryScope({...f,flows:[{file:'original',flow:f.flow}],log(){}});
+ const {write,...state}=f,before=structuredClone(state),files=bytes(f.root);assert.equal(childBootstrapOperation(f.registry,f.parentRun,f.initialRun),f.operation);
+ assert.equal(isChildBootstrapPreflightRefusal(f.parentRun),true);
+ assert.equal(bind({...f,registry:selected.registry,workspaceCwd:selected.workspaceCwd}),f.ctx);
+ assert.deepEqual(state,before);assert.deepEqual(bytes(f.root),files);
+ assert.deepEqual(f.parentRun.resultJson.executionRecovery,{kind:'reconciliation',providerWorkStarted:null});
+ assert.equal(fs.readdirSync(f.root+'/budget/'+f.rootTask.id).length,3);assert.equal(f.run.scheduledRetryAttempt,2);
+});
+
+test('second retry refuses changed or missing controlled return evidence, ancestry and every physical attempt',t=>{
+ const mutations=[f=>{f.parentRun.errorCode='adapter_failed';},f=>{f.parentRun.error='same error code from another adapter';},
+  f=>{f.parentRun.resultJson.stopReason='provider_failed';},f=>{delete f.parentRun.resultJson.timeoutFired;},f=>{f.parentRun.resultJson.timeoutFired=true;},
+  f=>{f.parentRun.logSha256='a'.repeat(64);},f=>{f.parentRun.logBytes=1;},f=>{delete f.parentRun.logBytes;},
+  f=>{f.parentRun.stdoutExcerpt='output';},f=>{f.parentRun.stderrExcerpt='error';},f=>{f.parentRun.sessionIdAfter='session';},
+  f=>{delete f.parentRun.nativeSessionId;},f=>{f.parentRun.processPid=123;},f=>{f.parentRun.resultJson.configFreshness.session.taskSessionAvailable=true;},
+  f=>{delete f.parentRun.resultJson.configFreshness.session.taskSessionReused;},f=>{f.initialRun.resultJson.executionRecovery.providerWorkStarted=null;},
+  f=>{f.initialRun.contextSnapshot.responsibleUserId='other';},f=>{f.parentRun.contextSnapshot.roleOperationId=randomUUID();},
+  f=>{f.parentRun.retryOfRunId=randomUUID();},f=>{f.parentRun.scheduledRetryAttempt=0;},f=>{f.run.scheduledRetryAttempt=3;},
+  f=>{f.wakeup.runId=f.parentRun.id;},f=>{f.leases[1].releasedAt=null;},f=>{f.taskRuns.splice(0,1);}];
+ for(const mutate of mutations){const f=secondFixture(t);mutate(f);const {write,...state}=f,before=structuredClone(state),files=bytes(f.root);
+  assert.throws(()=>bind(f),/^Error: TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_/);assert.deepEqual(state,before);assert.deepEqual(bytes(f.root),files);
+ }
+ for(const which of ['initialRun','parentRun','run'])for(const prefix of ['permits','claims','results','transport']){
+  const f=secondFixture(t);f.write(prefix+'/'+f[which].id+(prefix==='transport'?'/result.json':'.json'),{});
+  assert.throws(()=>bind(f),/TEAM_NATIVE_RETRY_BOOTSTRAP_CHILD_PHYSICAL_EVIDENCE_PRESENT/);
+ }
 });
 
 test('an earlier successful operation of the same task and its old output remain valid evidence',t=>{
