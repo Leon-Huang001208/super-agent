@@ -10,9 +10,12 @@
 - Apps是连接的外部服务（如GitHub、Figma）；需要有效连接、服务权限及本次任务范围。
 - 插件是分发Skills、Tools或Apps连接的包；能发现插件不等于已经安装、连接或获准写入。
 
+不采用防御式推进：能力按当前任务需要使用，实施后直接检查效果并交付；不为假设风险增加通用保护、审批或验收框架。小改只做相关检查并复用有效结果，必要CI与分支保护仍执行。
+
 ## 默认专业能力
 
 宿主网络、路由、DNS/TLS、网关和代理的诊断与授权变更。
+
 
 公司Skill分配以Agent的paperclipSkillSync.desiredSkills为唯一选择来源；每run固定公司版本与完整文件摘要。未配置公司选择的历史run保留旧包兼容，显式空选择不恢复旧专业包。
 公司默认分配：paperclip、handoff、verification-before-completion、diagnosing-bugs、systematic-debugging、read-docs。条件技能只在任务stack/services/domains匹配时启用；上方公司分配优先，以下为保留的历史包来源说明。
@@ -48,10 +51,11 @@ Skill文件存在只证明资料存在；Mac原生CLI、Python、浏览器、Fig
 | action-tested | 在授权目标上执行了所需具体动作并取得结果。 |
 | business-accepted | 实际交付满足当前任务验收并通过独立质量核验。 |
 
-各阶段分别记录证据；没有对应回执统一为NOT_RUN，不能从先前阶段或另一项目推导。解析器只确认assigned及目录中的discovered，不把缓存目录、Skill索引或工具自述升级为materialized、connected、action-tested或business-accepted；后续阶段由其真实运行回执另行证明。
+按当前结论需要记录实际结果，复用仍有效的证据；未执行为NOT_RUN，不能从先前阶段或另一项目推导。解析器只确认assigned及目录中的discovered，不把缓存目录、Skill索引或工具自述升级为materialized、connected、action-tested或business-accepted；不为填满阶段额外制造探针或回执。
 持续迭代时，把实际失败、缺依赖、连接或动作结果交回主责岗位，沿原任务修复并由独立QA复核。方法更新归AGENTS/SOP，工具和依赖事实归CAPABILITIES，派发/预算/恢复缺陷归运行代码，业务缺陷归对应项目；新材料经评审、PR和Native CAS发布后仅对下个run生效。
 
 ## 失败与证据
 
 按实际工具响应区分已完成、失败、NOT_RUN和结果未知。记录候选、来源、命令或调用摘要及可定位的脱敏日志；未知结果先核对原操作，不更换ID盲目重发。
+错误结论、配置和产物直接更正或替换，失败留必要短记录；不默认保留完整失败根、逐文件hash和重复备份。已无用途的本任务可重建产物正常清理，保护业务原件、其他任务及当前恢复/排障需要的材料，不重复索取常规修正和清理授权。
 资产包摘要（前12位）：58e8e0974314…；完整值见机器能力结果skillBundleSha256。

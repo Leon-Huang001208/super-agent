@@ -6,9 +6,15 @@
 
 普通原根调用额度为20，旧计数和恢复原件保留。只有源码、回归、独评和Git交付通过后才进行受管运行源切换；App、宿主transport和登录恢复source pin必须一致。已结清原根的显式续接与长期项目登记见[运行手册](operations.md#20次预算及已完成原根续接)。
 
-## 受管任务入口
+## 默认推进方式
 
-工程管理统一使用仓库内的 `scripts/project-runtime.mjs`。入口先验证固定文件，再调用对应的 Harness、交付或资源命令。已有宿主 Node、Git、gh 用于管理，不安装宿主产品包。每个新任务使用新的不透明 session 键，延续同一任务时恢复原键：
+实现→直接检查效果→交付，不采用防御式推进。小改只做相关检查并复用有效证据；没有真实问题不增加通用保护、审批、回执、恢复重演或新框架。错误直接更正，失败短记录足够，本任务无用途的可重建临时产物正常清理，不为保存错误副本阻断接续。真实业务权限、业务原件、其他任务及必要CI／分支保护仍按实际需求处理。
+
+常规小改使用独立短期分支和PR，不默认新建Harness账本或额外验收项目。下列受管工具用于任务确实需要的状态跟踪、复杂交付或真实中断恢复，不是每次修改／清理的附加前置门。
+
+## 按需使用现有受管入口
+
+需要受管账本时使用仓库内的`project-runtime.mjs`，不另建框架；已有任务沿原身份接续，不靠新任务清零历史。下面是显式选择该工具时的示例，不要求普通小改机械执行全套：
 
 ```sh
 node scripts/project-runtime.mjs verify
@@ -27,11 +33,9 @@ node scripts/project-runtime.mjs delivery --start \
 
 ## 实现、检查与评审
 
-1. 读取改动及所属文档，声明权限、平台和验收。产品依赖与测试在 Docker；修改前不省略已有文件读取。
-2. 在隔离分支实现，保留脱敏日志、错误码、恢复行为和目标测试。维护 [文档同步映射](documentation-governance.md)。
-3. 实际运行相关回归和文档检查，记录时间、退出码和候选；macOS 宿主 / Docker 证据和 Linux CI 分开。
-4. 独立评审会话读取精确 diff、规则和验证证据；不得由开发会话自签通过。修复后重新评审受影响内容。
-5. 受管 `prepare` 生成合并候选；再验证该候选。默认分支前进或修复产生新提交时重新 prepare，不发布旧结果。
+1. 读取已有文件和相关约束，直接在短期分支实现；依赖或平台确实需要时才用Docker。
+2. 运行与本次改动直接相关的效果检查，失败就修复，已有有效结果不重复跑；同步必要文档。
+3. 按原PR和必要CI／独评／分支保护交付。需要受管候选时使用已有`prepare`；源变化只复核受影响部分，不因新提交机械重跑全部检查。
 
 ## PR、CI 与自动合并
 
@@ -45,11 +49,11 @@ node scripts/project-runtime.mjs delivery --start \
 
 `node scripts/project-runtime.mjs delivery --status` 核对 PR 地址、候选 SHA 和目标分支，兼容 `CheckRun.conclusion` 与 `StatusContext.state`，并将原始检查保存在受管回执。PR 合并、有合并 SHA 且三个必需状态都成功后才记为通过。失败检查记为失败，缺失、未完成或未知检查继续等待。查询失败或身份不匹配时保留原回执并报告错误。
 
-CI 成功不等于业务验收。合并后验证远端默认分支包含候选，按原始实测证据记录 Harness；完整交付必须通过 `node scripts/project-runtime.mjs enforce --project "$PWD" --task-id '<任务ID>' --require-delivery`，PR-only 受阻状态不能登记 completed/passed。
+CI成功不冒称业务验收。源码交付按真实PR合并、相关检查和必要评审记录完成；资源清理延期单列，不否定已完成的源码交付。`enforce --require-delivery`只在任务确实要求完整生命周期且适用时使用，不为小改或临时产物强制增加一轮大验收、备份和账本工程。
 
 ## 收尾与中断恢复
 
-保留任务 ID、精确提交、受管 receipt、验证摘要和待办。只清理本任务已归并、干净、无进程占用的短期资源。未知 ignored 文件、未归并提交、其他 worktree、业务数据和恢复证据继续保护。资源欠账单独报告；不定时扫描清理，不做 prune，不清未知锁。
+保留必要的任务／提交／结果摘要和待办。本任务已无用途的临时或失败产物正常清理，不默认保留完整失败树、逐文件hash或重复副本；错误状态直接更正，不伪改真实失败。业务原件、其他工作树、未归并工作及当前恢复或排障确有需要的材料继续保护，不无差别prune或清未知锁。
 
 固定模块沿用 Git common directory 的 `leon-engineering/harness` 和 `leon-engineering/deliveries` 存储，以及原主机资源账本。已有任务以原 project、task ID 和 session ID 续接。旧 `.ai/harness` 可先用 `storage --preview` 检查，再按已有迁移合同处理。Codex 全局 Hooks 退役后，通过上述显式入口创建任务和记录结果，待补清资源通过受管交付或 `lifecycle event` 的原恢复事件处理。入口自身的脱敏日志写入 `SUPER_AGENT_LOG_ROOT` 或 `logs/project-runtime.jsonl`。
 

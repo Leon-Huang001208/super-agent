@@ -6,6 +6,14 @@
 
 RWB特定边界移至对应项目上下文。通用岗位正文解释目标、输入、职责、协作、方法、技能和工具触发、交付物及完成/失败标准。专业方法参考既有Skill和agency-agents职责素材，任务/运行控制仍由Paperclip负责。
 
+## 2026-11-22职责与执行方式修订
+
+现役Architect只读核对为idle，实际选择的paperclip、handoff、verification-before-completion、codebase-design、domain-modeling、improve-codebase-architecture、writing-plans、security-threat-model共8项均compatible且有当前版本；AGENTS/CAPABILITIES与已部署模板一致。这证明分配与材料状态，不证明所有工具已连接或业务验收通过。本次复用已有方法，不安装重复Skill。
+
+生成源补强Architect的技术选型与可执行规格：Research检索证据，Architect基于代码和项目约束比较必要方案、作出取舍，并按PM目标交接接口、数据、错误/权限、负责人和可观察验收。任务相关时才展开迁移回滚等细节；专业分工见[团队职责](../team.md)，不把架构岗变成所有专业工具的重复执行者。
+
+所有岗位通用SOP明确“不采用防御式推进”：实现后直接检查效果并交付，小改做相关检查、复用有效结果；错误直接修正、失败留短记录，本任务无用可重建产物正常清理。真实业务权限与必要CI保持，不新增通用兜底、保护层、审批或验收框架。源码生成材料同步后通过既有发布入口更新，仅下个run使用；Doc/QA人工定制需局部更新，不用模板整体覆盖。本次只检查相关角色/能力合同与生成一致性，不为材料修订制造模型探针；真实选型和规格效果由后续业务任务检验。
+
 ## 实施合同
 
 1. `role-capabilities`是岗位默认、任务补充和实际工具目录的同一能力事实。Skill是方法包，Tools是可调用函数，Apps/插件是连接与能力包。工具发现只展示当前允许的能力；缺依赖/连接如实显示。
