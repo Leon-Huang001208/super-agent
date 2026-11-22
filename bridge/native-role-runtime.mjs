@@ -298,7 +298,7 @@ export async function installNativeRoles({database:databasePort,admissionFile='/
   const registry=await import(PKG+'/@paperclipai/server/dist/adapters/index.js');
   const utils=await import(PKG+'/@paperclipai/adapter-utils/dist/server-utils.js');
   const originals=[];
-  const configured=fs.existsSync(ROOT+'/registry.json')?json(ROOT+'/registry.json'):null;
+  const configured=fs.existsSync(ROOT+'/registry.json')?readControl(ROOT+'/registry.json'):null;
   if(configured?.runtimeAssignments!==undefined)getRoleRuntimeProfile('chief',configured.runtimeAssignments);
   const types=['codex_local',...(configured?.runtimeAssignments!==undefined?['opencode_local','claude_local']:[])];
   for(const adapterType of types){
