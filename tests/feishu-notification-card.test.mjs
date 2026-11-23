@@ -15,3 +15,5 @@ test('long plan body stays in task details and blocked cards have distinct statu
  const c=feishuNotificationCard('需要修复，已暂停\n'+('内部明细'.repeat(200)));
  assert.equal(c.header.template,'orange');assert.ok(!JSON.stringify(c).includes('内部明细'));
 });
+
+test("ack body without its ID still keeps the authoritative receipt identifier",()=>{const c=feishuNotificationCard("已暂停后续派发，保留当前运行与账本。",{identifier:"LEO-51",updatedAt:"2026-11-23T02:30:00Z"});assert.match(JSON.stringify(c),/任务编号：LEO-51/);assert.match(JSON.stringify(c),/2026-11-23 10:30/);});
