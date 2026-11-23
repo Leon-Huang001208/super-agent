@@ -479,6 +479,6 @@ test('concurrent identical owner messages share the known in-flight result and i
   await new Promise(resolve=>setImmediate(resolve));release();
   const results=await Promise.all([first,duplicate]);
   assert.deepEqual(results.map(result=>[result.kind,result.version]),[['remember',1],['remember',1]]);
-  assert.equal(f.messages.length,1);assert.match(JSON.parse(f.messages[0].value.data.content).text,/已记住/);
+  assert.equal(f.messages.length,1);assert.equal(f.messages[0].value.data.msg_type,'interactive');assert.match(f.messages[0].value.data.content,/已记住/);
   assert.equal(f.calls.create,0);assert.equal(f.calls.wake,0);
 });

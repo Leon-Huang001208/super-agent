@@ -1,3 +1,4 @@
+import {feishuCardMessage} from './feishu-notification-card.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 import fs from 'node:fs';
 import {isDeepStrictEqual} from 'node:util';
@@ -45,7 +46,7 @@ export async function createChiefContextApplication({database,binding,registry,c
       const intent=await repository.transaction(record.operationId,tx=>tx.readState('intent'),{chatId:record.sourceParams.chatId});
       const k=record.operationId,uuid=k.slice(0,8)+'-'+k.slice(8,12)+'-4'+k.slice(13,16)+'-8'+k.slice(17,20)+'-'+k.slice(20,32);
       const text=`已登记 Chief 任务 ${record.identifier}\n项目：${project.key}\nNative ID：${record.taskId}\n${intent.reviewBeforeDispatch?'将先生成计划并暂停；可在原任务补充后继续。':'按原根调用预算串行分派。'}`;
-      const result=await client.im.message.reply({path:{message_id:record.sourceParams.messageId},data:{msg_type:'text',content:JSON.stringify({text}),uuid}});
+      const result=await client.im.message.reply({path:{message_id:record.sourceParams.messageId},data:{...feishuCardMessage(text),uuid}});
       if(result.code!==0||!/^om_[A-Za-z0-9]+$/.test(result.data?.message_id??''))fail('CHIEF_CONTEXT_ACK_UNKNOWN');return {messageId:result.data.message_id};
     }});
   controller=createChiefContextController({binding,catalog,repository,knowledgeStore,acknowledge,log,

@@ -1,3 +1,4 @@
+import {feishuCardMessage} from './feishu-notification-card.mjs';
 import fs from 'node:fs';
 import {createRequire} from 'node:module';
 import {createChiefFeishuIntake} from './chief-feishu-intake.mjs';
@@ -22,7 +23,7 @@ export async function startChiefFeishuService({database}){
  const native=context??await createChiefFeishuNative({database,binding,log,
   canDispatch:async({db:transaction}={})=>{currentScope();if(fs.existsSync(R+'/call.lock')||fs.existsSync(R+'/registry.control.lock'))return false;const {db,schema:s,orm:o}=await database();return !(await (transaction??db).select({id:s.heartbeatRuns.id}).from(s.heartbeatRuns).where(o.inArray(s.heartbeatRuns.status,['running','queued','scheduled_retry'])).limit(1)).length;},
   acknowledge:async record=>{const k=record.operationId,uuid=k.slice(0,8)+'-'+k.slice(8,12)+'-4'+k.slice(13,16)+'-8'+k.slice(17,20)+'-'+k.slice(20,32);
-   const response=await client.im.message.reply({path:{message_id:record.sourceParams.messageId},data:{msg_type:'text',content:JSON.stringify({text:'已登记 Chief 任务 '+record.identifier+'\nNative ID：'+record.taskId+'\n项目：'+record.projectId+'\n交由 Chief Coordinator 按原调用预算串行分派，执行范围按该项目规则和本人授权。'}),uuid}});
+   const response=await client.im.message.reply({path:{message_id:record.sourceParams.messageId},data:{...feishuCardMessage('已登记 Chief 任务 '+record.identifier+'\n项目：'+record.projectId+'\n按当前项目授权和原调用预算推进。',{identifier:record.identifier}),uuid}});
    if(response.code!==0||!/^om_[A-Za-z0-9]+$/.test(response.data?.message_id??''))fail('CHIEF_FEISHU_ACK_UNKNOWN');return {messageId:response.data.message_id};}
  });
  const receive=createChiefFeishuIntake({binding,...(context&&{parseCommand:parseChiefContextCommand}),resolveProject:async selector=>{
