@@ -52,9 +52,9 @@ export function renderTeamResultNotification({task,summary,presentation={},creat
  lines.push('','通知日期：'+notificationDate(createdAt),'完整成果与验证记录请查看 Paperclip 任务'+(label==='当前任务'?'。':' '+label+'。'));
  return lines.join('\n');
 }
-async function sendFeishuMessage({credentials,owner,text,uuid}){
+async function sendFeishuMessage({credentials,owner,text,uuid,identifier}){
  const sdk=require('@larksuiteoapi/node-sdk'),noop=()=>{},client=new sdk.Client({appId:credentials.appId,appSecret:credentials.appSecret,logger:{trace:noop,debug:noop,info:noop,warn:noop,error:noop}});
- return client.im.message.create({params:{receive_id_type:'open_id'},data:{receive_id:owner.ownerOpenId,...feishuCardMessage(text),uuid}});
+ return client.im.message.create({params:{receive_id_type:'open_id'},data:{receive_id:owner.ownerOpenId,...feishuCardMessage(text,{identifier}),uuid}});
 }
 export async function sendTeamResult({task,summary,registry,sourceRunId,presentation},{sendMessage=sendFeishuMessage}={}){
  if(task.companyId!==registry.companyId||task.responsibleUserId!==registry.ownerId||!summary.sha256||!sourceRunId)throw Error('TEAM_NOTIFICATION_BINDING_DENIED');
@@ -65,7 +65,7 @@ export async function sendTeamResult({task,summary,registry,sourceRunId,presenta
  const base={schemaVersion:1,taskId:task.id,sourceRunId,summarySha256:summary.sha256,uuid,createdAt:new Date().toISOString()};writeControl(file,{...base,status:'sending'});
  try{
   const text=renderTeamResultNotification({task,summary,presentation,createdAt:base.createdAt});
-  const response=await sendMessage({credentials,owner,text,uuid});
+  const response=await sendMessage({credentials,owner,text,uuid,identifier:task.identifier||task.id});
   if(response.code!==0||!/^om_[A-Za-z0-9]+$/.test(response.data?.message_id??''))throw Object.assign(Error('TEAM_NOTIFICATION_RESPONSE_UNKNOWN'),{safeCode:response.code});
   const receipt={...base,status:'sent',messageId:response.data.message_id,sentAt:new Date().toISOString(),reused:false};writeControl(file,receipt);return receipt;
  }catch(e){writeControl(file,{...base,status:'unknown',errorCode:Number.isInteger(e.safeCode)?e.safeCode:'SDK_RESULT_UNKNOWN'});throw Error('TEAM_NOTIFICATION_RECONCILIATION_REQUIRED');}

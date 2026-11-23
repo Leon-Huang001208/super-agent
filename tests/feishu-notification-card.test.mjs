@@ -17,3 +17,5 @@ test('long plan body stays in task details and blocked cards have distinct statu
 });
 
 test("ack body without its ID still keeps the authoritative receipt identifier",()=>{const c=feishuNotificationCard("已暂停后续派发，保留当前运行与账本。",{identifier:"LEO-51",updatedAt:"2026-11-23T02:30:00Z"});assert.match(JSON.stringify(c),/任务编号：LEO-51/);assert.match(JSON.stringify(c),/2026-11-23 10:30/);});
+
+test("authoritative ID wins over references to another task in the title",()=>{const c=feishuNotificationCard("修复 LEO-23 的任务（LEO-65）｜已完成",{identifier:"LEO-65"});assert.match(JSON.stringify(c),/任务编号：LEO-65/);assert.doesNotMatch(JSON.stringify(c),/任务编号：LEO-23/);});
