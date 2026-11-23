@@ -1,3 +1,4 @@
+import {feishuCardMessage} from './feishu-notification-card.mjs';
 import fs from'node:fs';import{createHash}from'node:crypto';import{createRequire}from'node:module';
 import{ROLE_ROOT as R,readControl,writeControl}from'./role-control-store.mjs';
 import{parseUserSummary}from'./team-user-summary.mjs';
@@ -53,7 +54,7 @@ export function renderTeamResultNotification({task,summary,presentation={},creat
 }
 async function sendFeishuMessage({credentials,owner,text,uuid}){
  const sdk=require('@larksuiteoapi/node-sdk'),noop=()=>{},client=new sdk.Client({appId:credentials.appId,appSecret:credentials.appSecret,logger:{trace:noop,debug:noop,info:noop,warn:noop,error:noop}});
- return client.im.message.create({params:{receive_id_type:'open_id'},data:{receive_id:owner.ownerOpenId,msg_type:'text',content:JSON.stringify({text}),uuid}});
+ return client.im.message.create({params:{receive_id_type:'open_id'},data:{receive_id:owner.ownerOpenId,...feishuCardMessage(text),uuid}});
 }
 export async function sendTeamResult({task,summary,registry,sourceRunId,presentation},{sendMessage=sendFeishuMessage}={}){
  if(task.companyId!==registry.companyId||task.responsibleUserId!==registry.ownerId||!summary.sha256||!sourceRunId)throw Error('TEAM_NOTIFICATION_BINDING_DENIED');
