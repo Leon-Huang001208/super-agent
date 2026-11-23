@@ -487,7 +487,7 @@ export function contextOwnerSenderFromClient({client,binding}){
       value.ownerOpenId!==undefined&&value.ownerOpenId!==binding.ownerOpenId)fail('CHIEF_CONTEXT_REPLY_INVALID');
     const k=hash(['context-owner-reply',value.sourceKey??value.operationId,value.kind,value.taskId??null]);
     const nonce=k.slice(0,8)+'-'+k.slice(8,12)+'-4'+k.slice(13,16)+'-8'+k.slice(17,20)+'-'+k.slice(20,32);
-    const response=await client.im.message.create({params:{receive_id_type:'open_id'},data:{receive_id:binding.ownerOpenId,...feishuCardMessage(text),uuid:nonce}});
+    const response=await client.im.message.create({params:{receive_id_type:'open_id'},data:{receive_id:binding.ownerOpenId,...feishuCardMessage(text,{identifier:value.identifier||value.taskId}),uuid:nonce}});
     if(response.code!==0||!/^om_[A-Za-z0-9]+$/.test(response.data?.message_id??''))fail('CHIEF_CONTEXT_ACK_UNKNOWN');
     return {messageId:response.data.message_id};
   };
